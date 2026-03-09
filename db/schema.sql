@@ -1,1 +1,65 @@
 -- schema placeholder
+CREATE DATABASE IF NOT EXISTS language_learning
+  DEFAULT CHARACTER SET utf8mb4
+  DEFAULT COLLATE utf8mb4_unicode_ci;
+
+USE language_learning;
+
+-- 1) roles
+CREATE TABLE IF NOT EXISTS roles (
+  id TINYINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(32) NOT NULL UNIQUE
+) ENGINE=InnoDB;
+
+INSERT IGNORE INTO roles (name) VALUES ('ADMIN'), ('TEACHER'), ('STUDENT');
+
+-- 2) users
+CREATE TABLE IF NOT EXISTS users (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  email VARCHAR(190) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role_id TINYINT UNSIGNED NOT NULL,
+  display_name VARCHAR(80) NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_users_role
+    FOREIGN KEY (role_id) REFERENCES roles(id)
+    ON UPDATE RESTRICT
+    ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE INDEX idx_users_role ON users(role_id);
+
+-- 3) languages
+CREATE TABLE IF NOT EXISTS languages (
+  id INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  code VARCHAR(10) NOT NULL UNIQUE,
+  name VARCHAR(80) NOT NULL
+) ENGINE=InnoDB;
+
+-- 4) lessons
+CREATE TABLE IF NOT EXISTS lessons (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  language_id INT UNSIGNED NOT NULL,
+  level VARCHAR(10) NOT NULL,
+  title VARCHAR(200) NOT NULL,
+  content_html MEDIUMTEXT NULL,
+  order_no INT NOT NULL DEFAULT 0,
+  created_by BIGINT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+
+  CONSTRAINT fk_lessons_language
+    FOREIGN KEY (language_id) REFERENCES languages(id)
+    ON UPDATE RESTRICT
+    ON DELETE RESTRICT,
+
+  CONSTRAINT fk_lessons_created_by
+    FOREIGN KEY (created_by) REFERENCES users(id)
+    ON UPDATE RESTRICT
+    ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE INDEX idx_lessons_language_level ON lessons(language_id, level);
+CREATE INDEX idx_lessons_order ON lessons(language_id, order_no);
