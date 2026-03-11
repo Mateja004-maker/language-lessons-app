@@ -1,0 +1,59 @@
+@import './base.css';
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0f1115;
+  /* pozadina sajta */
+  color: #e9eef5;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+#app {
+  min-height: 100%;
+}
+
+a,
+.green {
+  text-decoration: none;
+  color: hsla(160, 100%, 37%, 1);
+  transition: 0.4s;
+  padding: 3px;
+}
+
+@media (hover: hover) {
+  a:hover {
+    background-color: hsla(160, 100%, 37%, 0.2);
+  }
+}
+
+@media (min-width: 1024px) {
+  body {
+    display: flex;
+    place-items: center;
+  }
+
+  #app {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 0 2rem;
+  }
+}
+
+body {
+  display: block !important;
+  place-items: unset !important;
+}
+
+#app {
+  display: block !important;
+  grid-template-columns: none !important;
+
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
