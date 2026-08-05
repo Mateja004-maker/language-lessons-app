@@ -20,26 +20,26 @@ const favorites = ref([])
 const progress = ref([])
 const loading = ref(false)
 
-const selected_language_id = ref('')
+const selected_language_ids = ref([])
 const languageChoiceError = ref('')
 const savingLanguage = ref(false)
 
 const needsLanguageChoice = computed(() =>
   profile.value &&
   role !== 'ADMIN' &&
-  !profile.value.learning_language_id
+  !(profile.value.subjects && profile.value.subjects.length)
 )
 
 const languageQuestion = computed(() => {
-  if (role === 'TEACHER') return 'Koji jezik želiš da predaješ?'
-  return 'Koji jezik želiš da učiš?'
+  if (role === 'TEACHER') return 'Koje predmete želiš da predaješ?'
+  return 'Koje predmete želiš da učiš?'
 })
 
 async function saveLanguageChoice() {
   languageChoiceError.value = ''
 
-  if (!selected_language_id.value) {
-    languageChoiceError.value = 'Moraš da izabereš jezik.'
+  if (!selected_language_ids.value.length) {
+    languageChoiceError.value = 'Moraš da izabereš bar jedan predmet.'
     return
   }
 
@@ -48,13 +48,14 @@ async function saveLanguageChoice() {
   try {
     await api.put('/profile', {
       display_name: profile.value?.display_name || '',
-      learning_language_id: selected_language_id.value
+      learning_language_id: selected_language_ids.value[0],
+      subject_ids: selected_language_ids.value
     })
 
     await loadData()
   } catch (e) {
     languageChoiceError.value =
-      e?.response?.data?.error || 'Greška pri čuvanju jezika.'
+      e?.response?.data?.error || 'Greška pri čuvanju predmeta.'
   } finally {
     savingLanguage.value = false
   }
@@ -67,6 +68,14 @@ const pendingUsers = computed(() =>
     u => u.is_active !== 1 && u.role !== 'ADMIN'
   )
 )
+
+const subjectNames = computed(() => {
+  if (!profile.value?.subjects || !languages.value.length) return ''
+  return profile.value.subjects
+    .map(id => languages.value.find(l => l.id === id)?.name)
+    .filter(Boolean)
+    .join(', ')
+})
 
 async function loadData() {
   loading.value = true
@@ -132,15 +141,8 @@ const progressPercent = computed(() => {
 })
 
 const filteredLessons = computed(() => {
-  if (
-    role !== 'ADMIN' &&
-    profile.value?.learning_language_id
-  ) {
-    return lessons.value.filter(
-      l => l.language_id === profile.value.learning_language_id
-    )
-  }
-
+  // Backend (/api/lessons) vec vraca lekcije filtrirane po SVIM predmetima
+  // korisnika (student_subjects/teacher_subjects), dodatni filter ovde nije potreban.
   return lessons.value
 })
 
@@ -210,13 +212,13 @@ onMounted(loadData)
             <span class="text-primary">.</span>
           </h1>
           <div
-            v-if="profile?.learning_language_name && role !== 'ADMIN'"
+            v-if="subjectNames && role !== 'ADMIN'"
             class="hero-language mb-3"
           >
             {{
               role === 'TEACHER'
-                ? `Teaching: ${profile.learning_language_name}`
-                : `Learning: ${profile.learning_language_name}`
+                ? `Teaching: ${subjectNames}`
+                : `Learning: ${subjectNames}`
             }}
           </div>
 
@@ -269,7 +271,7 @@ onMounted(loadData)
               </div>
 
               <div class="mini-value">
-                {{ profile?.learning_language_name || 'Not selected yet' }}
+                {{ subjectNames || 'Not selected yet' }}
               </div>
             </template>
           </div>
@@ -445,7 +447,7 @@ onMounted(loadData)
               <div class="stat-icon"><i class="fa-solid fa-globe"></i></div>
               <div class="stat-title">My Language</div>
               <div class="stat-number small-number">
-                {{ profile?.learning_language_name || 'Not selected' }}
+                {{ subjectNames || 'Not selected' }}
               </div>
               <div class="stat-text">Current learning language</div>
             </div>
@@ -550,13 +552,14 @@ onMounted(loadData)
         {{ languageChoiceError }}
       </div>
 
-      <select v-model="selected_language_id" class="form-select mb-3">
-        <option value="">-- Izaberi jezik --</option>
-
+      <select v-model="selected_language_ids" class="form-select mb-3" multiple size="5">
         <option v-for="l in languages" :key="l.id" :value="l.id">
           {{ l.name }}
         </option>
       </select>
+      <small class="text-muted d-block mb-3">
+        Drži Ctrl (ili Cmd) da izabereš više predmeta odjednom.
+      </small>
 
       <button
         class="btn btn-primary w-100"

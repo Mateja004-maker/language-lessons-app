@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { api } from '@/services/api'
 
 const languages = ref([])
+const subjects = ref([])
 const users = ref([])
 
 const email = ref('')
@@ -10,16 +11,25 @@ const password = ref('')
 const display_name = ref('')
 const role = ref('STUDENT')
 const learning_language_id = ref('')
+const selected_subject_ids = ref([])
 
 const error = ref('')
 const msg = ref('')
 const loading = ref(false)
+
+const editingUserId = ref(null)
+const editingSubjectIds = ref([])
 
 const currentRole = localStorage.getItem('user_role')
 
 async function loadLanguages() {
   const { data } = await api.get('/languages')
   languages.value = data
+}
+
+async function loadSubjects() {
+  const { data } = await api.get('/subjects')
+  subjects.value = data
 }
 
 async function loadUsers() {
@@ -31,12 +41,17 @@ async function loadAll() {
   error.value = ''
   loading.value = true
   try {
-    await Promise.all([loadLanguages(), loadUsers()])
+    await Promise.all([loadLanguages(), loadSubjects(), loadUsers()])
   } catch (e) {
     error.value = e?.response?.data?.error || 'Ne mogu da učitam podatke.'
   } finally {
     loading.value = false
   }
+}
+
+function subjectName(id) {
+  const s = subjects.value.find(s => Number(s.id) === Number(id))
+  return s ? s.name : id
 }
 
 async function createUser() {
@@ -54,7 +69,8 @@ async function createUser() {
       password: password.value.trim(),
       display_name: display_name.value.trim(),
       role: role.value,
-      learning_language_id: learning_language_id.value || null
+      learning_language_id: learning_language_id.value || null,
+      subject_ids: selected_subject_ids.value
     })
 
     email.value = ''
@@ -62,6 +78,7 @@ async function createUser() {
     display_name.value = ''
     role.value = 'STUDENT'
     learning_language_id.value = ''
+    selected_subject_ids.value = []
 
     msg.value = 'Korisnik uspešno kreiran.'
     await loadAll()
@@ -97,6 +114,32 @@ async function approveUser(user) {
     await loadUsers()
   } catch (e) {
     error.value = e?.response?.data?.error || 'Ne mogu da odobrim korisnika.'
+  }
+}
+
+function startEditSubjects(user) {
+  editingUserId.value = user.id
+  editingSubjectIds.value = [...(user.subjects || [])]
+}
+
+function cancelEditSubjects() {
+  editingUserId.value = null
+  editingSubjectIds.value = []
+}
+
+async function saveSubjects(user) {
+  error.value = ''
+  msg.value = ''
+
+  try {
+    await api.put(`/users/${user.id}/subjects`, {
+      subject_ids: editingSubjectIds.value
+    })
+    msg.value = 'Predmeti su ažurirani.'
+    editingUserId.value = null
+    await loadUsers()
+  } catch (e) {
+    error.value = e?.response?.data?.error || 'Ne mogu da izmenim predmete.'
   }
 }
 
@@ -145,13 +188,23 @@ onMounted(loadAll)
         </div>
 
         <div class="col-md-3">
-          <label class="form-label">Language</label>
+          <label class="form-label">Language (staro, jedan jezik)</label>
           <select v-model="learning_language_id" class="form-select">
             <option value="">-- Select --</option>
             <option v-for="l in languages" :key="l.id" :value="l.id">
               {{ l.name }}
             </option>
           </select>
+        </div>
+
+        <div class="col-md-12">
+          <label class="form-label">Predmeti (moze vise odjednom)</label>
+          <select v-model="selected_subject_ids" class="form-select" multiple size="4">
+            <option v-for="s in subjects" :key="s.id" :value="s.id">
+              {{ s.name }}
+            </option>
+          </select>
+          <small class="text-muted">Drži Ctrl (ili Cmd) da izabereš više predmeta.</small>
         </div>
       </div>
 
@@ -178,56 +231,91 @@ onMounted(loadAll)
               <th>Name</th>
               <th>Email</th>
               <th>Role</th>
-              <th>Language</th>
+              <th>Predmeti</th>
               <th>Status</th>
               <th class="text-end">Actions</th>
             </tr>
           </thead>
 
           <tbody>
-            <tr v-for="u in users" :key="u.id">
-              <td>{{ u.id }}</td>
-              <td>{{ u.display_name || '-' }}</td>
-              <td>{{ u.email }}</td>
-              <td>
-                <span v-if="u.role === 'ADMIN'" class="badge text-bg-danger">ADMIN</span>
-                <span v-else-if="u.role === 'TEACHER'" class="badge text-bg-warning">TEACHER</span>
-                <span v-else class="badge text-bg-success">STUDENT</span>
-              </td>
-              <td>{{ u.learning_language_name || '-' }}</td>
-              <td>
-                <span v-if="u.is_active == 1" class="badge text-bg-success">
-                  Approved
-                </span>
-
-                <span v-else class="badge text-bg-secondary">
-                  Pending
-                </span>
-              </td>
-              <td class="text-end">
-                <div class="d-flex justify-content-end gap-2">
-                  <button
-                    v-if="u.is_active != 1 && u.role !== 'ADMIN'"
-                    class="btn btn-outline-success btn-sm"
-                    @click="approveUser(u)"
+            <template v-for="u in users" :key="u.id">
+              <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.display_name || '-' }}</td>
+                <td>{{ u.email }}</td>
+                <td>
+                  <span v-if="u.role === 'ADMIN'" class="badge text-bg-danger">ADMIN</span>
+                  <span v-else-if="u.role === 'TEACHER'" class="badge text-bg-warning">TEACHER</span>
+                  <span v-else class="badge text-bg-success">STUDENT</span>
+                </td>
+                <td>
+                  <span
+                    v-for="sid in (u.subjects || [])"
+                    :key="sid"
+                    class="badge text-bg-light border me-1"
                   >
-                    Approve
-                  </button>
-
-                  <button
-                    v-if="u.role !== 'ADMIN'"
-                    class="btn btn-outline-danger btn-sm"
-                    @click="deleteUser(u)"
-                  >
-                    Delete
-                  </button>
-
-                  <span v-if="u.role === 'ADMIN'" class="text-muted small">
-                    Protected
+                    {{ subjectName(sid) }}
                   </span>
-                </div>
-              </td>
-            </tr>
+                  <span v-if="!(u.subjects || []).length" class="text-muted">-</span>
+                </td>
+                <td>
+                  <span v-if="u.is_active == 1" class="badge text-bg-success">
+                    Approved
+                  </span>
+
+                  <span v-else class="badge text-bg-secondary">
+                    Pending
+                  </span>
+                </td>
+                <td class="text-end">
+                  <div class="d-flex justify-content-end gap-2">
+                    <button
+                      v-if="u.is_active != 1 && u.role !== 'ADMIN'"
+                      class="btn btn-outline-success btn-sm"
+                      @click="approveUser(u)"
+                    >
+                      Approve
+                    </button>
+
+                    <button
+                      v-if="u.role !== 'ADMIN'"
+                      class="btn btn-outline-primary btn-sm"
+                      @click="startEditSubjects(u)"
+                    >
+                      Edit subjects
+                    </button>
+
+                    <button
+                      v-if="u.role !== 'ADMIN'"
+                      class="btn btn-outline-danger btn-sm"
+                      @click="deleteUser(u)"
+                    >
+                      Delete
+                    </button>
+
+                    <span v-if="u.role === 'ADMIN'" class="text-muted small">
+                      Protected
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+              <tr v-if="editingUserId === u.id">
+                <td colspan="7">
+                  <div class="d-flex align-items-start gap-3 flex-wrap">
+                    <select v-model="editingSubjectIds" class="form-select" multiple size="4" style="max-width: 300px;">
+                      <option v-for="s in subjects" :key="s.id" :value="s.id">
+                        {{ s.name }}
+                      </option>
+                    </select>
+                    <div class="d-flex flex-column gap-2">
+                      <button class="btn btn-primary btn-sm" @click="saveSubjects(u)">Save</button>
+                      <button class="btn btn-outline-secondary btn-sm" @click="cancelEditSubjects">Cancel</button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -235,3 +323,18 @@ onMounted(loadAll)
 
   </div>
 </template>
+
+<style scoped>
+.page-title {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #111827;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0.75rem;
+}
+
+.section-title {
+  font-weight: 700;
+  color: #111827;
+}
+</style>

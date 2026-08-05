@@ -109,6 +109,52 @@ def column_exists(table_name, column_name):
         cur.close()
         conn.close()
 
+# Pomoćne funkcije za many-to-many predmete (student_subjects / teacher_subjects).
+# Nisu jos pozvane ni na jednom endpointu - dodato da se ne bi ponavljao isti upit na vise mesta.
+def _subject_table_and_column(role):
+    if role == "STUDENT":
+        return "student_subjects", "student_id"
+    if role == "TEACHER":
+        return "teacher_subjects", "teacher_id"
+    return None, None
+
+
+def get_user_subject_ids(user_id, role):
+    table, id_column = _subject_table_and_column(role)
+    if not table:
+        return []
+
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute(
+            f"SELECT subject_id FROM {table} WHERE {id_column} = %s",
+            (user_id,),
+        )
+        return [row["subject_id"] for row in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+
+
+def user_has_subject(user_id, subject_id, role):
+    table, id_column = _subject_table_and_column(role)
+    if not table or subject_id is None:
+        return False
+
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute(
+            f"SELECT 1 FROM {table} WHERE {id_column} = %s AND subject_id = %s LIMIT 1",
+            (user_id, subject_id),
+        )
+        return cur.fetchone() is not None
+    finally:
+        cur.close()
+        conn.close()
+
+
 def allowed_image(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
 
@@ -411,6 +457,20 @@ def delete_language(language_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.get("/api/subjects") #Prikaz predmeta (many-to-many student/teacher_subjects)
+@jwt_required()
+def list_subjects():
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT id, code, name FROM subjects ORDER BY name ASC")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify(rows), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # =========================
 # 7) Users / Profile
 # =========================
@@ -424,6 +484,7 @@ def create_user():
     display_name = (data.get("display_name") or "").strip() or None
     role_name = (data.get("role") or "STUDENT").strip().upper()
     learning_language_id = data.get("learning_language_id") or None
+    subject_ids = data.get("subject_ids") or []
 
     if not email or not password:
         return jsonify({"error": "Email and password required"}), 400
@@ -455,6 +516,15 @@ def create_user():
                 conn.close()
                 return jsonify({"error": "Selected language does not exist"}), 400
 
+        if subject_ids:
+            placeholders = ", ".join(["%s"] * len(subject_ids))
+            cur.execute(f"SELECT id FROM subjects WHERE id IN ({placeholders})", tuple(subject_ids))
+            found_ids = {row["id"] for row in cur.fetchall()}
+            if found_ids != {int(s) for s in subject_ids}:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "One or more selected subjects do not exist"}), 400
+
         pw_hash = generate_password_hash(password)
 
         cur2 = conn.cursor()
@@ -465,6 +535,16 @@ def create_user():
             """,
             (email, pw_hash, role_row["id"], display_name, learning_language_id),
         )
+        new_user_id = cur2.lastrowid
+
+        if subject_ids:
+            table, id_column = _subject_table_and_column(role_name)
+            for subject_id in subject_ids:
+                cur2.execute(
+                    f"INSERT INTO {table} ({id_column}, subject_id) VALUES (%s, %s)",
+                    (new_user_id, subject_id),
+                )
+
         conn.commit()
 
         cur2.close()
@@ -513,6 +593,8 @@ def get_profile():
         if not row:
             return jsonify({"error": "User not found"}), 404
 
+        row["subjects"] = get_user_subject_ids(user_id, row["role"])
+
         return jsonify(row), 200
 
     except Exception as e:
@@ -524,10 +606,13 @@ def get_profile():
 def update_profile():
     try:
         user_id = get_jwt_identity()
+        claims = get_jwt()
+        role = claims.get("role")
         data = request.get_json() or {}
 
         display_name = (data.get("display_name") or "").strip() or None
         learning_language_id = data.get("learning_language_id") or None
+        subject_ids = data.get("subject_ids")
 
         conn = get_db_connection()
         cur = conn.cursor(dictionary=True)
@@ -539,6 +624,15 @@ def update_profile():
                 conn.close()
                 return jsonify({"error": "Selected language does not exist"}), 400
 
+        if subject_ids:
+            placeholders = ", ".join(["%s"] * len(subject_ids))
+            cur.execute(f"SELECT id FROM subjects WHERE id IN ({placeholders})", tuple(subject_ids))
+            found_ids = {row["id"] for row in cur.fetchall()}
+            if found_ids != {int(s) for s in subject_ids}:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "One or more selected subjects do not exist"}), 400
+
         cur2 = conn.cursor()
         cur2.execute(
             """
@@ -549,6 +643,17 @@ def update_profile():
             """,
             (display_name, learning_language_id, user_id),
         )
+
+        if subject_ids is not None:
+            table, id_column = _subject_table_and_column(role)
+            if table:
+                cur2.execute(f"DELETE FROM {table} WHERE {id_column} = %s", (user_id,))
+                for subject_id in subject_ids:
+                    cur2.execute(
+                        f"INSERT INTO {table} ({id_column}, subject_id) VALUES (%s, %s)",
+                        (user_id, subject_id),
+                    )
+
         conn.commit()
 
         cur2.close()
@@ -638,12 +743,15 @@ def list_users():
         cur.close()
         conn.close()
 
+        for row in rows:
+            row["subjects"] = get_user_subject_ids(row["id"], row["role"])
+
         return jsonify(rows), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
-@app.patch("/api/users/<int:user_id>/approve") #Odobravanje korisnika od strane ADMINA 
+
+@app.patch("/api/users/<int:user_id>/approve") #Odobravanje korisnika od strane ADMINA
 @role_required(["ADMIN"])
 def approve_user(user_id):
     try:
@@ -718,6 +826,67 @@ def delete_user(user_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.put("/api/users/<int:user_id>/subjects") #Izmena predmeta studenta/nastavnika od strane admina
+@role_required(["ADMIN"])
+def update_user_subjects(user_id):
+    data = request.get_json() or {}
+    subject_ids = data.get("subject_ids") or []
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute(
+            """
+            SELECT u.id, r.name AS role
+            FROM users u
+            JOIN roles r ON r.id = u.role_id
+            WHERE u.id = %s
+            LIMIT 1
+            """,
+            (user_id,),
+        )
+        user_row = cur.fetchone()
+
+        if not user_row:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "User not found"}), 404
+
+        table, id_column = _subject_table_and_column(user_row["role"])
+        if not table:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Subjects can be assigned only to TEACHER or STUDENT accounts"}), 400
+
+        if subject_ids:
+            placeholders = ", ".join(["%s"] * len(subject_ids))
+            cur.execute(f"SELECT id FROM subjects WHERE id IN ({placeholders})", tuple(subject_ids))
+            found_ids = {row["id"] for row in cur.fetchall()}
+            if found_ids != {int(s) for s in subject_ids}:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "One or more selected subjects do not exist"}), 400
+
+        cur2 = conn.cursor()
+        cur2.execute(f"DELETE FROM {table} WHERE {id_column} = %s", (user_id,))
+        for subject_id in subject_ids:
+            cur2.execute(
+                f"INSERT INTO {table} ({id_column}, subject_id) VALUES (%s, %s)",
+                (user_id, subject_id),
+            )
+        conn.commit()
+
+        cur2.close()
+        cur.close()
+        conn.close()
+
+        return jsonify({"message": "Subjects updated", "subject_ids": subject_ids}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # =========================
 # 8) Lessons
 # =========================
@@ -735,27 +904,18 @@ def list_lessons():
         cur = conn.cursor(dictionary=True)
 
         if role in ["STUDENT", "TEACHER"]:
-            cur.execute(
-                """
-                SELECT learning_language_id
-                FROM users
-                WHERE id = %s
-                LIMIT 1
-                """,
-                (user_id,),
-            )
-            user_row = cur.fetchone()
+            subject_ids = get_user_subject_ids(user_id, role)
 
-            if not user_row or not user_row.get("learning_language_id"):
+            if not subject_ids:
                 cur.close()
                 conn.close()
                 return jsonify([]), 200
 
-            user_language_id = user_row["learning_language_id"]
+            placeholders = ", ".join(["%s"] * len(subject_ids))
 
             if has_is_active:
                 cur.execute(
-                    """
+                    f"""
                     SELECT
                         ls.id,
                         ls.language_id,
@@ -772,14 +932,14 @@ def list_lessons():
                     FROM lessons ls
                     JOIN languages l ON l.id = ls.language_id
                     WHERE l.is_active = 1
-                      AND ls.language_id = %s
+                      AND ls.language_id IN ({placeholders})
                     ORDER BY ls.order_no ASC, ls.id DESC
                     """,
-                    (user_language_id,),
+                    tuple(subject_ids),
                 )
             else:
                 cur.execute(
-                    """
+                    f"""
                     SELECT
                         ls.id,
                         ls.language_id,
@@ -795,10 +955,10 @@ def list_lessons():
                         ls.updated_at
                     FROM lessons ls
                     JOIN languages l ON l.id = ls.language_id
-                    WHERE ls.language_id = %s
+                    WHERE ls.language_id IN ({placeholders})
                     ORDER BY ls.order_no ASC, ls.id DESC
                     """,
-                    (user_language_id,),
+                    tuple(subject_ids),
                 )
 
         else:
@@ -1237,8 +1397,17 @@ def get_exams():
         cursor = conn.cursor(dictionary=True)
 
         if role == "STUDENT":
-            cursor.execute("""
-                SELECT 
+            subject_ids = get_user_subject_ids(int(user_id), "STUDENT")
+
+            if not subject_ids:
+                cursor.close()
+                conn.close()
+                return jsonify([]), 200
+
+            placeholders = ", ".join(["%s"] * len(subject_ids))
+
+            cursor.execute(f"""
+                SELECT
                     e.*,
                     l.name AS language_name,
 
@@ -1249,11 +1418,8 @@ def get_exams():
 
                 FROM exams e
 
-                JOIN languages l 
+                JOIN languages l
                     ON e.language_id = l.id
-
-                JOIN users u 
-                    ON u.id = %s
 
                 LEFT JOIN exam_attempts ea
                     ON ea.exam_id = e.id
@@ -1261,19 +1427,27 @@ def get_exams():
                     AND ea.status = 'COMPLETED'
 
                 WHERE e.is_published = 1
-                AND e.language_id = u.learning_language_id
+                AND e.language_id IN ({placeholders})
 
                 ORDER BY e.created_at DESC
-            """, (user_id, user_id))
+            """, (user_id, *subject_ids))
 
         elif role == "TEACHER":
-            cursor.execute("""
+            subject_ids = get_user_subject_ids(int(user_id), "TEACHER")
+
+            if not subject_ids:
+                cursor.close()
+                conn.close()
+                return jsonify([]), 200
+
+            placeholders = ", ".join(["%s"] * len(subject_ids))
+
+            cursor.execute(f"""
                 SELECT e.*, l.name AS language_name
                 FROM exams e
                 JOIN languages l ON e.language_id = l.id
-                JOIN users u ON u.id = %s
-                WHERE e.language_id = u.learning_language_id
-            """, (user_id,))
+                WHERE e.language_id IN ({placeholders})
+            """, tuple(subject_ids))
 
         else:
             cursor.execute("""
@@ -1318,15 +1492,7 @@ def create_exam():
         cursor = conn.cursor(dictionary=True)
 
         if role == "TEACHER":
-            cursor.execute("""
-                SELECT learning_language_id
-                FROM users
-                WHERE id = %s
-            """, (created_by,))
-
-            teacher = cursor.fetchone()
-
-            if not teacher or int(language_id) != int(teacher["learning_language_id"]):
+            if not user_has_subject(int(created_by), int(language_id), "TEACHER"):
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "Teacher can create exams only for assigned language"}), 403
@@ -1407,15 +1573,7 @@ def get_exam_details(exam_id):
                 conn.close()
                 return jsonify({"error": "Exam is not published"}), 403
 
-            cursor.execute("""
-                SELECT learning_language_id
-                FROM users
-                WHERE id = %s
-            """, (user_id,))
-
-            student = cursor.fetchone()
-
-            if not student or student["learning_language_id"] != exam["language_id"]:
+            if not user_has_subject(int(user_id), exam["language_id"], "STUDENT"):
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "You can access only exams for your language"}), 403
@@ -1718,15 +1876,7 @@ def delete_exam(exam_id):
 
         # Teacher sme da briše samo testove za svoj jezik
         if role == "TEACHER":
-            cursor.execute("""
-                SELECT learning_language_id
-                FROM users
-                WHERE id = %s
-            """, (user_id,))
-
-            teacher = cursor.fetchone()
-
-            if not teacher or teacher["learning_language_id"] != exam["language_id"]:
+            if not user_has_subject(int(user_id), exam["language_id"], "TEACHER"):
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "You can delete only exams for your assigned language"}), 403
@@ -1905,23 +2055,16 @@ def get_exam_results(exam_id):
         cursor = conn.cursor(dictionary=True)
 
         if role == "TEACHER":
-            cursor.execute("""
-                SELECT e.id
-                FROM exams e
-                JOIN users u ON u.id = %s
-                WHERE e.id = %s
-                  AND e.language_id = u.learning_language_id
-            """, (user_id, exam_id))
+            cursor.execute("SELECT id, language_id FROM exams WHERE id = %s", (exam_id,))
+            exam_row = cursor.fetchone()
 
-            allowed_exam = cursor.fetchone()
-
-            if not allowed_exam:
+            if not exam_row or not user_has_subject(int(user_id), exam_row["language_id"], "TEACHER"):
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "You can view results only for your assigned language"}), 403
 
         cursor.execute("""
-            SELECT 
+            SELECT
                 ea.id,
                 ea.exam_id,
                 ea.student_id,
@@ -1962,17 +2105,10 @@ def export_exam_results(exam_id):
         cursor = conn.cursor(dictionary=True)
 
         if role == "TEACHER":
-            cursor.execute("""
-                SELECT e.id
-                FROM exams e
-                JOIN users u ON u.id = %s
-                WHERE e.id = %s
-                  AND e.language_id = u.learning_language_id
-            """, (user_id, exam_id))
+            cursor.execute("SELECT id, language_id FROM exams WHERE id = %s", (exam_id,))
+            exam_row = cursor.fetchone()
 
-            allowed_exam = cursor.fetchone()
-
-            if not allowed_exam:
+            if not exam_row or not user_has_subject(int(user_id), exam_row["language_id"], "TEACHER"):
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "You can export results only for your assigned language"}), 403

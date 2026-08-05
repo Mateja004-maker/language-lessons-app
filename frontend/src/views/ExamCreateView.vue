@@ -23,17 +23,7 @@ export default {
     const isTeacher = computed(() => role === 'TEACHER')
     const isAdmin = computed(() => role === 'ADMIN')
 
-    const selectedLanguageName = computed(() => {
-      if (profile.value?.learning_language_name) {
-        return profile.value.learning_language_name
-      }
-
-      const language = languages.value.find(
-        l => Number(l.id) === Number(language_id.value)
-      )
-
-      return language ? language.name : ''
-    })
+    const teacherSubjects = ref([])
 
     onMounted(async () => {
       try {
@@ -41,7 +31,15 @@ export default {
         profile.value = profileRes.data
 
         if (role === 'TEACHER') {
-          language_id.value = profileRes.data.learning_language_id
+          const subjectsRes = await api.get('/subjects')
+          const subjectIds = profileRes.data.subjects || []
+          teacherSubjects.value = subjectsRes.data.filter(
+            s => subjectIds.includes(s.id)
+          )
+
+          if (teacherSubjects.value.length === 1) {
+            language_id.value = teacherSubjects.value[0].id
+          }
         }
 
         if (role === 'ADMIN') {
@@ -82,10 +80,10 @@ export default {
       level,
       duration_minutes,
       languages,
+      teacherSubjects,
       profile,
       isTeacher,
       isAdmin,
-      selectedLanguageName,
       submit,
       open_at,
       close_at,
@@ -135,9 +133,14 @@ export default {
             <i class="fa-solid fa-globe me-1"></i>
             Language
           </label>
-          <input :value="selectedLanguageName" class="form-control" disabled />
+          <select v-model="language_id" class="form-select">
+            <option value="">Select language</option>
+            <option v-for="subject in teacherSubjects" :key="subject.id" :value="subject.id">
+              {{ subject.name }}
+            </option>
+          </select>
           <small class="text-muted">
-            Exam will be created for your assigned language.
+            Exam se pravi samo za predmete koje predaješ.
           </small>
         </div>
 

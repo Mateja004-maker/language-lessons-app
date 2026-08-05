@@ -3,6 +3,7 @@ import { onMounted, ref, computed } from 'vue'
 import { api } from '@/services/api'
 
 const profile = ref(null)
+const subjects = ref([])
 const display_name = ref('')
 const error = ref('')
 const msg = ref('')
@@ -12,15 +13,24 @@ const languageLabel = computed(() => {
   if (!profile.value) return ''
 
   if (profile.value.role === 'TEACHER') {
-    return 'Language I Teach'
+    return 'Subjects I Teach'
   }
 
   if (profile.value.role === 'STUDENT') {
-    return 'Language I Learn'
+    return 'Subjects I Learn'
   }
 
-  return 'Language'
+  return 'Subjects'
 })
+
+const subjectNames = computed(() => {
+  if (!profile.value?.subjects || !subjects.value.length) return ''
+  return profile.value.subjects
+    .map(id => subjects.value.find(s => s.id === id)?.name)
+    .filter(Boolean)
+    .join(', ')
+})
+
 const selectedImage = ref(null)
 const previewImage = ref('')
 
@@ -30,10 +40,14 @@ async function loadProfile() {
   loading.value = true
 
   try {
-    const { data } = await api.get('/profile')
+    const [profileRes, subjectsRes] = await Promise.all([
+      api.get('/profile'),
+      api.get('/subjects')
+    ])
 
-    profile.value = data
-    display_name.value = data.display_name || ''
+    profile.value = profileRes.data
+    display_name.value = profileRes.data.display_name || ''
+    subjects.value = subjectsRes.data
   } catch (e) {
     error.value = e?.response?.data?.error || 'Failed to load profile.'
   } finally {
@@ -164,11 +178,11 @@ onMounted(loadProfile)
           <label class="form-label">{{ languageLabel }}</label>
           <input
             class="form-control"
-            :value="profile.learning_language_name || 'Nije izabran jezik'"
+            :value="subjectNames || 'Nije izabran nijedan predmet'"
             disabled
           />
           <small class="text-muted">
-            The language is selected during the first login.
+            Predmete dodeljuje admin (ili se biraju pri prvom logovanju).
           </small>
         </div>
 
