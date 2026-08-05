@@ -4,73 +4,159 @@ import { useRouter } from 'vue-router'
 import { login } from '@/services/auth'
 
 const router = useRouter()
+
 const email = ref('')
 const password = ref('')
 const error = ref('')
+const loading = ref(false)
 
 async function onSubmit() {
   error.value = ''
+  loading.value = true
   try {
     await login(email.value, password.value)
     router.push('/')
   } catch (e) {
     error.value = e?.response?.data?.error || 'Login failed'
+  } finally {
+    loading.value = false
   }
 }
 </script>
+
 <template>
-  <div style="max-width:420px;margin:40px auto;">
-    <h2>Login</h2>
+  <div class="container py-5">
+    <div class="row justify-content-center align-items-center min-vh-100">
+      <div class="col-12 col-lg-10">
+        <div class="row g-4 align-items-center">
 
-    <form @submit.prevent="onSubmit">
-      <div>
-        <label>Email</label>
-        <input v-model="email" type="email" required />
+          <div class="col-lg-6 d-none d-lg-block">
+            <div class="pe-4">
+              <div class="mb-3 icon-hero">
+                <i class="fa-solid fa-globe"></i>
+              </div>
+
+              <h1 class="fw-bold mb-3" style="font-size: 3rem; line-height: 1.1;">
+                Learn languages smarter.
+              </h1>
+
+              <p class="text-muted fs-5 mb-4">
+                Access interactive lessons, track your progress,
+                and learn languages through a modern online platform.
+              </p>
+
+              <div class="d-flex gap-3 flex-wrap">
+                <span class="badge text-bg-primary px-3 py-2">English</span>
+                <span class="badge text-bg-success px-3 py-2">German</span>
+                <span class="badge text-bg-danger px-3 py-2">French</span>
+                <span class="badge text-bg-warning px-3 py-2">Spanish</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-lg-6">
+            <div class="card shadow-sm border-0 section-card">
+              <div class="card-body p-4 p-md-5">
+
+                <div class="text-center mb-4">
+                  <div class="mb-2 icon-card">
+                    <i class="fa-solid fa-book-open"></i>
+                  </div>
+
+                  <h2 class="fw-bold mb-1">Welcome back</h2>
+
+                  <div class="text-muted">
+                    Sign in to continue learning
+                  </div>
+                </div>
+
+                <div class="alert alert-warning py-2 small" role="alert">
+                  <i class="fa-solid fa-circle-info me-2"></i>
+                  New accounts require administrator approval.
+                </div>
+
+                <div v-if="error" class="alert alert-danger py-2">
+                  <i class="fa-solid fa-triangle-exclamation me-2"></i>
+                  {{ error }}
+                </div>
+
+                <form @submit.prevent="onSubmit">
+                  <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                      <i class="fa-solid fa-envelope me-1"></i>
+                      Email
+                    </label>
+
+                    <input
+                      v-model="email"
+                      type="email"
+                      class="form-control"
+                      placeholder="admin@test.com"
+                      required
+                      autocomplete="username"
+                    />
+                  </div>
+
+                  <div class="mb-2">
+                    <label class="form-label fw-semibold">
+                      <i class="fa-solid fa-lock me-1"></i>
+                      Password
+                    </label>
+
+                    <input
+                      v-model="password"
+                      type="password"
+                      class="form-control"
+                      placeholder="Enter your password"
+                      required
+                      autocomplete="current-password"
+                    />
+                  </div>
+
+                  <button
+                    class="btn btn-primary w-100 mt-4 py-2"
+                    type="submit"
+                    :disabled="loading"
+                  >
+                    <span
+                      v-if="loading"
+                      class="spinner-border spinner-border-sm me-2"
+                      role="status"
+                    ></span>
+
+                    <i v-else class="fa-solid fa-right-to-bracket me-2"></i>
+                    Sign in
+                  </button>
+
+                  <div class="text-center mt-4">
+                    <RouterLink to="/register">
+                      <i class="fa-solid fa-user-plus me-1"></i>
+                      Don't have an account? Sign up
+                    </RouterLink>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <div class="text-center text-muted small mt-4">
+              © {{ new Date().getFullYear() }} Language Lessons
+            </div>
+          </div>
+
+        </div>
       </div>
-
-      <div style="margin-top:10px;">
-        <label>Password</label>
-        <input v-model="password" type="password" required />
-      </div>
-
-      <button style="margin-top:14px;" type="submit">Sign in</button>
-      <p v-if="error" style="color:#b00020;">{{ error }}</p>
-    </form>
-
-    <p style="margin-top:14px;color:#555;">
-      Test nalozi: admin@test.com / Admin123!
-    </p>
+    </div>
   </div>
-  
 </template>
+
 <style scoped>
-/* wrapper */
-div {
-  color: #fff;
+.icon-hero {
+  font-size: 3rem;
+  color: #0d6efd;
 }
 
-/* forma */
-label {
-  display: block;
-  margin-top: 10px;
-  color: #fff;
-}
-
-input {
-  width: 100%;
-  padding: 10px;
-  margin-top: 6px;
-  border-radius: 8px;
-  border: 1px solid #444;
-  background: #fff;
-  color: #111;
-}
-
-button {
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 0;
-  cursor: pointer;
+.icon-card {
+  font-size: 2.5rem;
+  color: #0d6efd;
 }
 </style>
-

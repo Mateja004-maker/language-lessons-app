@@ -2,7 +2,10 @@ import axios from 'axios'
 
 export const api = axios.create({
     baseURL: '/api'
-})
+}) // Frontend sve zahteve salje na /api(/api ne mora da se pise u svaku api rutu u frontendu)
+
+
+console.log('API FILE LOADED')
 
 // Dodaj JWT token u svaki zahtev (ako postoji)
 api.interceptors.request.use((config) => {
@@ -24,3 +27,49 @@ api.interceptors.response.use(
         return Promise.reject(err)
     }
 )
+
+// =========================
+// EXAMS API
+// =========================
+
+export const getExams = () => api.get('/exams')
+
+export const createExam = (data) => api.post('/exams', data)
+
+export const getExamDetails = (id) => api.get(`/exams/${id}`)
+
+export const addExamQuestion = (examId, data) =>
+  api.post(`/exams/${examId}/questions`, data)
+
+export const addQuestionAnswer = (questionId, data) =>
+  api.post(`/questions/${questionId}/answers`, data)
+
+export const deleteQuestion = (id) => api.delete(`/questions/${id}`)
+
+export const deleteAnswer = (id) => api.delete(`/answers/${id}`)
+
+export const updateQuestion = (id, data) =>
+  api.put(`/questions/${id}`, data)
+
+export const updateAnswer = (id, data) =>
+  api.put(`/answers/${id}`, data)
+
+export const publishExam = (id) =>
+  api.put(`/exams/${id}/publish`)
+
+export const deleteExam = (id) => api.delete(`/exams/${id}`)
+
+export const submitExam = (examId, data) =>
+  api.post(`/exams/${examId}/submit`, data)
+
+export const getExamResults = (examId) =>
+  api.get(`/exams/${examId}/results`)
+
+export const getMyResults = () =>
+  api.get('/my-results')
+
+
+export const exportExamResults = (examId) =>
+  api.get(`/exams/${examId}/results/export`, {
+    responseType: 'blob'
+  })

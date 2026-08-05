@@ -6,26 +6,208 @@ import { api } from '@/services/api'
 const route = useRoute()
 const lesson = ref(null)
 const error = ref('')
+const loading = ref(false)
 
-onMounted(async () => {
+const role = localStorage.getItem('user_role')
+const viewedLessons = ref([])
+
+async function loadLesson() {
+  error.value = ''
+  loading.value = true
+
   try {
     const { data } = await api.get(`/lessons/${route.params.id}`)
     lesson.value = data
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to load lesson'
+    error.value = e?.response?.data?.error || 'Ne mogu da učitam lekciju.'
+  } finally {
+    loading.value = false
   }
+}
+
+async function loadProgress() {
+  if (role !== 'STUDENT') return
+
+  try {
+    const { data } = await api.get('/progress')
+    viewedLessons.value = data.map(p => p.lesson_id)
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+function isViewed() {
+  return viewedLessons.value.includes(Number(route.params.id))
+}
+
+async function markViewed() {
+  try {
+    await api.post(`/progress/${route.params.id}`)
+    await loadProgress()
+  } catch (e) {
+    error.value = e?.response?.data?.error || 'Ne mogu da označim lekciju kao pogledanu.'
+  }
+}
+
+async function unmarkViewed() {
+  try {
+    await api.delete(`/progress/${route.params.id}`)
+    await loadProgress()
+  } catch (e) {
+    error.value = e?.response?.data?.error || 'Ne mogu da uklonim oznaku.'
+  }
+}
+
+
+onMounted(async () => {
+  await loadLesson()
+  await loadProgress()
 })
 </script>
 
 <template>
-  <div style="max-width:900px;margin:30px auto;">
-    <p v-if="error" style="color:#b00020">{{ error }}</p>
+  <div class="container py-4">
+    <div v-if="loading" class="text-muted">Loading...</div>
+    <div v-if="error" class="alert alert-danger">{{ error }}</div>
 
-    <div v-else-if="lesson">
-      <h2>{{ lesson.title }} ({{ lesson.level }})</h2>
-      <div v-html="lesson.content_html" style="margin-top:12px;"></div>
+    <div v-if="lesson" class="lesson-card">
+      <div class="lesson-header">
+        <div>
+          <div class="page-title">{{ lesson.title }}</div>
+          <div class="page-subtitle">
+            {{ lesson.language_code?.toUpperCase() }} • {{ lesson.level }}
+          </div>
+        </div>
+        <div v-if="role === 'STUDENT'" class="viewed-actions">
+          <button
+            v-if="!isViewed()"
+            class="btn btn-outline-success btn-sm"
+            @click="markViewed"
+          >
+            Mark as viewed
+          </button>
+
+          <button
+            v-else
+            class="btn btn-success btn-sm"
+            @click="unmarkViewed"
+          >
+            Viewed ✓
+          </button>
+        </div>
+      </div>
+
+      <div class="lesson-content" v-html="lesson.content"></div>
+
+      <div class="lesson-extra-grid">
+        <div v-if="lesson.tips" class="extra-card tips-card">
+          <h5>Tips & Tricks</h5>
+          <p>{{ lesson.tips }}</p>
+        </div>
+
+        <div v-if="lesson.important_info" class="extra-card important-card">
+          <h5>Important Information</h5>
+          <p>{{ lesson.important_info }}</p>
+        </div>
+      </div>
     </div>
-
-    <p v-else>Loading...</p>
   </div>
 </template>
+
+<style scoped>
+.container {
+  max-width: 1000px;
+}
+
+.lesson-card {
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 34px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.lesson-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.lesson-content {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: #374151;
+}
+
+.lesson-content :deep(h1),
+.lesson-content :deep(h2),
+.lesson-content :deep(h3) {
+  margin-top: 22px;
+  margin-bottom: 12px;
+  color: #111827;
+  font-weight: 700;
+}
+
+.lesson-content :deep(p) {
+  margin-bottom: 14px;
+}
+
+.lesson-content :deep(ul),
+.lesson-content :deep(ol) {
+  padding-left: 26px;
+  margin-bottom: 16px;
+}
+
+.lesson-content :deep(img) {
+  max-width: 100%;
+  border-radius: 16px;
+  margin: 16px 0;
+}
+
+.lesson-extra-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 30px;
+}
+
+.extra-card {
+  border-radius: 18px;
+  padding: 20px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.extra-card h5 {
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.extra-card p {
+  margin: 0;
+  line-height: 1.6;
+  color: #374151;
+  white-space: pre-line;
+}
+
+.tips-card {
+  border-left: 5px solid #0d6efd;
+}
+
+.important-card {
+  border-left: 5px solid #dc3545;
+}
+
+@media (max-width: 768px) {
+  .lesson-card {
+    padding: 22px;
+  }
+
+  .lesson-extra-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

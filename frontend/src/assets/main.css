@@ -1,59 +1,97 @@
-@import './base.css';
-
 html,
 body {
-  height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 25%),
+    radial-gradient(circle at top right, rgba(139, 92, 246, 0.08), transparent 25%),
+    #f8fafc;
+  color: #212529;
+  min-height: 100vh;
 }
 
-body {
-  margin: 0;
-  background: #0f1115;
-  /* pozadina sajta */
-  color: #e9eef5;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+.card {
+  border: none;
+  border-radius: 16px;
 }
 
-#app {
-  min-height: 100%;
+.card-title {
+  font-weight: 700;
 }
 
-a,
-.green {
-  text-decoration: none;
-  color: hsla(160, 100%, 37%, 1);
-  transition: 0.4s;
-  padding: 3px;
+.navbar-brand {
+  font-weight: 800;
+  letter-spacing: 0.2px;
 }
 
-@media (hover: hover) {
-  a:hover {
-    background-color: hsla(160, 100%, 37%, 0.2);
-  }
+.table td,
+.table th {
+  vertical-align: middle;
 }
 
-@media (min-width: 1024px) {
-  body {
-    display: flex;
-    place-items: center;
-  }
-
-  #app {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 0 2rem;
-  }
+.badge {
+  font-weight: 700;
 }
 
-body {
-  display: block !important;
-  place-items: unset !important;
+.btn {
+  border-radius: 12px;
 }
 
-#app {
-  display: block !important;
-  grid-template-columns: none !important;
+.form-control,
+.form-select {
+  border-radius: 12px;
+}
 
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
+.page-subtitle {
+  color: #6c757d;
+  font-size: 0.95rem;
+}
+
+.section-card {
+  border: none;
+  border-radius: 18px;
+  box-shadow: 0 0.125rem 0.75rem rgba(0, 0, 0, 0.06);
+}
+
+.page-header {
+  margin-bottom: 20px;
+}
+
+.page-title {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: #1f2937;
+}
+
+.page-subtitle {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.section-card {
+  border-radius: 20px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  background: white;
+}
+
+.section-padding {
+  padding: 24px;
+}
+
+.btn-primary {
+  border-radius: 10px;
+}
+
+.btn-outline-secondary {
+  border-radius: 10px;
+}
+
+.container {
+  max-width: 1100px;
+}
+
+.page-title {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #111827;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0.75rem;
 }

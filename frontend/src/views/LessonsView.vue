@@ -1,115 +1,293 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { api } from '@/services/api'
-import { logout } from '@/services/auth'
-import { useRouter } from 'vue-router'
 
-const router = useRouter()
 const lessons = ref([])
 const error = ref('')
-const role = localStorage.getItem('user_role')
+const loading = ref(false)
+const favorites = ref([])
+
+const role = computed(() => localStorage.getItem('user_role') || '')
+
+const isTeacherOrAdmin = computed(() =>
+  role.value === 'TEACHER' || role.value === 'ADMIN'
+)
+const isStudent = computed(() => role.value === 'STUDENT')
+
+function stripHtml(html) {
+  const div = document.createElement('div')
+  div.innerHTML = html || ''
+  return div.textContent || div.innerText || ''
+}
+
+function levelClass(level) {
+  const l = String(level || '').toUpperCase()
+
+  if (l === 'A1') return 'text-bg-success'
+  if (l === 'A2') return 'text-bg-primary'
+  if (l === 'B1') return 'text-bg-warning'
+  if (l === 'B2') return 'text-bg-info'
+  if (l === 'C1' || l === 'C2') return 'text-bg-danger'
+
+  return 'text-bg-secondary'
+}
+function isFavorite(id) {
+  return favorites.value.includes(id)
+}
 
 async function load() {
   error.value = ''
+  loading.value = true
+
   try {
     const { data } = await api.get('/lessons')
     lessons.value = data
   } catch (e) {
     error.value = e?.response?.data?.error || 'Failed to load lessons'
+  } finally {
+    loading.value = false
+  }
+}
+async function loadFavorites() {
+  if (!isStudent.value) return
+
+  try {
+    const { data } = await api.get('/favorites')
+    favorites.value = data.map(f => f.id)
+  } catch (e) {
+    console.error(e)
   }
 }
 
-function onLogout() {
-  logout()
-  router.push('/login')
+async function deleteLesson(id) {
+  const confirmed = confirm('Are you sure you want to delete this lesson?')
+  if (!confirmed) return
+
+  try {
+    await api.delete(`/lessons/${id}`)
+    await load()
+  } catch (e) {
+    error.value = e?.response?.data?.error || 'Failed to delete the lesson.'
+  }
 }
 
-onMounted(load)
+async function addFavorite(id) {
+  try {
+    await api.post(`/lessons/${id}/favorite`)
+    await loadFavorites()
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function removeFavorite(id) {
+  try {
+    await api.delete(`/lessons/${id}/favorite`)
+    await loadFavorites()
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+onMounted(async () => {
+  await load()
+  await loadFavorites()
+})
 </script>
 
 <template>
-  <div class="page">
-    <div class="topbar">
-      <h2>Lessons</h2>
+  <div class="container py-4">
 
-      <div class="right">
-        <span>Role: <b>{{ role }}</b></span>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <div class="page-title">Lessons</div>
+        <div class="page-subtitle">
+          Explore available language learning lessons
+        </div>
+      </div>
+
+      <button
+        class="btn btn-outline-secondary btn-sm px-3"
+        @click="load"
+        :disabled="loading"
+      >
+        Refresh
+      </button>
+    </div>
+
+    <div v-if="error" class="alert alert-danger">
+      {{ error }}
+    </div>
+
+    <div v-if="loading" class="section-card section-padding text-muted">
+      Loading lessons...
+    </div>
+
+    <div v-else-if="lessons.length === 0" class="section-card section-padding text-center">
+      <div class="empty-icon mb-2">📚</div>
+      <h5 class="mb-1">No lessons available.</h5>
+      <p class="text-muted mb-0">
+        When a teacher adds lessons, they will appear here.
+      </p>
+    </div>
+
+    <div v-else class="row g-3">
+      <div
+        class="col-12 col-lg-6"
+        v-for="(lesson, index) in lessons"
+        :key="lesson.id"
+      >
+        <div class="card lesson-card">
+
+          <router-link
+            :to="`/lessons/${lesson.id}`"
+            class="text-decoration-none text-dark"
+          >
+            <div class="card-body p-3">
+
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                  <div class="lesson-kicker mb-1">
+                    {{ lesson.language_code?.toUpperCase() || 'LANGUAGE' }}
+                  </div>
+
+                  <h5 class="card-title mb-2">
+                    {{ lesson.title }}
+                  </h5>
+
+                  <div class="d-flex gap-2 flex-wrap mb-2">
+                    <span
+                      class="badge"
+                      :class="levelClass(lesson.level)"
+                    >
+                      {{ lesson.level || 'Nivo' }}
+                    </span>
+
+                    <span class="badge text-bg-light border">
+                      Lesson #{{ index + 1 }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="lesson-icon">
+                  🗣️
+                </div>
+              </div>
+
+              <p class="lesson-preview mb-2">
+                {{ stripHtml(lesson.content).slice(0, 120) || 'No lesson description available.' }}
+                <span v-if="stripHtml(lesson.content).length > 120">...</span>
+              </p>
+
+              <div class="lesson-footer">
+                Open lesson →
+              </div>
+              <div
+                v-if="isStudent"
+                class="mt-3"
+              >
+                <button
+                  v-if="!isFavorite(lesson.id)"
+                  class="btn btn-outline-warning btn-sm"
+                  @click.prevent="addFavorite(lesson.id)"
+                >
+                  ☆ Add to favorites
+                </button>
+
+                <button
+                  v-else
+                  class="btn btn-warning btn-sm"
+                  @click.prevent="removeFavorite(lesson.id)"
+                >
+                  ★ Remove favorite
+                </button>
+              </div>
+
+            </div>
+          </router-link>
+
+          <div
+            v-if="isTeacherOrAdmin"
+            class="card-footer bg-white border-0 px-3 pb-3 pt-0 text-end"
+          >
+            <button
+              class="btn btn-outline-danger btn-sm"
+              @click.stop="deleteLesson(lesson.id)"
+            >
+              Delete
+            </button>
+          </div>
+
+        </div>
       </div>
     </div>
 
-    <p v-if="error" class="error">{{ error }}</p>
-
-    <div v-else>
-      <p v-if="lessons.length === 0">Nema lekcija još.</p>
-
-      <ul v-else class="list">
-        <li v-for="l in lessons" :key="l.id" class="list-item">
-          <router-link class="lesson-link" :to="`/lessons/${l.id}`">
-            <b>{{ l.language_code }}</b> {{ l.level }} — {{ l.title }}
-          </router-link>
-        </li>
-      </ul>
-
-      <p v-if="role === 'ADMIN'" class="admin">
-        Idi na:
-        <router-link to="/admin/languages">/admin/languages</router-link>
-      </p>
-    </div>
   </div>
 </template>
 
 <style scoped>
-/* Ako ti je i dalje "crno", ovo garantuje da je tekst vidljiv */
-.page {
-  max-width: 900px;
-  margin: 30px auto;
-  padding: 16px;
-  color: #fff;
+.lesson-card {
+  border: none;
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+  overflow: hidden;
+  
 }
 
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+.lesson-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.10);
 }
 
-.right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.lesson-kicker {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #6366f1;
 }
 
-.btn {
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 0;
-  cursor: pointer;
+.lesson-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: #eef2ff;
+  font-size: 1.1rem;
 }
 
-.error {
-  color: #ff6b6b;
+.card-title {
+  font-size: 1.35rem;
+  font-weight: 800;
 }
 
-.list {
-  margin-top: 12px;
-  padding-left: 18px;
+.lesson-preview {
+  color: #4b5563;
+  line-height: 1.5;
+  font-size: 0.97rem;
+
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+
+  overflow: hidden;
 }
 
-.list-item {
-  margin: 8px 0;
+.lesson-footer {
+  color: #2563eb;
+  font-weight: 700;
+  font-size: 0.95rem;
 }
 
-.lesson-link {
-  color: #7db4ff;
-  text-decoration: none;
+.badge {
+  font-size: 0.78rem;
+  padding: 6px 10px;
 }
 
-.lesson-link:hover {
-  text-decoration: underline;
-}
-
-.admin {
-  margin-top: 14px;
+.empty-icon {
+  font-size: 2rem;
 }
 </style>

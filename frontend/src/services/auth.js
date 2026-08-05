@@ -3,8 +3,8 @@ import { api } from './api'
 export async function login(email, password) {
     const { data } = await api.post('/auth/login', { email, password })
     localStorage.setItem('access_token', data.access_token)
-    localStorage.setItem('user_role', data.user.role)
-    return data.user
+    localStorage.setItem('user_role', data.role)
+    return data
 }
 
 export async function register(email, password, display_name) {

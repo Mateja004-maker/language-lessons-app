@@ -4,7 +4,10 @@ import { useRoute } from 'vue-router'
 import AppNavbar from '@/components/AppNavbar.vue'
 
 const route = useRoute()
-const showNavbar = computed(() => route.name !== 'login')
+const showNavbar = computed(() =>
+  route.name !== 'login' &&
+  route.name !== 'register'
+)
 </script>
 
 <template>

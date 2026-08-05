@@ -1,6 +1,7 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { api } from '@/services/api'
 import { logout } from '@/services/auth'
 
 const router = useRouter()
@@ -8,9 +9,28 @@ const router = useRouter()
 const token = computed(() => localStorage.getItem('access_token'))
 const role = computed(() => localStorage.getItem('user_role'))
 
+const profile = ref(null)
+
+async function loadProfile() {
+  if (!localStorage.getItem('access_token')) return
+
+  try {
+    const { data } = await api.get('/profile')
+    profile.value = data
+  } catch (e) {
+    profile.value = null
+  }
+}
+
+onMounted(loadProfile)
+
 const isLoggedIn = computed(() => !!token.value)
 const isAdmin = computed(() => role.value === 'ADMIN')
-const canManageLessons = computed(() => role.value === 'TEACHER' || role.value === 'ADMIN')
+const isStudent = computed(() => role.value === 'STUDENT')
+
+const canManageLessons = computed(() =>
+  role.value === 'TEACHER' || role.value === 'ADMIN'
+)
 
 function onLogout() {
   logout()
@@ -19,97 +39,267 @@ function onLogout() {
 </script>
 
 <template>
-  <nav class="nav">
-    <div class="left">
-      <router-link class="brand" to="/">Language Lessons</router-link>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+    <div class="container">
 
-      <router-link v-if="isLoggedIn" class="link" to="/">Lessons</router-link>
-
-      <router-link
-        v-if="isLoggedIn && canManageLessons"
-        class="link"
-        to="/manage/lessons"
-      >
-        Manage Lessons
+      <router-link class="navbar-brand" to="/">
+        Language Lessons
       </router-link>
 
-      <router-link
-        v-if="isLoggedIn && isAdmin"
-        class="link"
-        to="/admin/languages"
+      <button
+        class="navbar-toggler"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#nav"
+        aria-controls="nav"
+        aria-expanded="false"
+        aria-label="Toggle navigation"
       >
-        Admin Languages
-      </router-link>
-    </div>
+        <span class="navbar-toggler-icon"></span>
+      </button>
 
-    <div class="right">
-      <span v-if="isLoggedIn" class="role">Role: <b>{{ role }}</b></span>
-      <router-link v-if="!isLoggedIn" class="link" to="/login">Login</router-link>
-      <button v-else class="btn" @click="onLogout">Logout</button>
+      <div id="nav" class="collapse navbar-collapse">
+
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+
+          <li class="nav-item">
+            <router-link class="nav-link" to="/">
+              Home
+            </router-link>
+          </li>
+
+          <li
+            v-if="isLoggedIn"
+            class="nav-item d-flex align-items-center me-2"
+          >
+            <span
+              v-if="role === 'ADMIN'"
+              class="badge text-bg-danger"
+            >
+              ADMIN
+            </span>
+
+            <span
+              v-else-if="role === 'TEACHER'"
+              class="badge text-bg-warning"
+            >
+              TEACHER
+            </span>
+
+            <span
+              v-else
+              class="badge text-bg-success"
+            >
+              STUDENT
+            </span>
+          </li>
+
+          <li v-if="isLoggedIn" class="nav-item">
+            <router-link class="nav-link" to="/lessons">
+              Lessons
+            </router-link>
+          </li>
+
+          <li
+            v-if="isLoggedIn && isStudent"
+            class="nav-item"
+          >
+            <router-link class="nav-link" to="/favorites">
+              Favorites
+            </router-link>
+          </li>
+
+          <li
+            v-if="isLoggedIn && canManageLessons"
+            class="nav-item"
+          >
+            <router-link class="nav-link" to="/manage/lessons">
+              Manage Lessons
+            </router-link>
+          </li>
+          <li
+            v-if="isLoggedIn && (role === 'TEACHER' || role === 'ADMIN')"
+            class="nav-item"
+          >
+            <router-link class="nav-link" to="/exams">
+              Exams
+            </router-link>
+          </li>
+          <router-link
+          v-if="isLoggedIn && role === 'STUDENT'"
+          class="nav-link"
+          to="/exams"
+        >
+          Exams
+        </router-link>
+          <router-link
+          v-if="isLoggedIn && isStudent"
+          class="nav-link"
+          to="/my-results"
+        >
+          My Results
+        </router-link>
+
+          <li class="nav-item">
+            <router-link class="nav-link" to="/profile">
+              My Profile
+            </router-link>
+          </li>
+
+          <li
+            v-if="isAdmin"
+            class="nav-item"
+          >
+            <router-link class="nav-link" to="/admin/users">
+              Users
+            </router-link>
+          </li>
+
+          <li
+            v-if="isLoggedIn && isAdmin"
+            class="nav-item"
+          >
+            <router-link class="nav-link" to="/admin/languages">
+              Languages
+            </router-link>
+          </li>
+
+        </ul>
+
+        <div class="d-flex align-items-center gap-3">
+
+          <div
+            v-if="isLoggedIn"
+            class="user-box"
+          >
+            <div class="user-avatar">
+              <img
+                v-if="profile?.profile_image"
+                :src="`http://127.0.0.1:5000${profile.profile_image}`"
+                alt="Profile"
+                class="navbar-profile-img"
+              />
+
+              <span v-else>
+                {{ profile?.display_name?.charAt(0)?.toUpperCase() || 'U' }}
+              </span>
+            </div>
+
+            <div class="user-info">
+              <div class="user-name">
+                {{ profile?.display_name || 'User' }}
+              </div>
+
+              <div class="user-role">
+                {{ role }}
+              </div>
+            </div>
+          </div>
+
+          <router-link
+            v-if="!isLoggedIn"
+            class="btn btn-outline-primary btn-sm"
+            to="/login"
+          >
+            Login
+          </router-link>
+
+          <button
+            v-else
+            class="logout-btn"
+            type="button"
+            @click="onLogout"
+            title="Logout"
+          >
+            <i class="bi bi-box-arrow-right"></i>
+          </button>
+
+        </div>
+
+      </div>
     </div>
   </nav>
 </template>
 
 <style scoped>
-.nav {
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-
-  padding: 12px 20px;
-
-  /* nova boja (plavo-ljubičasta) */
-  background: linear-gradient(90deg, #1e3a8a, #6d28d9);
-  border-bottom: 1px solid rgba(255,255,255,0.15);
-  color: #fff;
+.custom-navbar {
+  background: linear-gradient(90deg, #111827 0%, #1f2937 100%);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
 }
 
-.left, .right {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.brand {
+.navbar-brand {
+  font-size: 1.6rem;
   font-weight: 800;
-  color: #fff;
-  text-decoration: none;
-  letter-spacing: 0.2px;
 }
 
-.link {
-  color: rgba(255,255,255,0.92);
-  text-decoration: none;
-  padding: 6px 10px;
-  border-radius: 10px;
+.nav-link {
+  font-weight: 500;
 }
 
-.link:hover {
-  background: rgba(255,255,255,0.16);
+.nav-link.router-link-active {
+  color: #ffffff !important;
 }
 
-.role {
-  opacity: 0.95;
-  background: rgba(0,0,0,0.18);
-  padding: 6px 10px;
-  border-radius: 10px;
+.role-pill {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-weight: 700;
 }
 
-.btn {
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 0;
-  cursor: pointer;
+.user-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 6px 12px;
+  border-radius: 14px;
+}
 
-  background: rgba(255,255,255,0.92);
-  color: #111;
-  font-weight: 600;
+.user-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.user-info {
+  line-height: 1.1;
+}
+
+.user-name {
+  color: white;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.user-role {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.75rem;
+}
+.logout-btn {
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.08);
+  color: white;
+  font-size: 1.1rem;
+  transition: all 0.18s ease;
+}
+
+.logout-btn:hover {
+  background: rgba(255,255,255,0.18);
+  transform: translateY(-1px);
+}
+.navbar-profile-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
 }
 </style>
