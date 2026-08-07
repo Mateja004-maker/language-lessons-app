@@ -1751,6 +1751,7 @@ def add_exam_question(exam_id):
     if not question_text:
         return jsonify({"error": "Question text is required"}), 400
 
+    conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
@@ -1781,8 +1782,15 @@ def add_exam_question(exam_id):
             VALUES (%s, %s, %s, %s, %s)
         """, (exam_id, area_id, question_text, points, order_no))
 
-        conn.commit()
         question_id = cursor.lastrowid
+
+        cursor.execute("""
+            INSERT INTO exam_test_questions
+            (exam_id, question_id, order_no)
+            VALUES (%s, %s, %s)
+        """, (exam_id, question_id, order_no))
+
+        conn.commit()
 
         cursor.close()
         conn.close()
@@ -1793,6 +1801,9 @@ def add_exam_question(exam_id):
         }), 201
 
     except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
         return jsonify({"error": str(e)}), 500
 
 
