@@ -471,6 +471,77 @@ def list_subjects():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.get("/api/subjects/<int:subject_id>/areas") #Prikaz oblasti unutar predmeta
+@jwt_required()
+def list_areas(subject_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("SELECT id FROM subjects WHERE id = %s", (subject_id,))
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Subject not found"}), 404
+
+        cur.execute(
+            "SELECT id, subject_id, name FROM areas WHERE subject_id = %s ORDER BY name ASC",
+            (subject_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify(rows), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.post("/api/subjects/<int:subject_id>/areas") #Dodavanje oblasti u predmet
+@role_required(["TEACHER", "ADMIN"])
+def add_area(subject_id):
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("SELECT id FROM subjects WHERE id = %s", (subject_id,))
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Subject not found"}), 404
+
+        cur.execute(
+            "SELECT id FROM areas WHERE subject_id = %s AND name = %s",
+            (subject_id, name),
+        )
+        if cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Area already exists for this subject"}), 409
+
+        cur2 = conn.cursor()
+        cur2.execute(
+            "INSERT INTO areas (subject_id, name) VALUES (%s, %s)",
+            (subject_id, name),
+        )
+        conn.commit()
+        area_id = cur2.lastrowid
+
+        cur2.close()
+        cur.close()
+        conn.close()
+
+        return jsonify({"message": "Area created", "area_id": area_id}), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # =========================
 # 7) Users / Profile
 # =========================
@@ -1595,20 +1666,46 @@ def get_exam_details(exam_id):
                 conn.close()
                 return jsonify({"error": "Exam has expired"}), 403
 
+        area_id_raw = request.args.get("area_id")
+        area_id = None
+        if area_id_raw is not None:
+            try:
+                area_id = int(area_id_raw)
+            except ValueError:
+                cursor.close()
+                conn.close()
+                return jsonify({"error": "Invalid area_id"}), 400
+
         if role == "STUDENT":
-            cursor.execute("""
-                SELECT *
-                FROM exam_questions
-                WHERE exam_id = %s
-                ORDER BY RAND()
-            """, (exam_id,))
+            if area_id is not None:
+                cursor.execute("""
+                    SELECT *
+                    FROM exam_questions
+                    WHERE exam_id = %s AND area_id = %s
+                    ORDER BY RAND()
+                """, (exam_id, area_id))
+            else:
+                cursor.execute("""
+                    SELECT *
+                    FROM exam_questions
+                    WHERE exam_id = %s
+                    ORDER BY RAND()
+                """, (exam_id,))
         else:
-            cursor.execute("""
-                SELECT *
-                FROM exam_questions
-                WHERE exam_id = %s
-                ORDER BY order_no ASC, id ASC
-            """, (exam_id,))
+            if area_id is not None:
+                cursor.execute("""
+                    SELECT *
+                    FROM exam_questions
+                    WHERE exam_id = %s AND area_id = %s
+                    ORDER BY order_no ASC, id ASC
+                """, (exam_id, area_id))
+            else:
+                cursor.execute("""
+                    SELECT *
+                    FROM exam_questions
+                    WHERE exam_id = %s
+                    ORDER BY order_no ASC, id ASC
+                """, (exam_id,))
 
         questions = cursor.fetchall()
 
@@ -1649,19 +1746,40 @@ def add_exam_question(exam_id):
     question_text = (data.get("question_text") or "").strip()
     points = data.get("points", 1)
     order_no = data.get("order_no", 0)
+    area_id = data.get("area_id") or None
 
     if not question_text:
         return jsonify({"error": "Question text is required"}), 400
 
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SELECT language_id FROM exams WHERE id = %s", (exam_id,))
+        exam_row = cursor.fetchone()
+        if not exam_row:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Exam not found"}), 404
+
+        if area_id is not None:
+            cursor.execute("SELECT subject_id FROM areas WHERE id = %s", (area_id,))
+            area_row = cursor.fetchone()
+            if not area_row:
+                cursor.close()
+                conn.close()
+                return jsonify({"error": "Selected area does not exist"}), 400
+
+            if area_row["subject_id"] != exam_row["language_id"]:
+                cursor.close()
+                conn.close()
+                return jsonify({"error": "Selected area does not belong to this exam's subject"}), 400
 
         cursor.execute("""
             INSERT INTO exam_questions
-            (exam_id, question_text, points, order_no)
-            VALUES (%s, %s, %s, %s)
-        """, (exam_id, question_text, points, order_no))
+            (exam_id, area_id, question_text, points, order_no)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (exam_id, area_id, question_text, points, order_no))
 
         conn.commit()
         question_id = cursor.lastrowid
