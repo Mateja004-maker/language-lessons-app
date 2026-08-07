@@ -15,6 +15,8 @@ import ExamDetailsView from '@/views/ExamDetailsView.vue'
 import ExamTakeView from '@/views/ExamTakeView.vue'
 import ExamResultsView from '@/views/ExamResultsView.vue'
 import MyResultsView from '@/views/MyResultsView.vue'
+import SubjectsView from '@/views/SubjectsView.vue'
+import SubjectAreasView from '@/views/SubjectAreasView.vue'
 
 
 const routes = [
@@ -49,8 +51,11 @@ const routes = [
     
     { path: '/exams/:id/results', name: 'exam-results', component: ExamResultsView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
 
-    { path: '/my-results', name: 'my-results', component: MyResultsView, meta: { requiresAuth: true, roles: ['STUDENT'] } }
-    
+    { path: '/my-results', name: 'my-results', component: MyResultsView, meta: { requiresAuth: true, roles: ['STUDENT'] } },
+
+    { path: '/predmeti', name: 'subjects', component: SubjectsView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
+
+    { path: '/predmeti/:subjectId', name: 'subject-areas', component: SubjectAreasView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } }
 
 ]
 

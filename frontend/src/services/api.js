@@ -44,6 +44,9 @@ export const addExamQuestion = (examId, data) =>
 export const addQuestionAnswer = (questionId, data) =>
   api.post(`/questions/${questionId}/answers`, data)
 
+export const getQuestionAnswers = (questionId) =>
+  api.get(`/questions/${questionId}/answers`)
+
 export const deleteQuestion = (id) => api.delete(`/questions/${id}`)
 
 export const deleteAnswer = (id) => api.delete(`/answers/${id}`)
@@ -73,3 +76,23 @@ export const exportExamResults = (examId) =>
   api.get(`/exams/${examId}/results/export`, {
     responseType: 'blob'
   })
+
+// =========================
+// SUBJECTS / AREAS / QUESTION BANK API
+// =========================
+
+export const getSubjects = () => api.get('/subjects')
+
+export const getAreas = (subjectId) =>
+  api.get(`/subjects/${subjectId}/areas`)
+
+export const addArea = (subjectId, data) =>
+  api.post(`/subjects/${subjectId}/areas`, data)
+
+export const getBankQuestions = (subjectId, areaId) =>
+  api.get(`/subjects/${subjectId}/questions`, {
+    params: areaId ? { area_id: areaId } : {}
+  })
+
+export const addBankQuestion = (subjectId, data) =>
+  api.post(`/subjects/${subjectId}/questions`, data)

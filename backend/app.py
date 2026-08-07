@@ -569,20 +569,24 @@ def list_bank_questions(subject_id):
         if area_id is not None:
             cur.execute(
                 """
-                SELECT id, subject_id, area_id, question_text, points
-                FROM exam_questions
-                WHERE subject_id = %s AND area_id = %s
-                ORDER BY id ASC
+                SELECT
+                    eq.id, eq.subject_id, eq.area_id, eq.question_text, eq.points,
+                    (SELECT COUNT(*) FROM exam_answers ea WHERE ea.question_id = eq.id) AS answer_count
+                FROM exam_questions eq
+                WHERE eq.subject_id = %s AND eq.area_id = %s
+                ORDER BY eq.id ASC
                 """,
                 (subject_id, area_id),
             )
         else:
             cur.execute(
                 """
-                SELECT id, subject_id, area_id, question_text, points
-                FROM exam_questions
-                WHERE subject_id = %s
-                ORDER BY id ASC
+                SELECT
+                    eq.id, eq.subject_id, eq.area_id, eq.question_text, eq.points,
+                    (SELECT COUNT(*) FROM exam_answers ea WHERE ea.question_id = eq.id) AS answer_count
+                FROM exam_questions eq
+                WHERE eq.subject_id = %s
+                ORDER BY eq.id ASC
                 """,
                 (subject_id,),
             )
@@ -2047,6 +2051,25 @@ def remove_question_from_exam(exam_id, question_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.get("/api/questions/<int:question_id>/answers") #prikaz odgovora za pitanje
+@role_required(["TEACHER", "ADMIN"])
+def list_question_answers(question_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute(
+            "SELECT id, answer_text, is_correct FROM exam_answers WHERE question_id = %s ORDER BY id ASC",
+            (question_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify(rows), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.post("/api/questions/<int:question_id>/answers") #dodavanje odgovora na pitanje
 @role_required(["TEACHER", "ADMIN"])
 def add_question_answer(question_id):
@@ -2104,6 +2127,13 @@ def delete_question(question_id):
         conn.close()
 
         return jsonify({"message": "Question deleted"}), 200
+
+    except MySQLError as e:
+        if e.errno == 1451:
+            return jsonify({
+                "error": "Question is still assigned to one or more exams and cannot be deleted. Remove it from those exams first."
+            }), 409
+        return jsonify({"error": str(e)}), 500
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
