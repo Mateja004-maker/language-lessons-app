@@ -2125,9 +2125,10 @@ def submit_exam(exam_id):
     score = 0
 
     cursor.execute("""
-        SELECT COALESCE(SUM(points), 0) AS total
-        FROM exam_questions
-        WHERE exam_id = %s
+        SELECT COALESCE(SUM(eq.points), 0) AS total
+        FROM exam_test_questions etq
+        JOIN exam_questions eq ON eq.id = etq.question_id
+        WHERE etq.exam_id = %s
     """, (exam_id,))
 
     total_row = cursor.fetchone()
@@ -2135,9 +2136,10 @@ def submit_exam(exam_id):
 
     for question_id, answer_id in answers.items():
         cursor.execute("""
-            SELECT id, points
-            FROM exam_questions
-            WHERE id = %s AND exam_id = %s
+            SELECT eq.id, eq.points
+            FROM exam_test_questions etq
+            JOIN exam_questions eq ON eq.id = etq.question_id
+            WHERE eq.id = %s AND etq.exam_id = %s
         """, (question_id, exam_id))
 
         question = cursor.fetchone()
