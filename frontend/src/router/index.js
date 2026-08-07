@@ -15,6 +15,7 @@ import ExamDetailsView from '@/views/ExamDetailsView.vue'
 import ExamTakeView from '@/views/ExamTakeView.vue'
 import ExamResultsView from '@/views/ExamResultsView.vue'
 import MyResultsView from '@/views/MyResultsView.vue'
+import TestAiGenerisanjeView from '@/views/TestAiGenerisanjeView.vue'
 
 
 const routes = [
@@ -49,8 +50,10 @@ const routes = [
     
     { path: '/exams/:id/results', name: 'exam-results', component: ExamResultsView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
 
-    { path: '/my-results', name: 'my-results', component: MyResultsView, meta: { requiresAuth: true, roles: ['STUDENT'] } }
-    
+    { path: '/my-results', name: 'my-results', component: MyResultsView, meta: { requiresAuth: true, roles: ['STUDENT'] } },
+
+    // Privremeni test-ekran za AI generisanje pitanja - samo rucno otvaranje, ne ide u navbar
+    { path: '/test-ai-generisanje', name: 'test-ai-generisanje', component: TestAiGenerisanjeView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } }
 
 ]
 

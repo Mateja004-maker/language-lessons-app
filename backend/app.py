@@ -1,5 +1,6 @@
 # Podesavanje aplikacije - osnova da ceo backend radi kako treba
 import os
+import json
 from pathlib import Path
 from functools import wraps
 
@@ -35,6 +36,11 @@ LESSON_IMAGE_FOLDER.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 load_dotenv(BASE_DIR / ".env", override=True)
+
+# ai_provider čita GROQ_API_KEY iz environment-a na nivou modula, pa import
+# mora doći POSLE load_dotenv() - inače uhvati prazan/stari ključ.
+import ai_provider
+import prompt_templates
 
 
 # =========================
@@ -157,6 +163,71 @@ def user_has_subject(user_id, subject_id, role):
 
 def allowed_image(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+
+
+# Pomoćne funkcije za AI generisanje pitanja (ai_generation_runs / ai_generated_artifacts).
+def ensure_ai_model(conn, provider, model_name, model_version=None):
+    """Vraća id postojećeg reda u ai_models, ili ga kreira ako ne postoji."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id FROM ai_models
+        WHERE provider = %s AND model_name = %s AND model_version <=> %s
+        """,
+        (provider, model_name, model_version),
+    )
+    row = cursor.fetchone()
+    if row:
+        cursor.close()
+        return row[0]
+
+    cursor.execute(
+        """
+        INSERT INTO ai_models (provider, model_name, model_version)
+        VALUES (%s, %s, %s)
+        """,
+        (provider, model_name, model_version),
+    )
+    conn.commit()
+    model_id = cursor.lastrowid
+    cursor.close()
+    return model_id
+
+
+def validate_similar_question_payload(parsed, question_type, expected_answer_count):
+    """Vraća None ako je JSON iz AI odgovora ispravan za dati tip pitanja,
+    inače string sa opisom greške."""
+    if not isinstance(parsed, dict):
+        return "Odgovor modela mora biti JSON objekat"
+
+    question_text = parsed.get("question_text")
+    if not isinstance(question_text, str) or not question_text.strip():
+        return "Nedostaje ili je prazan question_text"
+
+    if question_type == "mc":
+        answers = parsed.get("answers")
+        if not isinstance(answers, list) or len(answers) != expected_answer_count:
+            return f"Očekivano je tačno {expected_answer_count} ponuđenih odgovora"
+
+        correct_count = 0
+        for a in answers:
+            if not isinstance(a, dict):
+                return "Svaki ponuđeni odgovor mora biti JSON objekat"
+            if not isinstance(a.get("answer_text"), str) or not a["answer_text"].strip():
+                return "Ponuđeni odgovor bez teksta"
+            if not isinstance(a.get("is_correct"), bool):
+                return "is_correct mora biti true/false"
+            if a["is_correct"]:
+                correct_count += 1
+
+        if correct_count != 1:
+            return f"Očekivan je tačno jedan tačan odgovor, pronađeno {correct_count}"
+
+    else:  # "open"
+        if "answers" in parsed:
+            return "Otvoreno pitanje ne sme imati ponuđene odgovore"
+
+    return None
 
 
 
@@ -1826,7 +1897,132 @@ def update_answer(answer_id):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+
+
+@app.post("/api/questions/<int:question_id>/generate-similar") #AI generisanje slicnog pitanja na osnovu postojeceg
+@role_required(["TEACHER", "ADMIN"])
+def generate_similar_question(question_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SELECT * FROM exam_questions WHERE id = %s", (question_id,))
+        question = cursor.fetchone()
+
+        if not question:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Question not found"}), 404
+
+        cursor.execute("""
+            SELECT answer_text, is_correct
+            FROM exam_answers
+            WHERE question_id = %s
+            ORDER BY id ASC
+        """, (question_id,))
+        original_answers = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT l.name AS subject_name
+            FROM exams e
+            JOIN languages l ON e.language_id = l.id
+            WHERE e.id = %s
+        """, (question["exam_id"],))
+        exam_row = cursor.fetchone()
+        subject_name = exam_row["subject_name"] if exam_row else "Nepoznat predmet"
+
+        question_type = prompt_templates.detect_question_type(original_answers)
+        prompt_id, template_text = prompt_templates.ensure_prompt_synced(conn, question_type)
+        prompt_text = prompt_templates.build_similar_question_prompt(
+            template_text,
+            question["question_text"],
+            original_answers,
+            subject_name,
+        )
+
+        model_id = ensure_ai_model(conn, provider="groq", model_name="llama-3.1-8b-instant")
+
+        options = {"temperature": 0.7}
+        result = ai_provider.generate(prompt_text, provider="groq", options=options)
+
+        parsed_result = None
+        validation_errors = None
+
+        if not result.get("success"):
+            validation_errors = result.get("error", "Nepoznata greška pri pozivu AI modela")
+        else:
+            try:
+                parsed_result = json.loads(result["raw_text"])
+            except (ValueError, TypeError):
+                validation_errors = "Odgovor modela nije validan JSON"
+
+            if parsed_result is not None:
+                validation_errors = validate_similar_question_payload(
+                    parsed_result, question_type, len(original_answers)
+                )
+
+        validation_passed = validation_errors is None and parsed_result is not None
+
+        cursor.execute("""
+            INSERT INTO ai_generation_runs
+            (model_id, prompt_id, purpose, mode, source_question_id, params_used,
+             raw_response, parsed_result, validation_passed, validation_errors,
+             response_time_ms, tokens_used, retry_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
+        """, (
+            model_id,
+            prompt_id,
+            prompt_templates.PURPOSE_SIMILAR_QUESTION,
+            None,
+            question_id,
+            json.dumps(options),
+            result.get("raw_text"),
+            json.dumps(parsed_result) if parsed_result is not None else None,
+            1 if validation_passed else 0,
+            validation_errors,
+            result.get("response_time_ms"),
+            result.get("tokens_used"),
+        ))
+        conn.commit()
+        generation_run_id = cursor.lastrowid
+
+        if not validation_passed:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "AI generisanje nije dalo iskoristiv predlog",
+                "details": validation_errors,
+                "generation_run_id": generation_run_id,
+            }), 422
+
+        cursor.execute("""
+            INSERT INTO ai_generated_artifacts
+            (generation_run_id, artifact_type, status, original_text)
+            VALUES (%s, %s, %s, %s)
+        """, (
+            generation_run_id,
+            "question",
+            "predlog",
+            json.dumps(parsed_result),
+        ))
+        conn.commit()
+        artifact_id = cursor.lastrowid
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "message": "Predlog pitanja generisan",
+            "generation_run_id": generation_run_id,
+            "artifact_id": artifact_id,
+            "question_type": question_type,
+            "proposed_question": parsed_result,
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.put("/api/exams/<int:exam_id>/publish") #publishovanje testa
 @role_required(["TEACHER", "ADMIN"])
 def publish_exam(exam_id):

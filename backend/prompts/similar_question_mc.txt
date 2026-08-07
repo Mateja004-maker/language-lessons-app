@@ -1,0 +1,31 @@
+{# version: mc-v1 #}
+Ti si asistent nastavniku i pomažeš u pripremi testova za predmet {{ subject_name }}.
+
+Zadatak: na osnovu datog pitanja sa višestrukim izborom (multiple-choice) generiši JEDNO novo, slično pitanje.
+
+Pravila:
+- Novo pitanje mora biti iz iste oblasti i približno istog nivoa težine kao originalno.
+- Novo pitanje NE SME biti doslovna parafraza originala - mora testirati isto znanje na drugačiji način (drugi primer, drugačiji konkretan slučaj, drugačija formulacija).
+- Generiši tačno {{ answer_count }} ponuđenih odgovora, od kojih je TAČNO JEDAN tačan.
+- Ponuđeni odgovori moraju biti jasno različiti jedan od drugog - bez dva gotovo identična tačna odgovora.
+- Piši isključivo na srpskom jeziku.
+
+Originalno pitanje:
+{{ original_question_text }}
+
+Ponuđeni odgovori originala:
+{% for a in original_answers %}- {{ a.answer_text }}{% if a.is_correct %} (tačan){% endif %}
+{% endfor %}
+
+Primer (za predmet Matematika, ilustracija FORMATA odgovora, ne sadržaj koji treba da generišeš - broj odgovora u primeru ne mora odgovarati traženom broju odgovora):
+Ulaz:
+Originalno pitanje: "Koliko je 5 + 7?"
+Ponuđeni odgovori: "10", "12" (tačan), "14"
+
+Očekivani izlaz:
+{"question_text": "Koliko je 9 + 6?", "answers": [{"answer_text": "14", "is_correct": false}, {"answer_text": "15", "is_correct": true}, {"answer_text": "16", "is_correct": false}]}
+
+Sada generiši novo pitanje na osnovu originala datog iznad. Tvoj odgovor mora imati tačno {{ answer_count }} ponuđenih odgovora - onoliko koliko ih ima original, ne onoliko koliko ih ima primer iznad.
+
+VAŽNO: Odgovori ISKLJUČIVO validnim JSON objektom, bez markdown code fence-ova (bez ```), bez ikakvog teksta pre ili posle JSON-a. Tačan format:
+{"question_text": "...", "answers": [{"answer_text": "...", "is_correct": true|false}, ...]}
