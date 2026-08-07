@@ -1679,32 +1679,60 @@ def get_exam_details(exam_id):
         if role == "STUDENT":
             if area_id is not None:
                 cursor.execute("""
-                    SELECT *
-                    FROM exam_questions
-                    WHERE exam_id = %s AND area_id = %s
+                    SELECT
+                        eq.id,
+                        etq.exam_id,
+                        eq.area_id,
+                        eq.question_text,
+                        eq.points,
+                        etq.order_no
+                    FROM exam_test_questions etq
+                    JOIN exam_questions eq ON eq.id = etq.question_id
+                    WHERE etq.exam_id = %s AND eq.area_id = %s
                     ORDER BY RAND()
                 """, (exam_id, area_id))
             else:
                 cursor.execute("""
-                    SELECT *
-                    FROM exam_questions
-                    WHERE exam_id = %s
+                    SELECT
+                        eq.id,
+                        etq.exam_id,
+                        eq.area_id,
+                        eq.question_text,
+                        eq.points,
+                        etq.order_no
+                    FROM exam_test_questions etq
+                    JOIN exam_questions eq ON eq.id = etq.question_id
+                    WHERE etq.exam_id = %s
                     ORDER BY RAND()
                 """, (exam_id,))
         else:
             if area_id is not None:
                 cursor.execute("""
-                    SELECT *
-                    FROM exam_questions
-                    WHERE exam_id = %s AND area_id = %s
-                    ORDER BY order_no ASC, id ASC
+                    SELECT
+                        eq.id,
+                        etq.exam_id,
+                        eq.area_id,
+                        eq.question_text,
+                        eq.points,
+                        etq.order_no
+                    FROM exam_test_questions etq
+                    JOIN exam_questions eq ON eq.id = etq.question_id
+                    WHERE etq.exam_id = %s AND eq.area_id = %s
+                    ORDER BY etq.order_no ASC, eq.id ASC
                 """, (exam_id, area_id))
             else:
                 cursor.execute("""
-                    SELECT *
-                    FROM exam_questions
-                    WHERE exam_id = %s
-                    ORDER BY order_no ASC, id ASC
+                    SELECT
+                        eq.id,
+                        etq.exam_id,
+                        eq.area_id,
+                        eq.question_text,
+                        eq.points,
+                        etq.order_no
+                    FROM exam_test_questions etq
+                    JOIN exam_questions eq ON eq.id = etq.question_id
+                    WHERE etq.exam_id = %s
+                    ORDER BY etq.order_no ASC, eq.id ASC
                 """, (exam_id,))
 
         questions = cursor.fetchall()
