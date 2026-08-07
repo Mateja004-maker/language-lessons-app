@@ -2013,17 +2013,20 @@ def delete_exam(exam_id):
             WHERE exam_id = %s
         """, (exam_id,))
 
-        # Zatim brišemo ponuđene odgovore za pitanja tog testa
+        # Uklanjamo vezu test<->pitanje (banka pitanja) - sadržaj pitanja
+        # (exam_questions, exam_answers) ostaje netaknut, samo se briše
+        # zapis da je ovo pitanje bilo deo OVOG testa.
         cursor.execute("""
-            DELETE ea
-            FROM exam_answers ea
-            JOIN exam_questions eq ON ea.question_id = eq.id
-            WHERE eq.exam_id = %s
+            DELETE FROM exam_test_questions
+            WHERE exam_id = %s
         """, (exam_id,))
 
-        # Zatim brišemo pitanja
+        # Otkačinjemo pitanja od ovog testa umesto da ih brišemo - pitanje
+        # može biti u banci ili u drugom testu preko exam_test_questions,
+        # pa exam_questions/exam_answers ne smeju da nestanu.
         cursor.execute("""
-            DELETE FROM exam_questions
+            UPDATE exam_questions
+            SET exam_id = NULL
             WHERE exam_id = %s
         """, (exam_id,))
 
