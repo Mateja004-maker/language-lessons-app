@@ -96,3 +96,16 @@ export const getBankQuestions = (subjectId, areaId) =>
 
 export const addBankQuestion = (subjectId, data) =>
   api.post(`/subjects/${subjectId}/questions`, data)
+
+// =========================
+// AI ARTIFACTS API
+// =========================
+
+export const getAiArtifacts = (status = 'predlog') =>
+  api.get('/ai/artifacts', { params: { status } })
+
+export const getAiArtifact = (id) =>
+  api.get(`/ai/artifacts/${id}`)
+
+export const reviewAiArtifact = (id, data) =>
+  api.post(`/ai/artifacts/${id}/review`, data)
