@@ -2302,6 +2302,10 @@ def update_answer(answer_id):
 @role_required(["TEACHER", "ADMIN"])
 def generate_similar_question(question_id):
     try:
+        provider = request.args.get("provider", "groq")
+        if provider not in ai_provider.DEFAULT_MODELS:
+            return jsonify({"error": f"Nepoznat provider: {provider}"}), 400
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
@@ -2357,10 +2361,11 @@ def generate_similar_question(question_id):
             area_name,
         )
 
-        model_id = ensure_ai_model(conn, provider="groq", model_name="llama-3.1-8b-instant")
+        model_name = ai_provider.DEFAULT_MODELS[provider]
+        model_id = ensure_ai_model(conn, provider=provider, model_name=model_name)
 
         options = {"temperature": 0.7}
-        result = ai_provider.generate(prompt_text, provider="groq", options=options)
+        result = ai_provider.generate(prompt_text, provider=provider, options=options)
 
         parsed_result = None
         validation_errors = None

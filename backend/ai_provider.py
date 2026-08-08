@@ -22,8 +22,17 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:ge
 MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "")
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 
+# Jedini izvor istine za default model po provideru - i _call_* funkcije
+# ispod i pozivaoci van ovog fajla (npr. app.py) čitaju odavde, da model
+# upisan u ai_models ostane dosledan modelu koji se stvarno poziva.
+DEFAULT_MODELS = {
+    "groq": "llama-3.1-8b-instant",
+    "gemini": "gemini-2.0-flash",
+    "mistral": "mistral-small-latest",
+}
 
-def _call_groq(prompt: str, temperature: float = 0.7, model: str = "llama-3.1-8b-instant") -> dict:
+
+def _call_groq(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODELS["groq"]) -> dict:
     """Poziva Groq API. Vraća sirov tekstualni odgovor + tehničke podatke."""
     start = time.time()
     response = requests.post(
@@ -57,7 +66,7 @@ def _call_groq(prompt: str, temperature: float = 0.7, model: str = "llama-3.1-8b
     }
 
 
-def _call_gemini(prompt: str, temperature: float = 0.7, model: str = "gemini-2.0-flash") -> dict:
+def _call_gemini(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODELS["gemini"]) -> dict:
     """Poziva Gemini API. Vraća sirov tekstualni odgovor + tehničke podatke."""
     start = time.time()
     response = requests.post(
@@ -90,7 +99,7 @@ def _call_gemini(prompt: str, temperature: float = 0.7, model: str = "gemini-2.0
     }
 
 
-def _call_mistral(prompt: str, temperature: float = 0.7, model: str = "mistral-small-latest") -> dict:
+def _call_mistral(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODELS["mistral"]) -> dict:
     """Poziva Mistral API. Vraća sirov tekstualni odgovor + tehničke podatke."""
     start = time.time()
     response = requests.post(
