@@ -2321,14 +2321,23 @@ def generate_similar_question(question_id):
         """, (question_id,))
         original_answers = cursor.fetchall()
 
-        cursor.execute("""
-            SELECT l.name AS subject_name
-            FROM exams e
-            JOIN languages l ON e.language_id = l.id
-            WHERE e.id = %s
-        """, (question["exam_id"],))
-        exam_row = cursor.fetchone()
-        subject_name = exam_row["subject_name"] if exam_row else "Nepoznat predmet"
+        subject_name = "Nepoznat predmet"
+
+        if question["subject_id"]:
+            cursor.execute("SELECT name FROM subjects WHERE id = %s", (question["subject_id"],))
+            subject_row = cursor.fetchone()
+            if subject_row:
+                subject_name = subject_row["name"]
+        elif question["exam_id"]:
+            cursor.execute("""
+                SELECT l.name AS subject_name
+                FROM exams e
+                JOIN languages l ON e.language_id = l.id
+                WHERE e.id = %s
+            """, (question["exam_id"],))
+            exam_row = cursor.fetchone()
+            if exam_row:
+                subject_name = exam_row["subject_name"]
 
         question_type = prompt_templates.detect_question_type(original_answers)
         prompt_id, template_text = prompt_templates.ensure_prompt_synced(conn, question_type)
