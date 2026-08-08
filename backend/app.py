@@ -568,10 +568,28 @@ def delete_language(language_id):
 @jwt_required()
 def list_subjects():
     try:
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+        role = claims.get("role")
+
         conn = get_db_connection()
         cur = conn.cursor(dictionary=True)
-        cur.execute("SELECT id, code, name FROM subjects ORDER BY name ASC")
-        rows = cur.fetchall()
+
+        if role == "ADMIN":
+            cur.execute("SELECT id, code, name FROM subjects ORDER BY name ASC")
+            rows = cur.fetchall()
+        else:
+            subject_ids = get_user_subject_ids(int(user_id), role)
+            if not subject_ids:
+                rows = []
+            else:
+                placeholders = ", ".join(["%s"] * len(subject_ids))
+                cur.execute(
+                    f"SELECT id, code, name FROM subjects WHERE id IN ({placeholders}) ORDER BY name ASC",
+                    tuple(subject_ids),
+                )
+                rows = cur.fetchall()
+
         cur.close()
         conn.close()
         return jsonify(rows), 200

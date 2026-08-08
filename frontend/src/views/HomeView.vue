@@ -15,6 +15,7 @@ ChartJS.register(Title, Tooltip, Legend, ArcElement)
 const profile = ref(null)
 const lessons = ref([])
 const languages = ref([])
+const subjects = ref([])
 const users = ref([])
 const favorites = ref([])
 const progress = ref([])
@@ -70,9 +71,9 @@ const pendingUsers = computed(() =>
 )
 
 const subjectNames = computed(() => {
-  if (!profile.value?.subjects || !languages.value.length) return ''
+  if (!profile.value?.subjects || !subjects.value.length) return ''
   return profile.value.subjects
-    .map(id => languages.value.find(l => l.id === id)?.name)
+    .map(id => subjects.value.find(s => s.id === id)?.name)
     .filter(Boolean)
     .join(', ')
 })
@@ -84,7 +85,8 @@ async function loadData() {
     const requests = [
       api.get('/profile'),
       api.get('/lessons'),
-      api.get('/languages')
+      api.get('/languages'),
+      api.get('/subjects')
     ]
 
     if (role === 'STUDENT') {
@@ -97,19 +99,17 @@ async function loadData() {
     const profileData = responses[0].data
     const lessonsData = responses[1].data
     const languagesData = responses[2].data
+    const subjectsData = responses[3].data
 
     profile.value = profileData
     lessons.value = lessonsData
     languages.value = languagesData
+    subjects.value = subjectsData
 
     if (role === 'STUDENT') {
-      favorites.value = responses[3].data
-      progress.value = responses[4].data
+      favorites.value = responses[4].data
+      progress.value = responses[5].data
     }
-
-    profile.value = profileData
-    lessons.value = lessonsData
-    languages.value = languagesData
 
     if (role === 'ADMIN') {
       const { data: usersData } = await api.get('/users')
@@ -553,8 +553,8 @@ onMounted(loadData)
       </div>
 
       <select v-model="selected_language_ids" class="form-select mb-3" multiple size="5">
-        <option v-for="l in languages" :key="l.id" :value="l.id">
-          {{ l.name }}
+        <option v-for="s in subjects" :key="s.id" :value="s.id">
+          {{ s.name }}
         </option>
       </select>
       <small class="text-muted d-block mb-3">
