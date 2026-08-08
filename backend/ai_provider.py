@@ -16,6 +16,12 @@ import requests
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "")
+MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
+
 
 def _call_groq(prompt: str, temperature: float = 0.7, model: str = "llama-3.1-8b-instant") -> dict:
     """Poziva Groq API. Vraća sirov tekstualni odgovor + tehničke podatke."""
@@ -51,7 +57,71 @@ def _call_groq(prompt: str, temperature: float = 0.7, model: str = "llama-3.1-8b
     }
 
 
-# --- Ovde se kasnije dodaju _call_gemini, _call_mistral, na isti način ---
+def _call_gemini(prompt: str, temperature: float = 0.7, model: str = "gemini-2.0-flash") -> dict:
+    """Poziva Gemini API. Vraća sirov tekstualni odgovor + tehničke podatke."""
+    start = time.time()
+    response = requests.post(
+        GEMINI_URL.format(model=model),
+        params={"key": GEMINI_API_KEY},
+        json={
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": temperature},
+        },
+        timeout=30,
+    )
+    elapsed_ms = int((time.time() - start) * 1000)
+
+    if response.status_code != 200:
+        return {
+            "success": False,
+            "error": f"Gemini API greška: {response.status_code} {response.text[:200]}",
+            "response_time_ms": elapsed_ms,
+        }
+
+    data = response.json()
+    text = data["candidates"][0]["content"]["parts"][0]["text"]
+    tokens = data.get("usageMetadata", {}).get("totalTokenCount")
+
+    return {
+        "success": True,
+        "raw_text": text,
+        "response_time_ms": elapsed_ms,
+        "tokens_used": tokens,
+    }
+
+
+def _call_mistral(prompt: str, temperature: float = 0.7, model: str = "mistral-small-latest") -> dict:
+    """Poziva Mistral API. Vraća sirov tekstualni odgovor + tehničke podatke."""
+    start = time.time()
+    response = requests.post(
+        MISTRAL_URL,
+        headers={"Authorization": f"Bearer {MISTRAL_API_KEY}"},
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+        },
+        timeout=30,
+    )
+    elapsed_ms = int((time.time() - start) * 1000)
+
+    if response.status_code != 200:
+        return {
+            "success": False,
+            "error": f"Mistral API greška: {response.status_code} {response.text[:200]}",
+            "response_time_ms": elapsed_ms,
+        }
+
+    data = response.json()
+    text = data["choices"][0]["message"]["content"]
+    tokens = data.get("usage", {}).get("total_tokens")
+
+    return {
+        "success": True,
+        "raw_text": text,
+        "response_time_ms": elapsed_ms,
+        "tokens_used": tokens,
+    }
 
 
 def generate(prompt: str, provider: str = "groq", options: dict | None = None) -> dict:
@@ -59,7 +129,7 @@ def generate(prompt: str, provider: str = "groq", options: dict | None = None) -
     Jedinstvena funkcija koju ostatak aplikacije koristi.
 
     prompt   - tekst koji se šalje modelu
-    provider - koji model koristiti: "groq" (za sad jedini implementiran)
+    provider - koji model koristiti: "groq", "gemini" ili "mistral"
     options  - dict, npr. {"temperature": 0.7}
 
     Vraća dict: {success, raw_text, response_time_ms, tokens_used} ili {success: False, error}
@@ -70,8 +140,11 @@ def generate(prompt: str, provider: str = "groq", options: dict | None = None) -
     if provider == "groq":
         return _call_groq(prompt, temperature=temperature)
 
-    # elif provider == "gemini":
-    #     return _call_gemini(prompt, temperature=temperature)
+    elif provider == "gemini":
+        return _call_gemini(prompt, temperature=temperature)
+
+    elif provider == "mistral":
+        return _call_mistral(prompt, temperature=temperature)
 
     return {"success": False, "error": f"Nepoznat provider: {provider}"}
 
