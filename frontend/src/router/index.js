@@ -16,6 +16,8 @@ import ExamTakeView from '@/views/ExamTakeView.vue'
 import ExamResultsView from '@/views/ExamResultsView.vue'
 import MyResultsView from '@/views/MyResultsView.vue'
 import TestAiGenerisanjeView from '@/views/TestAiGenerisanjeView.vue'
+import SubjectsView from '@/views/SubjectsView.vue'
+import SubjectAreasView from '@/views/SubjectAreasView.vue'
 
 
 const routes = [
@@ -53,7 +55,11 @@ const routes = [
     { path: '/my-results', name: 'my-results', component: MyResultsView, meta: { requiresAuth: true, roles: ['STUDENT'] } },
 
     // Privremeni test-ekran za AI generisanje pitanja - samo rucno otvaranje, ne ide u navbar
-    { path: '/test-ai-generisanje', name: 'test-ai-generisanje', component: TestAiGenerisanjeView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } }
+    { path: '/test-ai-generisanje', name: 'test-ai-generisanje', component: TestAiGenerisanjeView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
+
+    { path: '/predmeti', name: 'subjects', component: SubjectsView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
+
+    { path: '/predmeti/:subjectId', name: 'subject-areas', component: SubjectAreasView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } }
 
 ]
 

@@ -542,6 +542,193 @@ def list_subjects():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.get("/api/subjects/<int:subject_id>/areas") #Prikaz oblasti unutar predmeta
+@jwt_required()
+def list_areas(subject_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("SELECT id FROM subjects WHERE id = %s", (subject_id,))
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Subject not found"}), 404
+
+        cur.execute(
+            "SELECT id, subject_id, name FROM areas WHERE subject_id = %s ORDER BY name ASC",
+            (subject_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify(rows), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.post("/api/subjects/<int:subject_id>/areas") #Dodavanje oblasti u predmet
+@role_required(["TEACHER", "ADMIN"])
+def add_area(subject_id):
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+
+    if not name:
+        return jsonify({"error": "Name is required"}), 400
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("SELECT id FROM subjects WHERE id = %s", (subject_id,))
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Subject not found"}), 404
+
+        cur.execute(
+            "SELECT id FROM areas WHERE subject_id = %s AND name = %s",
+            (subject_id, name),
+        )
+        if cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Area already exists for this subject"}), 409
+
+        cur2 = conn.cursor()
+        cur2.execute(
+            "INSERT INTO areas (subject_id, name) VALUES (%s, %s)",
+            (subject_id, name),
+        )
+        conn.commit()
+        area_id = cur2.lastrowid
+
+        cur2.close()
+        cur.close()
+        conn.close()
+
+        return jsonify({"message": "Area created", "area_id": area_id}), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.get("/api/subjects/<int:subject_id>/questions") #Prikaz banke pitanja za predmet
+@role_required(["TEACHER", "ADMIN"])
+def list_bank_questions(subject_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("SELECT id FROM subjects WHERE id = %s", (subject_id,))
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Subject not found"}), 404
+
+        area_id_raw = request.args.get("area_id")
+        area_id = None
+        if area_id_raw is not None:
+            try:
+                area_id = int(area_id_raw)
+            except ValueError:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Invalid area_id"}), 400
+
+        if area_id is not None:
+            cur.execute(
+                """
+                SELECT
+                    eq.id, eq.subject_id, eq.area_id, eq.question_text, eq.points,
+                    (SELECT COUNT(*) FROM exam_answers ea WHERE ea.question_id = eq.id) AS answer_count
+                FROM exam_questions eq
+                WHERE eq.subject_id = %s AND eq.area_id = %s
+                ORDER BY eq.id ASC
+                """,
+                (subject_id, area_id),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT
+                    eq.id, eq.subject_id, eq.area_id, eq.question_text, eq.points,
+                    (SELECT COUNT(*) FROM exam_answers ea WHERE ea.question_id = eq.id) AS answer_count
+                FROM exam_questions eq
+                WHERE eq.subject_id = %s
+                ORDER BY eq.id ASC
+                """,
+                (subject_id,),
+            )
+
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify(rows), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.post("/api/subjects/<int:subject_id>/questions") #Kreiranje pitanja direktno u banku (bez testa)
+@role_required(["TEACHER", "ADMIN"])
+def add_bank_question(subject_id):
+    data = request.get_json() or {}
+
+    question_text = (data.get("question_text") or "").strip()
+    points = data.get("points", 1)
+    area_id = data.get("area_id") or None
+
+    if not question_text:
+        return jsonify({"error": "Question text is required"}), 400
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("SELECT id FROM subjects WHERE id = %s", (subject_id,))
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Subject not found"}), 404
+
+        if area_id is not None:
+            cur.execute("SELECT subject_id FROM areas WHERE id = %s", (area_id,))
+            area_row = cur.fetchone()
+            if not area_row:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Selected area does not exist"}), 400
+
+            if area_row["subject_id"] != subject_id:
+                cur.close()
+                conn.close()
+                return jsonify({"error": "Selected area does not belong to this subject"}), 400
+
+        cur2 = conn.cursor()
+        cur2.execute(
+            """
+            INSERT INTO exam_questions
+            (exam_id, subject_id, area_id, question_text, points, order_no)
+            VALUES (NULL, %s, %s, %s, %s, 0)
+            """,
+            (subject_id, area_id, question_text, points),
+        )
+        conn.commit()
+        question_id = cur2.lastrowid
+
+        cur2.close()
+        cur.close()
+        conn.close()
+
+        return jsonify({
+            "message": "Question added to bank successfully",
+            "question_id": question_id
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # =========================
 # 7) Users / Profile
 # =========================
@@ -1666,20 +1853,74 @@ def get_exam_details(exam_id):
                 conn.close()
                 return jsonify({"error": "Exam has expired"}), 403
 
+        area_id_raw = request.args.get("area_id")
+        area_id = None
+        if area_id_raw is not None:
+            try:
+                area_id = int(area_id_raw)
+            except ValueError:
+                cursor.close()
+                conn.close()
+                return jsonify({"error": "Invalid area_id"}), 400
+
         if role == "STUDENT":
-            cursor.execute("""
-                SELECT *
-                FROM exam_questions
-                WHERE exam_id = %s
-                ORDER BY RAND()
-            """, (exam_id,))
+            if area_id is not None:
+                cursor.execute("""
+                    SELECT
+                        eq.id,
+                        etq.exam_id,
+                        eq.area_id,
+                        eq.question_text,
+                        eq.points,
+                        etq.order_no
+                    FROM exam_test_questions etq
+                    JOIN exam_questions eq ON eq.id = etq.question_id
+                    WHERE etq.exam_id = %s AND eq.area_id = %s
+                    ORDER BY RAND()
+                """, (exam_id, area_id))
+            else:
+                cursor.execute("""
+                    SELECT
+                        eq.id,
+                        etq.exam_id,
+                        eq.area_id,
+                        eq.question_text,
+                        eq.points,
+                        etq.order_no
+                    FROM exam_test_questions etq
+                    JOIN exam_questions eq ON eq.id = etq.question_id
+                    WHERE etq.exam_id = %s
+                    ORDER BY RAND()
+                """, (exam_id,))
         else:
-            cursor.execute("""
-                SELECT *
-                FROM exam_questions
-                WHERE exam_id = %s
-                ORDER BY order_no ASC, id ASC
-            """, (exam_id,))
+            if area_id is not None:
+                cursor.execute("""
+                    SELECT
+                        eq.id,
+                        etq.exam_id,
+                        eq.area_id,
+                        eq.question_text,
+                        eq.points,
+                        etq.order_no
+                    FROM exam_test_questions etq
+                    JOIN exam_questions eq ON eq.id = etq.question_id
+                    WHERE etq.exam_id = %s AND eq.area_id = %s
+                    ORDER BY etq.order_no ASC, eq.id ASC
+                """, (exam_id, area_id))
+            else:
+                cursor.execute("""
+                    SELECT
+                        eq.id,
+                        etq.exam_id,
+                        eq.area_id,
+                        eq.question_text,
+                        eq.points,
+                        etq.order_no
+                    FROM exam_test_questions etq
+                    JOIN exam_questions eq ON eq.id = etq.question_id
+                    WHERE etq.exam_id = %s
+                    ORDER BY etq.order_no ASC, eq.id ASC
+                """, (exam_id,))
 
         questions = cursor.fetchall()
 
@@ -1720,22 +1961,51 @@ def add_exam_question(exam_id):
     question_text = (data.get("question_text") or "").strip()
     points = data.get("points", 1)
     order_no = data.get("order_no", 0)
+    area_id = data.get("area_id") or None
 
     if not question_text:
         return jsonify({"error": "Question text is required"}), 400
 
+    conn = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SELECT language_id FROM exams WHERE id = %s", (exam_id,))
+        exam_row = cursor.fetchone()
+        if not exam_row:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Exam not found"}), 404
+
+        if area_id is not None:
+            cursor.execute("SELECT subject_id FROM areas WHERE id = %s", (area_id,))
+            area_row = cursor.fetchone()
+            if not area_row:
+                cursor.close()
+                conn.close()
+                return jsonify({"error": "Selected area does not exist"}), 400
+
+            if area_row["subject_id"] != exam_row["language_id"]:
+                cursor.close()
+                conn.close()
+                return jsonify({"error": "Selected area does not belong to this exam's subject"}), 400
 
         cursor.execute("""
             INSERT INTO exam_questions
-            (exam_id, question_text, points, order_no)
-            VALUES (%s, %s, %s, %s)
-        """, (exam_id, question_text, points, order_no))
+            (exam_id, subject_id, area_id, question_text, points, order_no)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (exam_id, exam_row["language_id"], area_id, question_text, points, order_no))
+
+        question_id = cursor.lastrowid
+
+        cursor.execute("""
+            INSERT INTO exam_test_questions
+            (exam_id, question_id, order_no)
+            VALUES (%s, %s, %s)
+        """, (exam_id, question_id, order_no))
 
         conn.commit()
-        question_id = cursor.lastrowid
 
         cursor.close()
         conn.close()
@@ -1745,6 +2015,128 @@ def add_exam_question(exam_id):
             "question_id": question_id
         }), 201
 
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.post("/api/exams/<int:exam_id>/questions/<int:question_id>") #dodavanje postojeceg bank-pitanja u test
+@role_required(["TEACHER", "ADMIN"])
+def assign_bank_question_to_exam(exam_id, question_id):
+    data = request.get_json() or {}
+    order_no = data.get("order_no", 0)
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SELECT language_id FROM exams WHERE id = %s", (exam_id,))
+        exam_row = cursor.fetchone()
+        if not exam_row:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Exam not found"}), 404
+
+        cursor.execute("SELECT subject_id FROM exam_questions WHERE id = %s", (question_id,))
+        question_row = cursor.fetchone()
+        if not question_row:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Question not found"}), 404
+
+        if question_row["subject_id"] != exam_row["language_id"]:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Question does not belong to this exam's subject"}), 400
+
+        cursor.execute(
+            "SELECT 1 FROM exam_test_questions WHERE exam_id = %s AND question_id = %s",
+            (exam_id, question_id),
+        )
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Question is already part of this exam"}), 409
+
+        cursor.execute("""
+            INSERT INTO exam_test_questions
+            (exam_id, question_id, order_no)
+            VALUES (%s, %s, %s)
+        """, (exam_id, question_id, order_no))
+
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({"message": "Question added to exam successfully"}), 201
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.delete("/api/exams/<int:exam_id>/questions/<int:question_id>") #uklanjanje pitanja samo iz ovog testa
+@role_required(["TEACHER", "ADMIN"])
+def remove_question_from_exam(exam_id, question_id):
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute(
+            "SELECT 1 FROM exam_test_questions WHERE exam_id = %s AND question_id = %s",
+            (exam_id, question_id),
+        )
+        if not cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Question is not part of this exam"}), 404
+
+        cursor.execute(
+            "DELETE FROM exam_test_questions WHERE exam_id = %s AND question_id = %s",
+            (exam_id, question_id),
+        )
+
+        cursor.execute(
+            "UPDATE exam_questions SET exam_id = NULL WHERE id = %s AND exam_id = %s",
+            (question_id, exam_id),
+        )
+
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({"message": "Question removed from exam"}), 200
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+            conn.close()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.get("/api/questions/<int:question_id>/answers") #prikaz odgovora za pitanje
+@role_required(["TEACHER", "ADMIN"])
+def list_question_answers(question_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute(
+            "SELECT id, answer_text, is_correct FROM exam_answers WHERE question_id = %s ORDER BY id ASC",
+            (question_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        return jsonify(rows), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1806,6 +2198,13 @@ def delete_question(question_id):
         conn.close()
 
         return jsonify({"message": "Question deleted"}), 200
+
+    except MySQLError as e:
+        if e.errno == 1451:
+            return jsonify({
+                "error": "Question is still assigned to one or more exams and cannot be deleted. Remove it from those exams first."
+            }), 409
+        return jsonify({"error": str(e)}), 500
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -2091,17 +2490,20 @@ def delete_exam(exam_id):
             WHERE exam_id = %s
         """, (exam_id,))
 
-        # Zatim brišemo ponuđene odgovore za pitanja tog testa
+        # Uklanjamo vezu test<->pitanje (banka pitanja) - sadržaj pitanja
+        # (exam_questions, exam_answers) ostaje netaknut, samo se briše
+        # zapis da je ovo pitanje bilo deo OVOG testa.
         cursor.execute("""
-            DELETE ea
-            FROM exam_answers ea
-            JOIN exam_questions eq ON ea.question_id = eq.id
-            WHERE eq.exam_id = %s
+            DELETE FROM exam_test_questions
+            WHERE exam_id = %s
         """, (exam_id,))
 
-        # Zatim brišemo pitanja
+        # Otkačinjemo pitanja od ovog testa umesto da ih brišemo - pitanje
+        # može biti u banci ili u drugom testu preko exam_test_questions,
+        # pa exam_questions/exam_answers ne smeju da nestanu.
         cursor.execute("""
-            DELETE FROM exam_questions
+            UPDATE exam_questions
+            SET exam_id = NULL
             WHERE exam_id = %s
         """, (exam_id,))
 
@@ -2161,9 +2563,10 @@ def submit_exam(exam_id):
     score = 0
 
     cursor.execute("""
-        SELECT COALESCE(SUM(points), 0) AS total
-        FROM exam_questions
-        WHERE exam_id = %s
+        SELECT COALESCE(SUM(eq.points), 0) AS total
+        FROM exam_test_questions etq
+        JOIN exam_questions eq ON eq.id = etq.question_id
+        WHERE etq.exam_id = %s
     """, (exam_id,))
 
     total_row = cursor.fetchone()
@@ -2171,9 +2574,10 @@ def submit_exam(exam_id):
 
     for question_id, answer_id in answers.items():
         cursor.execute("""
-            SELECT id, points
-            FROM exam_questions
-            WHERE id = %s AND exam_id = %s
+            SELECT eq.id, eq.points
+            FROM exam_test_questions etq
+            JOIN exam_questions eq ON eq.id = etq.question_id
+            WHERE eq.id = %s AND etq.exam_id = %s
         """, (question_id, exam_id))
 
         question = cursor.fetchone()

@@ -125,6 +125,14 @@ function onLogout() {
               Exams
             </router-link>
           </li>
+          <li
+            v-if="isLoggedIn && canManageLessons"
+            class="nav-item"
+          >
+            <router-link class="nav-link" to="/predmeti">
+              Predmeti
+            </router-link>
+          </li>
           <router-link
           v-if="isLoggedIn && role === 'STUDENT'"
           class="nav-link"
