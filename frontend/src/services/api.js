@@ -109,3 +109,8 @@ export const getAiArtifact = (id) =>
 
 export const reviewAiArtifact = (id, data) =>
   api.post(`/ai/artifacts/${id}/review`, data)
+
+export const generateSimilarQuestion = (questionId, provider) =>
+  api.post(`/questions/${questionId}/generate-similar`, null, {
+    params: { provider }
+  })

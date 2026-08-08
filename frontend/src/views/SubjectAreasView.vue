@@ -1,6 +1,6 @@
-<script setup>
+﻿<script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   getSubjects,
   getAreas,
@@ -10,10 +10,12 @@ import {
   addQuestionAnswer,
   getQuestionAnswers,
   updateQuestion,
-  deleteQuestion
+  deleteQuestion,
+  generateSimilarQuestion
 } from '@/services/api'
 
 const route = useRoute()
+const router = useRouter()
 const subjectId = computed(() => Number(route.params.subjectId))
 
 const subjectName = ref('')
@@ -51,6 +53,12 @@ const editModalError = ref('')
 const savingEdit = ref(false)
 const editExistingAnswers = ref([])
 const editAnswersLoading = ref(false)
+
+const showGenerateModal = ref(false)
+const generateQuestion = ref(null)
+const generateProvider = ref('groq')
+const generateError = ref('')
+const generating = ref(false)
 
 async function loadSubjectName() {
   try {
@@ -272,6 +280,32 @@ async function removeQuestion(area, question) {
   }
 }
 
+function openGenerateModal(question) {
+  generateQuestion.value = question
+  generateProvider.value = 'groq'
+  generateError.value = ''
+  showGenerateModal.value = true
+}
+
+function closeGenerateModal() {
+  if (generating.value) return
+  showGenerateModal.value = false
+}
+
+async function submitGenerate() {
+  generateError.value = ''
+  generating.value = true
+  try {
+    const { data } = await generateSimilarQuestion(generateQuestion.value.id, generateProvider.value)
+    showGenerateModal.value = false
+    router.push(`/ai/predlozi/${data.artifact_id}`)
+  } catch (e) {
+    generateError.value = e?.response?.data?.details || e?.response?.data?.error || 'Ne mogu da pokrenem generisanje.'
+  } finally {
+    generating.value = false
+  }
+}
+
 onMounted(() => {
   loadSubjectName()
   loadAreas()
@@ -350,7 +384,7 @@ onMounted(() => {
             <div
               v-for="q in questionsByArea[area.id]"
               :key="q.id"
-              class="d-flex justify-content-between align-items-center border rounded p-2 mb-2"
+              class="d-flex justify-content-between align-items-center border rounded p-2 mb-2 flex-wrap gap-2"
             >
               <div>
                 <i class="fa-solid fa-circle-question me-2 text-muted"></i>
@@ -359,6 +393,10 @@ onMounted(() => {
               <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-dark">{{ q.points }} pts</span>
                 <span class="badge bg-secondary">{{ questionTypeLabel(q) }}</span>
+                <button class="btn btn-outline-info btn-sm" @click="openGenerateModal(q)">
+                  <i class="fa-solid fa-wand-magic-sparkles me-1"></i>
+                  Generiši slično
+                </button>
                 <button class="btn btn-outline-warning btn-sm" @click="openEditModal(area, q)">
                   <i class="fa-solid fa-pen me-1"></i>
                   Izmeni
@@ -502,6 +540,46 @@ onMounted(() => {
           <button class="btn btn-success" :disabled="savingEdit" @click="submitEditQuestion">
             <i class="fa-solid fa-check me-2"></i>
             Sačuvaj
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showGenerateModal" class="question-modal-backdrop" @click.self="closeGenerateModal">
+      <div class="question-modal-card">
+        <h5 class="mb-3">
+          <i class="fa-solid fa-wand-magic-sparkles me-2"></i>
+          Generiši slično pitanje
+        </h5>
+
+        <p class="text-muted small mb-3">
+          Na osnovu pitanja: "{{ generateQuestion?.question_text }}"
+        </p>
+
+        <div v-if="generateError" class="alert alert-danger">{{ generateError }}</div>
+
+        <div class="mb-3">
+          <label class="form-label d-block">Model</label>
+          <div class="btn-group" role="group">
+            <input type="radio" class="btn-check" id="gen-provider-groq" value="groq" v-model="generateProvider" />
+            <label class="btn btn-outline-secondary" for="gen-provider-groq">groq</label>
+
+            <input type="radio" class="btn-check" id="gen-provider-gemini" value="gemini" v-model="generateProvider" />
+            <label class="btn btn-outline-secondary" for="gen-provider-gemini">gemini</label>
+
+            <input type="radio" class="btn-check" id="gen-provider-mistral" value="mistral" v-model="generateProvider" />
+            <label class="btn btn-outline-secondary" for="gen-provider-mistral">mistral</label>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2">
+          <button class="btn btn-secondary" :disabled="generating" @click="closeGenerateModal">
+            Otkaži
+          </button>
+          <button class="btn btn-primary" :disabled="generating" @click="submitGenerate">
+            <span v-if="generating" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            <i v-else class="fa-solid fa-wand-magic-sparkles me-2"></i>
+            {{ generating ? 'Generišem...' : 'Generiši' }}
           </button>
         </div>
       </div>
