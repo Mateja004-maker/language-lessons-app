@@ -12,6 +12,17 @@
           class="form-control mb-3"
           placeholder="npr. 60"
         />
+        <label class="form-label d-block">Provider</label>
+        <div class="btn-group mb-3" role="group">
+          <input type="radio" class="btn-check" id="provider-groq" value="groq" v-model="provider" />
+          <label class="btn btn-outline-secondary" for="provider-groq">groq</label>
+
+          <input type="radio" class="btn-check" id="provider-gemini" value="gemini" v-model="provider" />
+          <label class="btn btn-outline-secondary" for="provider-gemini">gemini</label>
+
+          <input type="radio" class="btn-check" id="provider-mistral" value="mistral" v-model="provider" />
+          <label class="btn btn-outline-secondary" for="provider-mistral">mistral</label>
+        </div>
         <button class="btn btn-primary" :disabled="loading || !questionId" @click="generate">
           {{ loading ? 'Generišem...' : 'Generiši slično pitanje' }}
         </button>
@@ -32,6 +43,7 @@ import { ref } from 'vue'
 import { api } from '@/services/api'
 
 const questionId = ref('')
+const provider = ref('groq')
 const status = ref(null)
 const responseText = ref('')
 const loading = ref(false)
@@ -41,7 +53,9 @@ async function generate() {
   status.value = null
   responseText.value = ''
   try {
-    const res = await api.post(`/questions/${questionId.value}/generate-similar`)
+    const res = await api.post(`/questions/${questionId.value}/generate-similar`, null, {
+      params: { provider: provider.value }
+    })
     status.value = res.status
     responseText.value = JSON.stringify(res.data, null, 2)
   } catch (e) {

@@ -194,6 +194,42 @@ def ensure_ai_model(conn, provider, model_name, model_version=None):
     return model_id
 
 
+# Pomoćne funkcije/konstante za pregled i odobravanje AI predloga
+# (ai_generated_artifacts.status / ai_rubric_definitions / ai_evaluations).
+ARTIFACT_STATUS_PENDING = "predlog"
+ARTIFACT_STATUS_ACCEPTED = "prihvaceno"
+ARTIFACT_STATUS_ACCEPTED_EDITED = "prihvaceno_izmena"
+ARTIFACT_STATUS_REJECTED = "odbaceno"
+ARTIFACT_DECISIONS = {
+    ARTIFACT_STATUS_ACCEPTED,
+    ARTIFACT_STATUS_ACCEPTED_EDITED,
+    ARTIFACT_STATUS_REJECTED,
+}
+
+RUBRIC_APPLIES_TO_ALL = "question"
+RUBRIC_APPLIES_TO_MC = "question_mc"
+
+
+def get_applicable_rubric_definitions(cursor, question_type):
+    """Vraća redove iz ai_rubric_definitions koji važe za dati question_type
+    ('mc' dobija i opšte i MC-specifične kriterijume, 'open' samo opšte)."""
+    applies_to_values = [RUBRIC_APPLIES_TO_ALL]
+    if question_type == "mc":
+        applies_to_values.append(RUBRIC_APPLIES_TO_MC)
+
+    placeholders = ",".join(["%s"] * len(applies_to_values))
+    cursor.execute(
+        f"""
+        SELECT id, applies_to, dimension_key, dimension_label, scale_min, scale_max
+        FROM ai_rubric_definitions
+        WHERE applies_to IN ({placeholders})
+        ORDER BY id ASC
+        """,
+        tuple(applies_to_values),
+    )
+    return cursor.fetchall()
+
+
 def validate_similar_question_payload(parsed, question_type, expected_answer_count):
     """Vraća None ako je JSON iz AI odgovora ispravan za dati tip pitanja,
     inače string sa opisom greške."""
@@ -2440,6 +2476,312 @@ def generate_similar_question(question_id):
             "question_type": question_type,
             "proposed_question": parsed_result,
         }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.get("/api/ai/artifacts") #lista AI predloga pitanja (podrazumevano status='predlog')
+@role_required(["TEACHER", "ADMIN"])
+def list_ai_artifacts():
+    try:
+        status_filter = request.args.get("status", ARTIFACT_STATUS_PENDING)
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+        role = claims.get("role")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT
+                a.id, a.artifact_type, a.status, a.original_text, a.created_at,
+                r.id AS generation_run_id, r.source_question_id, r.purpose,
+                m.provider, m.model_name,
+                sq.subject_id, sq.area_id,
+                s.name AS subject_name, ar.name AS area_name
+            FROM ai_generated_artifacts a
+            JOIN ai_generation_runs r ON r.id = a.generation_run_id
+            JOIN ai_models m ON m.id = r.model_id
+            LEFT JOIN exam_questions sq ON sq.id = r.source_question_id
+            LEFT JOIN subjects s ON s.id = sq.subject_id
+            LEFT JOIN areas ar ON ar.id = sq.area_id
+            WHERE a.status = %s
+            ORDER BY a.created_at DESC
+        """, (status_filter,))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        if role == "TEACHER":
+            allowed_subjects = set(get_user_subject_ids(int(user_id), "TEACHER"))
+            rows = [row for row in rows if row["subject_id"] in allowed_subjects]
+
+        for row in rows:
+            parsed = json.loads(row["original_text"]) if row["original_text"] else None
+            row["original_text"] = parsed
+            row["question_type"] = prompt_templates.detect_question_type(
+                (parsed or {}).get("answers") or []
+            )
+
+        return jsonify(rows), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.get("/api/ai/artifacts/<int:artifact_id>") #detalj AI predloga + primenjivi kriterijumi rubrike
+@role_required(["TEACHER", "ADMIN"])
+def get_ai_artifact(artifact_id):
+    try:
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+        role = claims.get("role")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT
+                a.id, a.artifact_type, a.status, a.original_text, a.edited_text,
+                a.rejection_reason, a.reviewed_by, a.reviewed_at, a.created_question_id,
+                a.created_at,
+                r.id AS generation_run_id, r.source_question_id, r.purpose,
+                m.provider, m.model_name,
+                sq.subject_id, sq.area_id, sq.question_text AS source_question_text,
+                sq.points AS source_points,
+                s.name AS subject_name, ar.name AS area_name
+            FROM ai_generated_artifacts a
+            JOIN ai_generation_runs r ON r.id = a.generation_run_id
+            JOIN ai_models m ON m.id = r.model_id
+            LEFT JOIN exam_questions sq ON sq.id = r.source_question_id
+            LEFT JOIN subjects s ON s.id = sq.subject_id
+            LEFT JOIN areas ar ON ar.id = sq.area_id
+            WHERE a.id = %s
+        """, (artifact_id,))
+        artifact = cursor.fetchone()
+
+        if not artifact:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Artifact not found"}), 404
+
+        if role == "TEACHER" and not user_has_subject(int(user_id), artifact["subject_id"], "TEACHER"):
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Forbidden"}), 403
+
+        cursor.execute("""
+            SELECT answer_text, is_correct
+            FROM exam_answers
+            WHERE question_id = %s
+            ORDER BY id ASC
+        """, (artifact["source_question_id"],))
+        artifact["source_answers"] = cursor.fetchall()
+
+        parsed_original = json.loads(artifact["original_text"]) if artifact["original_text"] else None
+        artifact["original_text"] = parsed_original
+        artifact["edited_text"] = json.loads(artifact["edited_text"]) if artifact["edited_text"] else None
+
+        question_type = prompt_templates.detect_question_type((parsed_original or {}).get("answers") or [])
+        artifact["question_type"] = question_type
+        artifact["rubric_criteria"] = get_applicable_rubric_definitions(cursor, question_type)
+
+        cursor.close()
+        conn.close()
+
+        return jsonify(artifact), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.post("/api/ai/artifacts/<int:artifact_id>/review") #upis ocena rubrike + odluke o AI predlogu
+@role_required(["TEACHER", "ADMIN"])
+def review_ai_artifact(artifact_id):
+    try:
+        data = request.get_json() or {}
+        decision = data.get("decision")
+        comment = (data.get("comment") or "").strip() or None
+        scores = data.get("scores")
+        edited_text = data.get("edited_text")
+        rejection_reason = (data.get("rejection_reason") or "").strip() or None
+
+        if decision not in ARTIFACT_DECISIONS:
+            return jsonify({
+                "error": "decision mora biti 'prihvaceno', 'prihvaceno_izmena' ili 'odbaceno'"
+            }), 400
+
+        if not isinstance(scores, list) or not scores:
+            return jsonify({"error": "scores je obavezno i mora biti neprazan niz"}), 400
+
+        if decision == ARTIFACT_STATUS_ACCEPTED_EDITED and not isinstance(edited_text, dict):
+            return jsonify({"error": "edited_text je obavezan za odluku 'prihvaceno_izmena'"}), 400
+
+        if decision == ARTIFACT_STATUS_REJECTED and not rejection_reason:
+            return jsonify({"error": "rejection_reason je obavezan za odluku 'odbaceno'"}), 400
+
+        user_id = get_jwt_identity()
+        claims = get_jwt()
+        role = claims.get("role")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT a.id, a.status, a.original_text, a.generation_run_id,
+                   r.source_question_id
+            FROM ai_generated_artifacts a
+            JOIN ai_generation_runs r ON r.id = a.generation_run_id
+            WHERE a.id = %s
+        """, (artifact_id,))
+        artifact = cursor.fetchone()
+
+        if not artifact:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Artifact not found"}), 404
+
+        if artifact["status"] != ARTIFACT_STATUS_PENDING:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Predlog je već pregledan"}), 409
+
+        cursor.execute("SELECT * FROM exam_questions WHERE id = %s", (artifact["source_question_id"],))
+        source_question = cursor.fetchone()
+
+        if role == "TEACHER":
+            source_subject_id = source_question["subject_id"] if source_question else None
+            if not user_has_subject(int(user_id), source_subject_id, "TEACHER"):
+                cursor.close()
+                conn.close()
+                return jsonify({"error": "Forbidden"}), 403
+
+        original_parsed = json.loads(artifact["original_text"])
+        question_type = prompt_templates.detect_question_type(original_parsed.get("answers") or [])
+        expected_answer_count = len(original_parsed.get("answers") or [])
+
+        rubric_rows = get_applicable_rubric_definitions(cursor, question_type)
+        rubric_by_id = {row["id"]: row for row in rubric_rows}
+
+        score_by_id = {}
+        for item in scores:
+            if not isinstance(item, dict):
+                cursor.close()
+                conn.close()
+                return jsonify({"error": "Svaki element scores mora biti objekat"}), 400
+
+            rubric_id = item.get("rubric_definition_id")
+            score_value = item.get("score")
+            rubric_row = rubric_by_id.get(rubric_id)
+
+            if rubric_row is None:
+                cursor.close()
+                conn.close()
+                return jsonify({
+                    "error": f"Nepoznat ili neprimenljiv rubric_definition_id: {rubric_id}"
+                }), 400
+
+            if not isinstance(score_value, int) or not (rubric_row["scale_min"] <= score_value <= rubric_row["scale_max"]):
+                cursor.close()
+                conn.close()
+                return jsonify({
+                    "error": (
+                        f"Ocena za '{rubric_row['dimension_label']}' mora biti ceo broj "
+                        f"u opsegu {rubric_row['scale_min']}-{rubric_row['scale_max']}"
+                    )
+                }), 400
+
+            score_by_id[rubric_id] = score_value
+
+        if set(score_by_id.keys()) != set(rubric_by_id.keys()):
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "scores mora sadržati tačno jednu ocenu za svaki primenljivi kriterijum rubrike"
+            }), 400
+
+        edited_parsed = None
+        if decision == ARTIFACT_STATUS_ACCEPTED_EDITED:
+            validation_error = validate_similar_question_payload(
+                edited_text, question_type, expected_answer_count
+            )
+            if validation_error:
+                cursor.close()
+                conn.close()
+                return jsonify({"error": f"edited_text nije validan: {validation_error}"}), 400
+            edited_parsed = edited_text
+
+        try:
+            for rubric_id, score_value in score_by_id.items():
+                cursor.execute("""
+                    INSERT INTO ai_evaluations
+                    (artifact_id, rubric_definition_id, evaluator_id, evaluator_role, score, comment)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (artifact_id, rubric_id, user_id, role, score_value, comment))
+
+            final_payload = None
+            if decision == ARTIFACT_STATUS_ACCEPTED:
+                final_payload = original_parsed
+            elif decision == ARTIFACT_STATUS_ACCEPTED_EDITED:
+                final_payload = edited_parsed
+
+            created_question_id = None
+            if final_payload is not None:
+                cursor.execute("""
+                    INSERT INTO exam_questions (exam_id, subject_id, area_id, question_text, points, order_no)
+                    VALUES (NULL, %s, %s, %s, %s, 0)
+                """, (
+                    source_question["subject_id"] if source_question else None,
+                    source_question["area_id"] if source_question else None,
+                    final_payload["question_text"],
+                    source_question["points"] if source_question else 1,
+                ))
+                created_question_id = cursor.lastrowid
+
+                if question_type == "mc":
+                    for answer in final_payload["answers"]:
+                        cursor.execute("""
+                            INSERT INTO exam_answers (question_id, answer_text, is_correct)
+                            VALUES (%s, %s, %s)
+                        """, (
+                            created_question_id,
+                            answer["answer_text"],
+                            1 if answer["is_correct"] else 0,
+                        ))
+
+            cursor.execute("""
+                UPDATE ai_generated_artifacts
+                SET status = %s,
+                    edited_text = %s,
+                    rejection_reason = %s,
+                    reviewed_by = %s,
+                    reviewed_at = NOW(),
+                    created_question_id = %s
+                WHERE id = %s
+            """, (
+                decision,
+                json.dumps(edited_parsed) if edited_parsed is not None else None,
+                rejection_reason if decision == ARTIFACT_STATUS_REJECTED else None,
+                user_id,
+                created_question_id,
+                artifact_id,
+            ))
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
+
+        return jsonify({
+            "message": "Pregled sačuvan",
+            "artifact_id": artifact_id,
+            "status": decision,
+            "created_question_id": created_question_id,
+        }), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
