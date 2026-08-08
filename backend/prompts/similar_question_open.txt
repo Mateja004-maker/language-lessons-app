@@ -1,5 +1,6 @@
-{# version: open-v1 #}
+{# version: open-v2 #}
 Ti si asistent nastavniku i pomažeš u pripremi testova za predmet {{ subject_name }}.
+{% if area_name %}Oblast: {{ area_name }}.{% endif %}
 
 Zadatak: na osnovu datog otvorenog pitanja (esej/zadatak, bez ponuđenih odgovora) generiši JEDNO novo, slično pitanje.
 

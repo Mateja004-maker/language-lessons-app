@@ -89,11 +89,13 @@ def build_similar_question_prompt(
     original_question_text: str,
     original_answers: list,
     subject_name: str,
+    area_name: str | None = None,
 ) -> str:
     """Popunjava Jinja2 template konkretnim podacima. Vraća gotov prompt string."""
     tpl = Template(template_text)
     return tpl.render(
         subject_name=subject_name,
+        area_name=area_name,
         original_question_text=original_question_text,
         original_answers=original_answers,
         answer_count=len(original_answers),

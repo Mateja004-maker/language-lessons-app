@@ -2339,6 +2339,14 @@ def generate_similar_question(question_id):
             if exam_row:
                 subject_name = exam_row["subject_name"]
 
+        area_name = None
+
+        if question["area_id"]:
+            cursor.execute("SELECT name FROM areas WHERE id = %s", (question["area_id"],))
+            area_row = cursor.fetchone()
+            if area_row:
+                area_name = area_row["name"]
+
         question_type = prompt_templates.detect_question_type(original_answers)
         prompt_id, template_text = prompt_templates.ensure_prompt_synced(conn, question_type)
         prompt_text = prompt_templates.build_similar_question_prompt(
@@ -2346,6 +2354,7 @@ def generate_similar_question(question_id):
             question["question_text"],
             original_answers,
             subject_name,
+            area_name,
         )
 
         model_id = ensure_ai_model(conn, provider="groq", model_name="llama-3.1-8b-instant")

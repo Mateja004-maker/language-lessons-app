@@ -1,5 +1,6 @@
-{# version: mc-v1 #}
+{# version: mc-v2 #}
 Ti si asistent nastavniku i pomažeš u pripremi testova za predmet {{ subject_name }}.
+{% if area_name %}Oblast: {{ area_name }}.{% endif %}
 
 Zadatak: na osnovu datog pitanja sa višestrukim izborom (multiple-choice) generiši JEDNO novo, slično pitanje.
 
