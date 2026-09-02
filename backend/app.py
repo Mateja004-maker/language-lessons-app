@@ -42,6 +42,7 @@ import json
 import ai_provider
 import explanation_prompts
 import code_executor
+import explanation_review
 
 
 # =========================
@@ -2884,6 +2885,121 @@ def generate_explanation(question_id):
             "proposed_result": parsed_result,
         }), 201
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# =====================================================================
+# Nastavnicki pregled predloga objasnjenja/resenja (Andrejev modul).
+# Poslovna logika je u explanation_review.py (testirana nezavisno od
+# Flask sloja) - ove rute su tanak HTTP omotac oko nje.
+# =====================================================================
+
+@app.get("/api/ai-artifacts/explanation")  # lista predloga objasnjenja za pregled (podrazumevano status=predlog)
+@role_required(["TEACHER", "ADMIN"])
+def list_explanation_artifacts():
+    status = request.args.get("status", "predlog")
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """
+        SELECT a.id, a.status, a.created_at, a.reviewed_at,
+               r.mode, r.source_question_id, r.accuracy_check_passed,
+               q.question_text
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        LEFT JOIN exam_questions q ON q.id = r.source_question_id
+        WHERE a.artifact_type = 'explanation' AND a.status = %s
+        ORDER BY a.created_at ASC
+        """,
+        (status,),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(rows), 200
+
+
+@app.get("/api/ai-artifacts/explanation/<int:artifact_id>")  # detalji jednog predloga + TEACHER rubrika za formu ocenjivanja
+@role_required(["TEACHER", "ADMIN"])
+def get_explanation_artifact(artifact_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """
+        SELECT a.id, a.status, a.original_text, a.edited_text,
+               a.rejection_reason, a.reviewed_by, a.reviewed_at, a.created_at,
+               r.mode, r.source_question_id, r.accuracy_check_passed,
+               r.accuracy_check_details, q.question_text
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        LEFT JOIN exam_questions q ON q.id = r.source_question_id
+        WHERE a.id = %s AND a.artifact_type = 'explanation'
+        """,
+        (artifact_id,),
+    )
+    artifact = cursor.fetchone()
+    if not artifact:
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "Artifact not found"}), 404
+
+    cursor.execute(
+        """
+        SELECT dimension_key, dimension_label, scale_min, scale_max
+        FROM ai_rubric_definitions
+        WHERE applies_to = 'explanation' AND evaluator_role = 'TEACHER'
+        """
+    )
+    rubric_definitions = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "artifact": artifact,
+        "rubric_definitions": rubric_definitions,
+    }), 200
+
+
+@app.post("/api/ai-artifacts/explanation/<int:artifact_id>/review")  # nastavnicka odluka: approve/edit/reject + rubrika ocene
+@role_required(["TEACHER", "ADMIN"])
+def review_explanation_artifact_route(artifact_id):
+    try:
+        data = request.get_json(silent=True) or {}
+        action = data.get("action")
+        edited_text = data.get("edited_text")
+        rejection_reason = data.get("rejection_reason")
+        scores = data.get("scores")
+
+        # Isti obrazac za id ulogovanog korisnika kao ostale @role_required
+        # rute u app.py (npr. create_lesson, generate_explanation).
+        reviewer_id = get_jwt_identity()
+
+        conn = get_db_connection()
+        try:
+            result = explanation_review.review_explanation_artifact(
+                conn,
+                artifact_id=artifact_id,
+                reviewer_id=reviewer_id,
+                action=action,
+                edited_text=edited_text,
+                rejection_reason=rejection_reason,
+                scores=scores,
+            )
+        finally:
+            conn.close()
+
+        return jsonify({
+            "message": "Pregled sacuvan",
+            **result,
+        }), 200
+
+    except explanation_review.ArtifactNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except explanation_review.ArtifactStateError as e:
+        return jsonify({"error": str(e)}), 409
+    except explanation_review.ReviewValidationError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
