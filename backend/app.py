@@ -43,6 +43,7 @@ import ai_provider
 import explanation_prompts
 import code_executor
 import explanation_review
+import explanation_rating
 
 
 # =========================
@@ -2999,6 +3000,102 @@ def review_explanation_artifact_route(artifact_id):
     except explanation_review.ArtifactStateError as e:
         return jsonify({"error": str(e)}), 409
     except explanation_review.ReviewValidationError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# =====================================================================
+# Studentsko ocenjivanje korisnosti odobrenih predloga (Andrejev modul).
+# Poslovna logika je u explanation_rating.py (testirana nezavisno od
+# Flask sloja) - ove rute su tanak HTTP omotac oko nje. Isti obrazac za
+# identitet korisnika (get_jwt_identity()) kao u vec ugradjenoj
+# review_explanation_artifact_route - vec potvrdjen u prethodnom koraku,
+# nema potrebe za ponovnom proverom.
+# =====================================================================
+
+@app.get("/api/questions/<int:question_id>/explanation")  # odobren/izmenjen sadrzaj objasnjenja za dati rezim - ono sto student stvarno vidi
+@role_required(["STUDENT", "TEACHER", "ADMIN"])
+def get_question_explanation(question_id):
+    mode = request.args.get("mode")
+    if mode not in ("mode_a", "mode_b"):
+        return jsonify({"error": "mode mora biti 'mode_a' ili 'mode_b'"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """
+        SELECT a.id AS artifact_id, a.status, a.original_text, a.edited_text
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        WHERE r.source_question_id = %s
+          AND r.mode = %s
+          AND a.artifact_type = 'explanation'
+          AND a.status IN ('odobreno', 'izmenjeno')
+        ORDER BY a.reviewed_at DESC, a.id DESC
+        LIMIT 1
+        """,
+        (question_id, mode),
+    )
+    artifact = cursor.fetchone()
+    if not artifact:
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "error": "Nema odobrenog predloga objasnjenja za ovo pitanje/rezim"
+        }), 404
+
+    final_text = explanation_rating.get_final_text(artifact)
+    content = json.loads(final_text)
+
+    cursor.execute(
+        """
+        SELECT dimension_key, dimension_label, scale_min, scale_max
+        FROM ai_rubric_definitions
+        WHERE applies_to = 'explanation' AND evaluator_role = 'STUDENT'
+        """
+    )
+    rubric_definitions = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "artifact_id": artifact["artifact_id"],
+        "mode": mode,
+        "content": content,
+        "rubric_definitions": rubric_definitions,
+    }), 200
+
+
+@app.post("/api/ai-artifacts/explanation/<int:artifact_id>/rate")  # studentska ocena korisnosti (STUDENT rubrika)
+@role_required(["STUDENT"])
+def rate_explanation_artifact_route(artifact_id):
+    try:
+        data = request.get_json(silent=True) or {}
+        scores = data.get("scores")
+        student_id = get_jwt_identity()
+
+        conn = get_db_connection()
+        try:
+            result = explanation_rating.submit_student_rating(
+                conn,
+                artifact_id=artifact_id,
+                student_id=student_id,
+                scores=scores,
+            )
+        finally:
+            conn.close()
+
+        return jsonify({
+            "message": "Ocena sacuvana",
+            **result,
+        }), 200
+
+    except explanation_rating.ArtifactNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except (explanation_rating.ArtifactNotApprovedError, explanation_rating.AlreadyRatedError) as e:
+        return jsonify({"error": str(e)}), 409
+    except explanation_rating.RatingValidationError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
