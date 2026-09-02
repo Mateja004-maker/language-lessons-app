@@ -36,6 +36,13 @@ LESSON_IMAGE_FOLDER.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 load_dotenv(BASE_DIR / ".env", override=True)
 
+# explanation_prompts/ai_provider citaju konfiguraciju iz environment-a na
+# nivou modula, pa import mora doci POSLE load_dotenv() (Andrejev modul).
+import json
+import ai_provider
+import explanation_prompts
+import code_executor
+
 
 # =========================
 # 2) Flask app setup
@@ -2643,6 +2650,242 @@ def get_my_results():
 # =========================
 # 9) Run
 # =========================
+
+
+# =====================================================================
+# AI generisanje objasnjenja/resenja (Andrejev modul).
+# Isti obrazac kao Andjine funkcije za generisanje pitanja (ensure_ai_model /
+# ai_generation_runs / ai_generated_artifacts) - NAMERNO odvojena kopija u
+# ovoj fazi (svako drzi svoj kod dok se grane ne spoje, Plan integracije
+# odeljak 3.4). Pri spajanju grana: ensure_ai_model postoji u oba modula sa
+# identicnom implementacijom - objediniti u jednu verziju, i EXPLANATION_
+# DEFAULT_MODELS postaje visak u odnosu na Andjin ai_provider.DEFAULT_MODELS
+# (isti sadrzaj) - koristiti samo taj jedan izvor istine.
+# =====================================================================
+
+EXPLANATION_DEFAULT_MODELS = {
+    "groq": "openai/gpt-oss-20b",
+    "gemini": "gemini-2.0-flash",
+    "mistral": "mistral-small-latest",
+}
+
+
+def ensure_ai_model(conn, provider, model_name, model_version=None):
+    """Vraca id postojeceg reda u ai_models, ili ga kreira ako ne postoji."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id FROM ai_models
+        WHERE provider = %s AND model_name = %s AND model_version <=> %s
+        """,
+        (provider, model_name, model_version),
+    )
+    row = cursor.fetchone()
+    if row:
+        cursor.close()
+        return row[0]
+
+    cursor.execute(
+        """
+        INSERT INTO ai_models (provider, model_name, model_version)
+        VALUES (%s, %s, %s)
+        """,
+        (provider, model_name, model_version),
+    )
+    conn.commit()
+    model_id = cursor.lastrowid
+    cursor.close()
+    return model_id
+
+
+def validate_explanation_payload(parsed, mode):
+    """Vraca None ako je JSON iz AI odgovora ispravan za dati rezim, inace
+    string sa opisom greske."""
+    if not isinstance(parsed, dict):
+        return "Odgovor modela mora biti JSON objekat"
+
+    explanation = parsed.get("explanation")
+    if not isinstance(explanation, str) or not explanation.strip():
+        return "Nedostaje ili je prazno explanation"
+
+    if mode == "mode_b":
+        solution = parsed.get("solution")
+        if not isinstance(solution, str) or not solution.strip():
+            return "Nedostaje ili je prazno solution (obavezno za mode_b)"
+    else:  # mode_a
+        if "solution" in parsed:
+            return "mode_a ne sme da vraca solution (resenje je vec poznato)"
+
+    return None
+
+
+@app.post("/api/questions/<int:question_id>/generate-explanation")  # AI generisanje objasnjenja/resenja (rezim A/B)
+@role_required(["TEACHER", "ADMIN"])
+def generate_explanation(question_id):
+    try:
+        mode = request.args.get("mode")
+        if mode not in ("mode_a", "mode_b"):
+            return jsonify({"error": "mode mora biti 'mode_a' ili 'mode_b'"}), 400
+
+        provider = request.args.get("provider", "groq")
+        if provider not in EXPLANATION_DEFAULT_MODELS:
+            return jsonify({"error": f"Nepoznat provider: {provider}"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SELECT * FROM exam_questions WHERE id = %s", (question_id,))
+        question = cursor.fetchone()
+
+        if not question:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Question not found"}), 404
+
+        if mode == "mode_a" and not question.get("reference_solution"):
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "Ovo pitanje nema reference_solution - rezim A zahteva poznato tacno resenje"
+            }), 400
+
+        subject_name = None
+        if question.get("subject_id"):
+            cursor.execute("SELECT name FROM subjects WHERE id = %s", (question["subject_id"],))
+            subject_row = cursor.fetchone()
+            if subject_row:
+                subject_name = subject_row["name"]
+
+        area_name = None
+        if question.get("area_id"):
+            cursor.execute("SELECT name FROM areas WHERE id = %s", (question["area_id"],))
+            area_row = cursor.fetchone()
+            if area_row:
+                area_name = area_row["name"]
+
+        prompt_id, template_text = explanation_prompts.ensure_prompt_synced(conn, mode)
+        prompt_text = explanation_prompts.build_explanation_prompt(
+            template_text,
+            question_text=question["question_text"],
+            subject_name=subject_name,
+            area_name=area_name,
+            correct_solution=question.get("reference_solution") if mode == "mode_a" else None,
+        )
+
+        model_name = EXPLANATION_DEFAULT_MODELS[provider]
+        model_id = ensure_ai_model(conn, provider=provider, model_name=model_name)
+
+        options = {"temperature": 0.7, "model": model_name}
+        result = ai_provider.generate(prompt_text, provider=provider, options=options)
+
+        parsed_result = None
+        validation_errors = None
+
+        if not result.get("success"):
+            validation_errors = result.get("error", "Nepoznata greska pri pozivu AI modela")
+        else:
+            try:
+                parsed_result = json.loads(result["raw_text"])
+            except (ValueError, TypeError):
+                validation_errors = "Odgovor modela nije validan JSON"
+
+            if parsed_result is not None:
+                validation_errors = validate_explanation_payload(parsed_result, mode)
+
+        validation_passed = validation_errors is None and parsed_result is not None
+
+        accuracy_check_passed = None
+        accuracy_check_details = None
+
+        if validation_passed and mode == "mode_b":
+            cursor.execute(
+                """
+                SELECT order_no, input_data, expected_output
+                FROM exam_question_test_cases
+                WHERE question_id = %s
+                ORDER BY order_no ASC
+                """,
+                (question_id,),
+            )
+            test_cases = cursor.fetchall()
+
+            if not test_cases:
+                accuracy_check_details = "Nema definisanih test primera za ovo pitanje - mehanicka provera nije moguca"
+            else:
+                check_result = code_executor.run_against_test_cases(
+                    parsed_result["solution"], test_cases
+                )
+                accuracy_check_passed = 1 if check_result["all_passed"] else 0
+                accuracy_check_details = json.dumps(check_result["results"], ensure_ascii=False)
+
+        cursor.execute(
+            """
+            INSERT INTO ai_generation_runs
+            (model_id, prompt_id, purpose, mode, source_question_id, params_used,
+             raw_response, parsed_result, validation_passed, validation_errors,
+             accuracy_check_passed, accuracy_check_details, response_time_ms,
+             tokens_used, retry_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
+            """,
+            (
+                model_id,
+                prompt_id,
+                explanation_prompts.PURPOSE_EXPLANATION,
+                mode,
+                question_id,
+                json.dumps(options),
+                result.get("raw_text"),
+                json.dumps(parsed_result, ensure_ascii=False) if parsed_result is not None else None,
+                1 if validation_passed else 0,
+                validation_errors,
+                accuracy_check_passed,
+                accuracy_check_details,
+                result.get("response_time_ms"),
+                result.get("tokens_used"),
+            ),
+        )
+        conn.commit()
+        generation_run_id = cursor.lastrowid
+
+        if not validation_passed:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "AI generisanje nije dalo iskoristiv predlog",
+                "details": validation_errors,
+                "generation_run_id": generation_run_id,
+            }), 422
+
+        cursor.execute(
+            """
+            INSERT INTO ai_generated_artifacts
+            (generation_run_id, artifact_type, status, original_text)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (
+                generation_run_id,
+                "explanation",
+                "predlog",
+                json.dumps(parsed_result, ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+        artifact_id = cursor.lastrowid
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "message": "Predlog objasnjenja generisan",
+            "generation_run_id": generation_run_id,
+            "artifact_id": artifact_id,
+            "mode": mode,
+            "accuracy_check_passed": accuracy_check_passed,
+            "proposed_result": parsed_result,
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
