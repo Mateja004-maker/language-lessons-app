@@ -3041,7 +3041,7 @@ def get_question_explanation(question_id):
         WHERE r.source_question_id = %s
           AND r.mode = %s
           AND a.artifact_type = 'explanation'
-          AND a.status IN ('odobreno', 'izmenjeno')
+          AND a.status IN ('prihvaceno', 'prihvaceno_izmena')
         ORDER BY a.reviewed_at DESC, a.id DESC
         LIMIT 1
         """,
@@ -3052,7 +3052,7 @@ def get_question_explanation(question_id):
         cursor.close()
         conn.close()
         return jsonify({
-            "error": "Nema odobrenog predloga objasnjenja za ovo pitanje/rezim"
+            "error": "Nema prihvacenog predloga objasnjenja za ovo pitanje/rezim"
         }), 404
 
     final_text = explanation_rating.get_final_text(artifact)

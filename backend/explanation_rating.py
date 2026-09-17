@@ -15,7 +15,7 @@ class ArtifactNotFoundError(Exception):
 
 class ArtifactNotApprovedError(Exception):
     """Artifact jos nije odobren/izmenjen od strane nastavnika - studenti ne
-    smeju da ga vide/ocene dok je u statusu 'predlog' ili 'odbijeno' (ruta
+    smeju da ga vide/ocene dok je u statusu 'predlog' ili 'odbaceno' (ruta
     treba da vrati 409)."""
 
 
@@ -27,7 +27,7 @@ class RatingValidationError(Exception):
     """Nevalidan ulaz (ruta treba da vrati 400)."""
 
 
-_APPROVED_STATUSES = ("odobreno", "izmenjeno")
+_APPROVED_STATUSES = ("prihvaceno", "prihvaceno_izmena")
 
 
 def get_final_text(artifact_row: dict) -> str:

@@ -27,9 +27,9 @@ class ReviewValidationError(Exception):
 VALID_ACTIONS = ("approve", "edit", "reject")
 
 _STATUS_BY_ACTION = {
-    "approve": "odobreno",
-    "edit": "izmenjeno",
-    "reject": "odbijeno",
+    "approve": "prihvaceno",
+    "edit": "prihvaceno_izmena",
+    "reject": "odbaceno",
 }
 
 
