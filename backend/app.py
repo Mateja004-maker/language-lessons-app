@@ -2667,7 +2667,7 @@ def get_my_results():
 
 EXPLANATION_DEFAULT_MODELS = {
     "groq": "openai/gpt-oss-20b",
-    "gemini": "gemini-2.0-flash",
+    "gemini": "gemini-3.6-flash",
     "mistral": "mistral-small-latest",
 }
 
@@ -2733,8 +2733,17 @@ def generate_explanation(question_id):
         if provider not in EXPLANATION_DEFAULT_MODELS:
             return jsonify({"error": f"Nepoznat provider: {provider}"}), 400
 
+        evaluation_batch_id = request.args.get("evaluation_batch_id", type=int)
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+
+        if evaluation_batch_id is not None:
+            cursor.execute("SELECT id FROM evaluation_batches WHERE id = %s", (evaluation_batch_id,))
+            if not cursor.fetchone():
+                cursor.close()
+                conn.close()
+                return jsonify({"error": f"evaluation_batch_id {evaluation_batch_id} ne postoji"}), 400
 
         cursor.execute("SELECT * FROM exam_questions WHERE id = %s", (question_id,))
         question = cursor.fetchone()
@@ -2826,8 +2835,8 @@ def generate_explanation(question_id):
             (model_id, prompt_id, purpose, mode, source_question_id, params_used,
              raw_response, parsed_result, validation_passed, validation_errors,
              accuracy_check_passed, accuracy_check_details, response_time_ms,
-             tokens_used, retry_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
+             tokens_used, retry_count, evaluation_batch_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
             """,
             (
                 model_id,
@@ -2844,6 +2853,7 @@ def generate_explanation(question_id):
                 accuracy_check_details,
                 result.get("response_time_ms"),
                 result.get("tokens_used"),
+                evaluation_batch_id,
             ),
         )
         conn.commit()
@@ -3099,6 +3109,62 @@ def rate_explanation_artifact_route(artifact_id):
         return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# =====================================================================
+# Evaluacione serije (evaluation_batches) - Andrejev modul.
+# Omogucava obelezavanje generisanja kao dela formalnog, finalnog kruga
+# evaluacije (is_final=1), odvojeno od dev/tuning poziva (evaluation_batch_id
+# ostaje NULL). Vodic za rad sa Claude-om eksplicitno trazi ovu razdvojenost
+# radi naucne validnosti poredjenja modela.
+# =====================================================================
+
+@app.post("/api/evaluation-batches")  # napravi novu evaluacionu seriju (npr. finalni krug poredjenja modela)
+@role_required(["ADMIN"])
+def create_evaluation_batch():
+    try:
+        data = request.get_json(silent=True) or {}
+        name = data.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return jsonify({"error": "name je obavezan"}), 400
+
+        description = data.get("description")
+        is_final = 1 if data.get("is_final") else 0
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO evaluation_batches (name, description, is_final) VALUES (%s, %s, %s)",
+            (name.strip(), description, is_final),
+        )
+        conn.commit()
+        batch_id = cursor.lastrowid
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "id": batch_id,
+            "name": name.strip(),
+            "description": description,
+            "is_final": bool(is_final),
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.get("/api/evaluation-batches")  # lista svih evaluacionih serija
+@role_required(["ADMIN", "TEACHER"])
+def list_evaluation_batches():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, name, description, is_final, created_at FROM evaluation_batches ORDER BY id DESC"
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(rows), 200
 
 
 if __name__ == "__main__":
