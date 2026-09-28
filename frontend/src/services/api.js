@@ -110,6 +110,10 @@ export const getAiArtifact = (id) =>
 export const reviewAiArtifact = (id, data) =>
   api.post(`/ai/artifacts/${id}/review`, data)
 
+// Mistral je privremeno blokiran (429, limit 0 zahteva/min) - dugme je
+// skriveno na ekranima za generisanje; backend ga i dalje podržava.
+export const MISTRAL_ENABLED = false
+
 export const generateSimilarQuestion = (questionId, provider) =>
   api.post(`/questions/${questionId}/generate-similar`, null, {
     params: { provider }

@@ -11,7 +11,8 @@ import {
   getQuestionAnswers,
   updateQuestion,
   deleteQuestion,
-  generateSimilarQuestion
+  generateSimilarQuestion,
+  MISTRAL_ENABLED
 } from '@/services/api'
 
 const route = useRoute()
@@ -567,8 +568,13 @@ onMounted(() => {
             <input type="radio" class="btn-check" id="gen-provider-gemini" value="gemini" v-model="generateProvider" />
             <label class="btn btn-outline-secondary" for="gen-provider-gemini">gemini</label>
 
-            <input type="radio" class="btn-check" id="gen-provider-mistral" value="mistral" v-model="generateProvider" />
-            <label class="btn btn-outline-secondary" for="gen-provider-mistral">mistral</label>
+            <template v-if="MISTRAL_ENABLED">
+              <input type="radio" class="btn-check" id="gen-provider-mistral" value="mistral" v-model="generateProvider" />
+              <label class="btn btn-outline-secondary" for="gen-provider-mistral">mistral</label>
+            </template>
+
+            <input type="radio" class="btn-check" id="gen-provider-openrouter" value="openrouter" v-model="generateProvider" />
+            <label class="btn btn-outline-secondary" for="gen-provider-openrouter">openrouter</label>
           </div>
         </div>
 

@@ -20,8 +20,13 @@
           <input type="radio" class="btn-check" id="provider-gemini" value="gemini" v-model="provider" />
           <label class="btn btn-outline-secondary" for="provider-gemini">gemini</label>
 
-          <input type="radio" class="btn-check" id="provider-mistral" value="mistral" v-model="provider" />
-          <label class="btn btn-outline-secondary" for="provider-mistral">mistral</label>
+          <template v-if="MISTRAL_ENABLED">
+            <input type="radio" class="btn-check" id="provider-mistral" value="mistral" v-model="provider" />
+            <label class="btn btn-outline-secondary" for="provider-mistral">mistral</label>
+          </template>
+
+          <input type="radio" class="btn-check" id="provider-openrouter" value="openrouter" v-model="provider" />
+          <label class="btn btn-outline-secondary" for="provider-openrouter">openrouter</label>
         </div>
         <button class="btn btn-primary" :disabled="loading || !questionId" @click="generate">
           {{ loading ? 'Generišem...' : 'Generiši slično pitanje' }}
@@ -40,7 +45,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { api } from '@/services/api'
+import { api, MISTRAL_ENABLED } from '@/services/api'
 
 const questionId = ref('')
 const provider = ref('groq')
