@@ -3244,7 +3244,57 @@ EXPLANATION_DEFAULT_MODELS = {
     "groq": "openai/gpt-oss-20b",
     "gemini": "gemini-3.6-flash",
     "mistral": "mistral-small-latest",
+    "openrouter": "nvidia/nemotron-3-super-120b-a12b:free",
 }
+
+
+def resolve_explanation_source(cursor, question, mode):
+    """Odredjuje tekst zadatka i poznato resenje koje model dobija. Samo cita.
+    MC vs otvoreno pitanje se odredjuje isto kao u generate_similar_question
+    (prompt_templates.detect_question_type nad exam_answers).
+
+    Vraca {"question_text", "known_solution", "solution_source"} ili
+    {"error": poruka} (ruta vraca 400, pre AI poziva).
+    - mode_b: MC pitanja nisu podrzana (rezim B trazi Python program).
+    - mode_a: reference_solution ima prioritet (ponasanje za programska
+      pitanja se ne menja); inace, za MC pitanje sa tacno jednim tacnim
+      odgovorom, poznato resenje je taj odgovor, a ponudjeni odgovori se
+      dodaju tekstu zadatka.
+    """
+    cursor.execute(
+        "SELECT answer_text, is_correct FROM exam_answers WHERE question_id = %s ORDER BY id ASC",
+        (question["id"],),
+    )
+    answers = cursor.fetchall()
+    question_type = prompt_templates.detect_question_type(answers)
+
+    if mode == "mode_b":
+        if question_type == "mc":
+            return {"error": "Rezim B nije podrzan za MC pitanja"}
+        return {"question_text": question["question_text"], "known_solution": None, "solution_source": None}
+
+    if question.get("reference_solution"):
+        return {
+            "question_text": question["question_text"],
+            "known_solution": question["reference_solution"],
+            "solution_source": "reference_solution",
+        }
+
+    if question_type != "mc":
+        return {"error": "Ovo pitanje nema reference_solution - rezim A zahteva poznato tacno resenje"}
+
+    correct = [a for a in answers if a["is_correct"] == 1]
+    if not correct:
+        return {"error": "MC pitanje nema oznacen tacan odgovor - rezim A zahteva poznato tacno resenje"}
+    if len(correct) > 1:
+        return {"error": "MC pitanje ima vise oznacenih tacnih odgovora - rezim A zahteva jedno poznato tacno resenje"}
+
+    options_text = "\n".join(f"- {a['answer_text']}" for a in answers)
+    return {
+        "question_text": f"{question['question_text']}\n\nPonuđeni odgovori:\n{options_text}",
+        "known_solution": f"Tačan odgovor: {correct[0]['answer_text']}",
+        "solution_source": "mc_correct_answer",
+    }
 
 
 def validate_explanation_payload(parsed, mode):
@@ -3300,12 +3350,11 @@ def generate_explanation(question_id):
             conn.close()
             return jsonify({"error": "Question not found"}), 404
 
-        if mode == "mode_a" and not question.get("reference_solution"):
+        source = resolve_explanation_source(cursor, question, mode)
+        if "error" in source:
             cursor.close()
             conn.close()
-            return jsonify({
-                "error": "Ovo pitanje nema reference_solution - rezim A zahteva poznato tacno resenje"
-            }), 400
+            return jsonify({"error": source["error"]}), 400
 
         subject_name = None
         if question.get("subject_id"):
@@ -3324,10 +3373,10 @@ def generate_explanation(question_id):
         prompt_id, template_text = explanation_prompts.ensure_prompt_synced(conn, mode)
         prompt_text = explanation_prompts.build_explanation_prompt(
             template_text,
-            question_text=question["question_text"],
+            question_text=source["question_text"],
             subject_name=subject_name,
             area_name=area_name,
-            correct_solution=question.get("reference_solution") if mode == "mode_a" else None,
+            correct_solution=source["known_solution"],
         )
 
         model_name = EXPLANATION_DEFAULT_MODELS[provider]
@@ -3391,7 +3440,7 @@ def generate_explanation(question_id):
                 explanation_prompts.PURPOSE_EXPLANATION,
                 mode,
                 question_id,
-                json.dumps(options),
+                json.dumps({**options, "solution_source": source["solution_source"]}),
                 result.get("raw_text"),
                 json.dumps(parsed_result, ensure_ascii=False) if parsed_result is not None else None,
                 1 if validation_passed else 0,
