@@ -1,6 +1,10 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { getExplanationArtifacts } from '@/services/api'
+import { formatDbDate } from '@/services/explanationHelpers'
+
+const router = useRouter()
 
 const STATUSES = [
   { value: 'predlog', label: 'Na čekanju' },
@@ -24,13 +28,8 @@ function accuracyBadge(artifact) {
   return { cls: 'bg-warning text-dark', text: 'Provera tačnosti: nije izvršena' }
 }
 
-// Backend salje datum kao "Mon, 28 Sep 2026 17:35:44 GMT", ali je u bazi
-// lokalno vreme bez zone - zato UTC getteri, da se prikaze tacno vreme iz baze.
-function formatDate(value) {
-  const d = new Date(value)
-  if (!value || Number.isNaN(d.getTime())) return value || ''
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}. ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+function openArtifact(artifact) {
+  router.push(`/ai/objasnjenja/${artifact.id}`)
 }
 
 async function loadArtifacts() {
@@ -83,7 +82,8 @@ onMounted(loadArtifacts)
       <div
         v-for="artifact in artifacts"
         :key="artifact.id"
-        class="card shadow-sm mb-3"
+        class="card shadow-sm mb-3 artifact-card"
+        @click="openArtifact(artifact)"
       >
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start">
@@ -102,7 +102,7 @@ onMounted(loadArtifacts)
             >
               {{ accuracyBadge(artifact).text }}
             </span>
-            <span class="text-muted small">{{ formatDate(artifact.created_at) }}</span>
+            <span class="text-muted small">{{ formatDbDate(artifact.created_at) }}</span>
           </div>
         </div>
       </div>
@@ -114,6 +114,16 @@ onMounted(loadArtifacts)
 .page-title {
   font-size: 2rem;
   font-weight: 800;
+}
+
+.artifact-card {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.artifact-card:hover {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1) !important;
+  transform: translateY(-1px);
 }
 
 .empty-state {
