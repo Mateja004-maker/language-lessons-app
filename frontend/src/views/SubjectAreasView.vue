@@ -12,6 +12,7 @@ import {
   updateQuestion,
   deleteQuestion,
   generateSimilarQuestion,
+  generateExplanation,
   MISTRAL_ENABLED
 } from '@/services/api'
 
@@ -60,6 +61,14 @@ const generateQuestion = ref(null)
 const generateProvider = ref('groq')
 const generateError = ref('')
 const generating = ref(false)
+
+const showExplainModal = ref(false)
+const explainQuestion = ref(null)
+const explainMode = ref('mode_a')
+const explainProvider = ref('groq')
+const explainError = ref('')
+const explaining = ref(false)
+const explainResult = ref(null)
 
 async function loadSubjectName() {
   try {
@@ -307,6 +316,45 @@ async function submitGenerate() {
   }
 }
 
+// Objasnjenje ima smisla samo kad postoji poznato tacno resenje (rezim A):
+// MC pitanje (tacan odgovor iz exam_answers) ili pitanje sa reference_solution.
+function canExplain(question) {
+  return question.answer_count > 0 || question.has_reference_solution
+}
+
+// Rezim B (model sam pise Python resenje) backend odbija za MC pitanja.
+function isMcQuestion(question) {
+  return question?.answer_count > 0
+}
+
+function openExplainModal(question) {
+  explainQuestion.value = question
+  explainMode.value = 'mode_a'
+  explainProvider.value = 'groq'
+  explainError.value = ''
+  explainResult.value = null
+  showExplainModal.value = true
+}
+
+function closeExplainModal() {
+  if (explaining.value) return
+  showExplainModal.value = false
+}
+
+async function submitExplain() {
+  explainError.value = ''
+  explainResult.value = null
+  explaining.value = true
+  try {
+    const { data } = await generateExplanation(explainQuestion.value.id, explainMode.value, explainProvider.value)
+    explainResult.value = data
+  } catch (e) {
+    explainError.value = e?.response?.data?.details || e?.response?.data?.error || 'Ne mogu da pokrenem generisanje objašnjenja.'
+  } finally {
+    explaining.value = false
+  }
+}
+
 onMounted(() => {
   loadSubjectName()
   loadAreas()
@@ -397,6 +445,10 @@ onMounted(() => {
                 <button class="btn btn-outline-info btn-sm" @click="openGenerateModal(q)">
                   <i class="fa-solid fa-wand-magic-sparkles me-1"></i>
                   Generiši slično
+                </button>
+                <button v-if="canExplain(q)" class="btn btn-outline-success btn-sm" @click="openExplainModal(q)">
+                  <i class="fa-solid fa-lightbulb me-1"></i>
+                  Generiši objašnjenje
                 </button>
                 <button class="btn btn-outline-warning btn-sm" @click="openEditModal(area, q)">
                   <i class="fa-solid fa-pen me-1"></i>
@@ -586,6 +638,87 @@ onMounted(() => {
             <span v-if="generating" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
             <i v-else class="fa-solid fa-wand-magic-sparkles me-2"></i>
             {{ generating ? 'Generišem...' : 'Generiši' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showExplainModal" class="question-modal-backdrop" @click.self="closeExplainModal">
+      <div class="question-modal-card">
+        <h5 class="mb-3">
+          <i class="fa-solid fa-lightbulb me-2"></i>
+          Generiši objašnjenje
+        </h5>
+
+        <p class="text-muted small mb-3">
+          Pitanje: "{{ explainQuestion?.question_text }}"
+        </p>
+
+        <div v-if="explainError" class="alert alert-danger">{{ explainError }}</div>
+
+        <div v-if="explainResult" class="alert alert-success">
+          Predlog objašnjenja #{{ explainResult.artifact_id }} je sačuvan i čeka pregled nastavnika.
+          <div v-if="explainResult.mode === 'mode_b'" class="small mt-1">
+            Mehanička provera rešenja:
+            <strong v-if="explainResult.accuracy_check_passed === 1">prošla</strong>
+            <strong v-else-if="explainResult.accuracy_check_passed === 0">nije prošla</strong>
+            <strong v-else>nije izvršena (nema test primera)</strong>
+          </div>
+        </div>
+
+        <template v-else>
+          <div class="mb-3">
+            <label class="form-label d-block">Režim</label>
+            <div class="btn-group" role="group">
+              <input type="radio" class="btn-check" id="exp-mode-a" value="mode_a" v-model="explainMode" />
+              <label class="btn btn-outline-secondary" for="exp-mode-a">A: uz poznato rešenje</label>
+
+              <input
+                type="radio"
+                class="btn-check"
+                id="exp-mode-b"
+                value="mode_b"
+                v-model="explainMode"
+                :disabled="isMcQuestion(explainQuestion)"
+              />
+              <label class="btn btn-outline-secondary" for="exp-mode-b">B: model rešava sam</label>
+            </div>
+            <div v-if="isMcQuestion(explainQuestion)" class="form-text">
+              Režim B nije dostupan za pitanja sa ponuđenim odgovorima.
+            </div>
+            <div v-else-if="explainMode === 'mode_b'" class="form-text">
+              U režimu B rešenje modela se automatski izvršava nad test primerima pitanja.
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label d-block">Model</label>
+            <div class="btn-group" role="group">
+              <input type="radio" class="btn-check" id="exp-provider-groq" value="groq" v-model="explainProvider" />
+              <label class="btn btn-outline-secondary" for="exp-provider-groq">groq</label>
+
+              <input type="radio" class="btn-check" id="exp-provider-gemini" value="gemini" v-model="explainProvider" />
+              <label class="btn btn-outline-secondary" for="exp-provider-gemini">gemini</label>
+
+              <template v-if="MISTRAL_ENABLED">
+                <input type="radio" class="btn-check" id="exp-provider-mistral" value="mistral" v-model="explainProvider" />
+                <label class="btn btn-outline-secondary" for="exp-provider-mistral">mistral</label>
+              </template>
+
+              <input type="radio" class="btn-check" id="exp-provider-openrouter" value="openrouter" v-model="explainProvider" />
+              <label class="btn btn-outline-secondary" for="exp-provider-openrouter">openrouter</label>
+            </div>
+          </div>
+        </template>
+
+        <div class="d-flex justify-content-end gap-2">
+          <button class="btn btn-secondary" :disabled="explaining" @click="closeExplainModal">
+            {{ explainResult ? 'Zatvori' : 'Otkaži' }}
+          </button>
+          <button v-if="!explainResult" class="btn btn-primary" :disabled="explaining" @click="submitExplain">
+            <span v-if="explaining" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            <i v-else class="fa-solid fa-lightbulb me-2"></i>
+            {{ explaining ? 'Generišem...' : 'Generiši' }}
           </button>
         </div>
       </div>
