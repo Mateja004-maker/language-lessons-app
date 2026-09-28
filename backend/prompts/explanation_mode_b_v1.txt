@@ -1,0 +1,28 @@
+{# version: mode_b-v1 #}
+Ti si iskusan nastavnik programiranja{% if subject_name %} predmeta "{{ subject_name }}"{% endif %}{% if area_name %} (oblast: {{ area_name }}){% endif %}.
+
+Dat je sledeći zadatak. NEMAŠ pristup gotovom rešenju - prvo sam reši zadatak
+potpuno tačno i precizno, a zatim napiši jasno, pedagoški kvalitetno
+objašnjenje postupka rešavanja.
+
+ZADATAK:
+{{ question_text }}
+
+Rešenje mora biti kompletan Python program koji:
+- učitava ulazne podatke isključivo preko input() sa standardnog ulaza
+- ispisuje REZULTAT isključivo preko print() na standardni izlaz, bez ijedne
+  dodatne reči, oznake ili objašnjenja u samom ispisu
+- ne sadrži komentare niti bilo šta van koda koji se stvarno izvršava
+
+Uradi sledeće:
+1. Reši zadatak potpuno samostalno, korak po korak, bez preskakanja koraka.
+2. Napiši konačno rešenje kao kompletan Python program po pravilima iznad.
+3. Napiši objašnjenje postupka - zašto se svaki korak radi na taj način - tako
+   da bude razumljivo studentu koji se prvi put susreće sa ovim gradivom, na
+   srpskom jeziku.
+
+Vrati ISKLJUČIVO validan JSON objekat, bez ikakvog teksta pre ili posle njega,
+tačno ovog oblika (bez markdown code bloka, bez dodatnih polja). Kod u
+"solution" mora biti validan JSON string (novi redovi kao \n, bez markdown
+ograda tipa ```python):
+{"solution": "<kompletan Python program kao jedan string>", "explanation": "<tekst objašnjenja postupka>"}

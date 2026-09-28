@@ -37,10 +37,14 @@ LESSON_IMAGE_FOLDER.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 load_dotenv(BASE_DIR / ".env", override=True)
 
-# ai_provider čita GROQ_API_KEY iz environment-a na nivou modula, pa import
-# mora doći POSLE load_dotenv() - inače uhvati prazan/stari ključ.
+# ai_provider i explanation_prompts čitaju konfiguraciju iz environment-a na
+# nivou modula, pa importi moraju doći POSLE load_dotenv().
 import ai_provider
 import prompt_templates
+import explanation_prompts
+import code_executor
+import explanation_review
+import explanation_rating
 
 
 # =========================
@@ -3223,6 +3227,491 @@ def get_my_results():
 # =========================
 # 9) Run
 # =========================
+
+
+# =====================================================================
+# AI generisanje objasnjenja/resenja (Andrejev modul).
+# Isti obrazac kao Andjine funkcije za generisanje pitanja (ensure_ai_model /
+# ai_generation_runs / ai_generated_artifacts) - NAMERNO odvojena kopija u
+# ovoj fazi (svako drzi svoj kod dok se grane ne spoje, Plan integracije
+# odeljak 3.4). Pri spajanju grana ensure_ai_model je objedinjen - koristi se
+# jedna verzija iz sekcije Helpers. EXPLANATION_DEFAULT_MODELS postaje visak
+# u odnosu na Andjin ai_provider.DEFAULT_MODELS
+# (isti sadrzaj) - koristiti samo taj jedan izvor istine.
+# =====================================================================
+
+EXPLANATION_DEFAULT_MODELS = {
+    "groq": "openai/gpt-oss-20b",
+    "gemini": "gemini-3.6-flash",
+    "mistral": "mistral-small-latest",
+}
+
+
+def validate_explanation_payload(parsed, mode):
+    """Vraca None ako je JSON iz AI odgovora ispravan za dati rezim, inace
+    string sa opisom greske."""
+    if not isinstance(parsed, dict):
+        return "Odgovor modela mora biti JSON objekat"
+
+    explanation = parsed.get("explanation")
+    if not isinstance(explanation, str) or not explanation.strip():
+        return "Nedostaje ili je prazno explanation"
+
+    if mode == "mode_b":
+        solution = parsed.get("solution")
+        if not isinstance(solution, str) or not solution.strip():
+            return "Nedostaje ili je prazno solution (obavezno za mode_b)"
+    else:  # mode_a
+        if "solution" in parsed:
+            return "mode_a ne sme da vraca solution (resenje je vec poznato)"
+
+    return None
+
+
+@app.post("/api/questions/<int:question_id>/generate-explanation")  # AI generisanje objasnjenja/resenja (rezim A/B)
+@role_required(["TEACHER", "ADMIN"])
+def generate_explanation(question_id):
+    try:
+        mode = request.args.get("mode")
+        if mode not in ("mode_a", "mode_b"):
+            return jsonify({"error": "mode mora biti 'mode_a' ili 'mode_b'"}), 400
+
+        provider = request.args.get("provider", "groq")
+        if provider not in EXPLANATION_DEFAULT_MODELS:
+            return jsonify({"error": f"Nepoznat provider: {provider}"}), 400
+
+        evaluation_batch_id = request.args.get("evaluation_batch_id", type=int)
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        if evaluation_batch_id is not None:
+            cursor.execute("SELECT id FROM evaluation_batches WHERE id = %s", (evaluation_batch_id,))
+            if not cursor.fetchone():
+                cursor.close()
+                conn.close()
+                return jsonify({"error": f"evaluation_batch_id {evaluation_batch_id} ne postoji"}), 400
+
+        cursor.execute("SELECT * FROM exam_questions WHERE id = %s", (question_id,))
+        question = cursor.fetchone()
+
+        if not question:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Question not found"}), 404
+
+        if mode == "mode_a" and not question.get("reference_solution"):
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "Ovo pitanje nema reference_solution - rezim A zahteva poznato tacno resenje"
+            }), 400
+
+        subject_name = None
+        if question.get("subject_id"):
+            cursor.execute("SELECT name FROM subjects WHERE id = %s", (question["subject_id"],))
+            subject_row = cursor.fetchone()
+            if subject_row:
+                subject_name = subject_row["name"]
+
+        area_name = None
+        if question.get("area_id"):
+            cursor.execute("SELECT name FROM areas WHERE id = %s", (question["area_id"],))
+            area_row = cursor.fetchone()
+            if area_row:
+                area_name = area_row["name"]
+
+        prompt_id, template_text = explanation_prompts.ensure_prompt_synced(conn, mode)
+        prompt_text = explanation_prompts.build_explanation_prompt(
+            template_text,
+            question_text=question["question_text"],
+            subject_name=subject_name,
+            area_name=area_name,
+            correct_solution=question.get("reference_solution") if mode == "mode_a" else None,
+        )
+
+        model_name = EXPLANATION_DEFAULT_MODELS[provider]
+        model_id = ensure_ai_model(conn, provider=provider, model_name=model_name)
+
+        options = {"temperature": 0.7, "model": model_name}
+        result = ai_provider.generate(prompt_text, provider=provider, options=options)
+
+        parsed_result = None
+        validation_errors = None
+
+        if not result.get("success"):
+            validation_errors = result.get("error", "Nepoznata greska pri pozivu AI modela")
+        else:
+            try:
+                parsed_result = json.loads(result["raw_text"])
+            except (ValueError, TypeError):
+                validation_errors = "Odgovor modela nije validan JSON"
+
+            if parsed_result is not None:
+                validation_errors = validate_explanation_payload(parsed_result, mode)
+
+        validation_passed = validation_errors is None and parsed_result is not None
+
+        accuracy_check_passed = None
+        accuracy_check_details = None
+
+        if validation_passed and mode == "mode_b":
+            cursor.execute(
+                """
+                SELECT order_no, input_data, expected_output
+                FROM exam_question_test_cases
+                WHERE question_id = %s
+                ORDER BY order_no ASC
+                """,
+                (question_id,),
+            )
+            test_cases = cursor.fetchall()
+
+            if not test_cases:
+                accuracy_check_details = "Nema definisanih test primera za ovo pitanje - mehanicka provera nije moguca"
+            else:
+                check_result = code_executor.run_against_test_cases(
+                    parsed_result["solution"], test_cases
+                )
+                accuracy_check_passed = 1 if check_result["all_passed"] else 0
+                accuracy_check_details = json.dumps(check_result["results"], ensure_ascii=False)
+
+        cursor.execute(
+            """
+            INSERT INTO ai_generation_runs
+            (model_id, prompt_id, purpose, mode, source_question_id, params_used,
+             raw_response, parsed_result, validation_passed, validation_errors,
+             accuracy_check_passed, accuracy_check_details, response_time_ms,
+             tokens_used, retry_count, evaluation_batch_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
+            """,
+            (
+                model_id,
+                prompt_id,
+                explanation_prompts.PURPOSE_EXPLANATION,
+                mode,
+                question_id,
+                json.dumps(options),
+                result.get("raw_text"),
+                json.dumps(parsed_result, ensure_ascii=False) if parsed_result is not None else None,
+                1 if validation_passed else 0,
+                validation_errors,
+                accuracy_check_passed,
+                accuracy_check_details,
+                result.get("response_time_ms"),
+                result.get("tokens_used"),
+                evaluation_batch_id,
+            ),
+        )
+        conn.commit()
+        generation_run_id = cursor.lastrowid
+
+        if not validation_passed:
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "AI generisanje nije dalo iskoristiv predlog",
+                "details": validation_errors,
+                "generation_run_id": generation_run_id,
+            }), 422
+
+        cursor.execute(
+            """
+            INSERT INTO ai_generated_artifacts
+            (generation_run_id, artifact_type, status, original_text)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (
+                generation_run_id,
+                "explanation",
+                "predlog",
+                json.dumps(parsed_result, ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+        artifact_id = cursor.lastrowid
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "message": "Predlog objasnjenja generisan",
+            "generation_run_id": generation_run_id,
+            "artifact_id": artifact_id,
+            "mode": mode,
+            "accuracy_check_passed": accuracy_check_passed,
+            "proposed_result": parsed_result,
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# =====================================================================
+# Nastavnicki pregled predloga objasnjenja/resenja (Andrejev modul).
+# Poslovna logika je u explanation_review.py (testirana nezavisno od
+# Flask sloja) - ove rute su tanak HTTP omotac oko nje.
+# =====================================================================
+
+@app.get("/api/ai-artifacts/explanation")  # lista predloga objasnjenja za pregled (podrazumevano status=predlog)
+@role_required(["TEACHER", "ADMIN"])
+def list_explanation_artifacts():
+    status = request.args.get("status", "predlog")
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """
+        SELECT a.id, a.status, a.created_at, a.reviewed_at,
+               r.mode, r.source_question_id, r.accuracy_check_passed,
+               q.question_text
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        LEFT JOIN exam_questions q ON q.id = r.source_question_id
+        WHERE a.artifact_type = 'explanation' AND a.status = %s
+        ORDER BY a.created_at ASC
+        """,
+        (status,),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(rows), 200
+
+
+@app.get("/api/ai-artifacts/explanation/<int:artifact_id>")  # detalji jednog predloga + TEACHER rubrika za formu ocenjivanja
+@role_required(["TEACHER", "ADMIN"])
+def get_explanation_artifact(artifact_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """
+        SELECT a.id, a.status, a.original_text, a.edited_text,
+               a.rejection_reason, a.reviewed_by, a.reviewed_at, a.created_at,
+               r.mode, r.source_question_id, r.accuracy_check_passed,
+               r.accuracy_check_details, q.question_text
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        LEFT JOIN exam_questions q ON q.id = r.source_question_id
+        WHERE a.id = %s AND a.artifact_type = 'explanation'
+        """,
+        (artifact_id,),
+    )
+    artifact = cursor.fetchone()
+    if not artifact:
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "Artifact not found"}), 404
+
+    cursor.execute(
+        """
+        SELECT dimension_key, dimension_label, scale_min, scale_max
+        FROM ai_rubric_definitions
+        WHERE applies_to = 'explanation' AND evaluator_role = 'TEACHER'
+        """
+    )
+    rubric_definitions = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "artifact": artifact,
+        "rubric_definitions": rubric_definitions,
+    }), 200
+
+
+@app.post("/api/ai-artifacts/explanation/<int:artifact_id>/review")  # nastavnicka odluka: approve/edit/reject + rubrika ocene
+@role_required(["TEACHER", "ADMIN"])
+def review_explanation_artifact_route(artifact_id):
+    try:
+        data = request.get_json(silent=True) or {}
+        action = data.get("action")
+        edited_text = data.get("edited_text")
+        rejection_reason = data.get("rejection_reason")
+        scores = data.get("scores")
+
+        # Isti obrazac za id ulogovanog korisnika kao ostale @role_required
+        # rute u app.py (npr. create_lesson, generate_explanation).
+        reviewer_id = get_jwt_identity()
+
+        conn = get_db_connection()
+        try:
+            result = explanation_review.review_explanation_artifact(
+                conn,
+                artifact_id=artifact_id,
+                reviewer_id=reviewer_id,
+                action=action,
+                edited_text=edited_text,
+                rejection_reason=rejection_reason,
+                scores=scores,
+            )
+        finally:
+            conn.close()
+
+        return jsonify({
+            "message": "Pregled sacuvan",
+            **result,
+        }), 200
+
+    except explanation_review.ArtifactNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except explanation_review.ArtifactStateError as e:
+        return jsonify({"error": str(e)}), 409
+    except explanation_review.ReviewValidationError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# =====================================================================
+# Studentsko ocenjivanje korisnosti odobrenih predloga (Andrejev modul).
+# Poslovna logika je u explanation_rating.py (testirana nezavisno od
+# Flask sloja) - ove rute su tanak HTTP omotac oko nje. Isti obrazac za
+# identitet korisnika (get_jwt_identity()) kao u vec ugradjenoj
+# review_explanation_artifact_route - vec potvrdjen u prethodnom koraku,
+# nema potrebe za ponovnom proverom.
+# =====================================================================
+
+@app.get("/api/questions/<int:question_id>/explanation")  # odobren/izmenjen sadrzaj objasnjenja za dati rezim - ono sto student stvarno vidi
+@role_required(["STUDENT", "TEACHER", "ADMIN"])
+def get_question_explanation(question_id):
+    mode = request.args.get("mode")
+    if mode not in ("mode_a", "mode_b"):
+        return jsonify({"error": "mode mora biti 'mode_a' ili 'mode_b'"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """
+        SELECT a.id AS artifact_id, a.status, a.original_text, a.edited_text
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        WHERE r.source_question_id = %s
+          AND r.mode = %s
+          AND a.artifact_type = 'explanation'
+          AND a.status IN ('prihvaceno', 'prihvaceno_izmena')
+        ORDER BY a.reviewed_at DESC, a.id DESC
+        LIMIT 1
+        """,
+        (question_id, mode),
+    )
+    artifact = cursor.fetchone()
+    if not artifact:
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "error": "Nema prihvacenog predloga objasnjenja za ovo pitanje/rezim"
+        }), 404
+
+    final_text = explanation_rating.get_final_text(artifact)
+    content = json.loads(final_text)
+
+    cursor.execute(
+        """
+        SELECT dimension_key, dimension_label, scale_min, scale_max
+        FROM ai_rubric_definitions
+        WHERE applies_to = 'explanation' AND evaluator_role = 'STUDENT'
+        """
+    )
+    rubric_definitions = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "artifact_id": artifact["artifact_id"],
+        "mode": mode,
+        "content": content,
+        "rubric_definitions": rubric_definitions,
+    }), 200
+
+
+@app.post("/api/ai-artifacts/explanation/<int:artifact_id>/rate")  # studentska ocena korisnosti (STUDENT rubrika)
+@role_required(["STUDENT"])
+def rate_explanation_artifact_route(artifact_id):
+    try:
+        data = request.get_json(silent=True) or {}
+        scores = data.get("scores")
+        student_id = get_jwt_identity()
+
+        conn = get_db_connection()
+        try:
+            result = explanation_rating.submit_student_rating(
+                conn,
+                artifact_id=artifact_id,
+                student_id=student_id,
+                scores=scores,
+            )
+        finally:
+            conn.close()
+
+        return jsonify({
+            "message": "Ocena sacuvana",
+            **result,
+        }), 200
+
+    except explanation_rating.ArtifactNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except (explanation_rating.ArtifactNotApprovedError, explanation_rating.AlreadyRatedError) as e:
+        return jsonify({"error": str(e)}), 409
+    except explanation_rating.RatingValidationError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# =====================================================================
+# Evaluacione serije (evaluation_batches) - Andrejev modul.
+# Omogucava obelezavanje generisanja kao dela formalnog, finalnog kruga
+# evaluacije (is_final=1), odvojeno od dev/tuning poziva (evaluation_batch_id
+# ostaje NULL). Vodic za rad sa Claude-om eksplicitno trazi ovu razdvojenost
+# radi naucne validnosti poredjenja modela.
+# =====================================================================
+
+@app.post("/api/evaluation-batches")  # napravi novu evaluacionu seriju (npr. finalni krug poredjenja modela)
+@role_required(["ADMIN"])
+def create_evaluation_batch():
+    try:
+        data = request.get_json(silent=True) or {}
+        name = data.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return jsonify({"error": "name je obavezan"}), 400
+
+        description = data.get("description")
+        is_final = 1 if data.get("is_final") else 0
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO evaluation_batches (name, description, is_final) VALUES (%s, %s, %s)",
+            (name.strip(), description, is_final),
+        )
+        conn.commit()
+        batch_id = cursor.lastrowid
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "id": batch_id,
+            "name": name.strip(),
+            "description": description,
+            "is_final": bool(is_final),
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.get("/api/evaluation-batches")  # lista svih evaluacionih serija
+@role_required(["ADMIN", "TEACHER"])
+def list_evaluation_batches():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, name, description, is_final, created_at FROM evaluation_batches ORDER BY id DESC"
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(rows), 200
 
 
 if __name__ == "__main__":

@@ -145,14 +145,26 @@ def generate(prompt: str, provider: str = "groq", options: dict | None = None) -
     """
     options = options or {}
     temperature = options.get("temperature", 0.7)
+    # Aditivna izmena (02.09.2026, Andrej): omogucava eksplicitno prosledjivanje
+    # imena modela kroz options["model"], da bi se resio nepostojeci default
+    # groq model (llama-3.1-8b-instant vise ne postoji na Groq API-ju). Ne menja
+    # ponasanje postojecih poziva koji ne prosledjuju "model" - i dalje padaju
+    # na iste hardkodovane default-e kao do sada (ukljucujuci Andjine pozive).
+    model = options.get("model")
 
     if provider == "groq":
+        if model is not None:
+            return _call_groq(prompt, temperature=temperature, model=model)
         return _call_groq(prompt, temperature=temperature)
 
     elif provider == "gemini":
+        if model is not None:
+            return _call_gemini(prompt, temperature=temperature, model=model)
         return _call_gemini(prompt, temperature=temperature)
 
     elif provider == "mistral":
+        if model is not None:
+            return _call_mistral(prompt, temperature=temperature, model=model)
         return _call_mistral(prompt, temperature=temperature)
 
     return {"success": False, "error": f"Nepoznat provider: {provider}"}
