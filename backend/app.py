@@ -3620,12 +3620,40 @@ def review_explanation_artifact_route(artifact_id):
 # nema potrebe za ponovnom proverom.
 # =====================================================================
 
+def student_completed_question(student_id, question_id):
+    """True ako student ima zavrsen (COMPLETED) pokusaj testa koji sadrzi dato
+    pitanje (preko exam_test_questions). Objasnjenje MC pitanja otkriva tacan
+    odgovor, pa ga student sme da vidi/oceni tek posle svog zavrsenog pokusaja."""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT 1
+            FROM exam_attempts ea
+            JOIN exam_test_questions etq ON etq.exam_id = ea.exam_id
+            WHERE ea.student_id = %s
+              AND ea.status = 'COMPLETED'
+              AND etq.question_id = %s
+            LIMIT 1
+            """,
+            (student_id, question_id),
+        )
+        return cur.fetchone() is not None
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.get("/api/questions/<int:question_id>/explanation")  # odobren/izmenjen sadrzaj objasnjenja za dati rezim - ono sto student stvarno vidi
 @role_required(["STUDENT", "TEACHER", "ADMIN"])
 def get_question_explanation(question_id):
     mode = request.args.get("mode")
     if mode not in ("mode_a", "mode_b"):
         return jsonify({"error": "mode mora biti 'mode_a' ili 'mode_b'"}), 400
+
+    if get_jwt().get("role") == "STUDENT" and not student_completed_question(int(get_jwt_identity()), question_id):
+        return jsonify({"error": "Forbidden"}), 403
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -3683,6 +3711,23 @@ def rate_explanation_artifact_route(artifact_id):
 
         conn = get_db_connection()
         try:
+            # Pitanje artefakta; ako artefakt ne postoji, submit_student_rating
+            # ispod vraca 404 kao i ranije.
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT r.source_question_id
+                FROM ai_generated_artifacts a
+                JOIN ai_generation_runs r ON r.id = a.generation_run_id
+                WHERE a.id = %s
+                """,
+                (artifact_id,),
+            )
+            row = cursor.fetchone()
+            cursor.close()
+            if row and not student_completed_question(int(student_id), row["source_question_id"]):
+                return jsonify({"error": "Forbidden"}), 403
+
             result = explanation_rating.submit_student_rating(
                 conn,
                 artifact_id=artifact_id,
