@@ -196,6 +196,7 @@ def ensure_ai_model(conn, provider, model_name, model_version=None):
 
 # Pomoćne funkcije/konstante za pregled i odobravanje AI predloga
 # (ai_generated_artifacts.status / ai_rubric_definitions / ai_evaluations).
+ARTIFACT_TYPE_QUESTION = "question"
 ARTIFACT_STATUS_PENDING = "predlog"
 ARTIFACT_STATUS_ACCEPTED = "prihvaceno"
 ARTIFACT_STATUS_ACCEPTED_EDITED = "prihvaceno_izmena"
@@ -2524,9 +2525,9 @@ def list_ai_artifacts():
             LEFT JOIN exam_questions sq ON sq.id = r.source_question_id
             LEFT JOIN subjects s ON s.id = sq.subject_id
             LEFT JOIN areas ar ON ar.id = sq.area_id
-            WHERE a.status = %s
+            WHERE a.status = %s AND a.artifact_type = %s
             ORDER BY a.created_at DESC
-        """, (status_filter,))
+        """, (status_filter, ARTIFACT_TYPE_QUESTION))
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -2575,8 +2576,8 @@ def get_ai_artifact(artifact_id):
             LEFT JOIN exam_questions sq ON sq.id = r.source_question_id
             LEFT JOIN subjects s ON s.id = sq.subject_id
             LEFT JOIN areas ar ON ar.id = sq.area_id
-            WHERE a.id = %s
-        """, (artifact_id,))
+            WHERE a.id = %s AND a.artifact_type = %s
+        """, (artifact_id, ARTIFACT_TYPE_QUESTION))
         artifact = cursor.fetchone()
 
         if not artifact:
@@ -2651,8 +2652,8 @@ def review_ai_artifact(artifact_id):
                    r.source_question_id
             FROM ai_generated_artifacts a
             JOIN ai_generation_runs r ON r.id = a.generation_run_id
-            WHERE a.id = %s
-        """, (artifact_id,))
+            WHERE a.id = %s AND a.artifact_type = %s
+        """, (artifact_id, ARTIFACT_TYPE_QUESTION))
         artifact = cursor.fetchone()
 
         if not artifact:
