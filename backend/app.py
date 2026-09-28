@@ -3230,6 +3230,92 @@ def get_my_results():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.get("/api/my-results/<int:attempt_id>") #detalj jednog zavrsenog pokusaja za studenta, po pitanjima
+@role_required(["STUDENT"])
+def get_my_result_detail(attempt_id):
+    try:
+        user_id = int(get_jwt_identity())
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT ea.id, ea.exam_id, ea.student_id, ea.score, ea.total_points AS total,
+                   ea.submitted_at, ea.status, e.title
+            FROM exam_attempts ea
+            JOIN exams e ON e.id = ea.exam_id
+            WHERE ea.id = %s
+        """, (attempt_id,))
+        attempt = cursor.fetchone()
+
+        if not attempt:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Attempt not found"}), 404
+
+        if attempt["student_id"] != user_id or attempt["status"] != "COMPLETED":
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Forbidden"}), 403
+
+        # Pitanja iz testa (exam_test_questions); LEFT JOIN da se vide i pitanja
+        # na koja student nije odgovorio.
+        cursor.execute("""
+            SELECT etq.question_id, etq.order_no, eq.question_text, eq.points,
+                   eaa.answer_id, chosen.answer_text AS student_answer_text,
+                   eaa.is_correct, eaa.points_awarded
+            FROM exam_test_questions etq
+            JOIN exam_questions eq ON eq.id = etq.question_id
+            LEFT JOIN exam_attempt_answers eaa
+                   ON eaa.attempt_id = %s AND eaa.question_id = etq.question_id
+            LEFT JOIN exam_answers chosen ON chosen.id = eaa.answer_id
+            WHERE etq.exam_id = %s
+            ORDER BY etq.order_no ASC, etq.question_id ASC
+        """, (attempt_id, attempt["exam_id"]))
+        questions = cursor.fetchall()
+
+        # Poslednje ODOBRENO objasnjenje po pitanju - isti izbor (reviewed_at,
+        # pa id) kao GET /api/questions/<id>/explanation, da explanation_mode
+        # vodi na isti artefakt.
+        explanation_by_question = {}
+        question_ids = [q["question_id"] for q in questions]
+        if question_ids:
+            placeholders = ",".join(["%s"] * len(question_ids))
+            cursor.execute(f"""
+                SELECT a.id AS artifact_id, r.mode, r.source_question_id,
+                       EXISTS (
+                           SELECT 1 FROM ai_evaluations ev
+                           WHERE ev.artifact_id = a.id AND ev.evaluator_id = %s
+                             AND ev.evaluator_role = 'STUDENT'
+                       ) AS already_rated
+                FROM ai_generated_artifacts a
+                JOIN ai_generation_runs r ON r.id = a.generation_run_id
+                WHERE r.source_question_id IN ({placeholders})
+                  AND a.artifact_type = 'explanation'
+                  AND a.status IN ('prihvaceno', 'prihvaceno_izmena')
+                ORDER BY a.reviewed_at DESC, a.id DESC
+            """, (user_id, *question_ids))
+            for row in cursor.fetchall():
+                explanation_by_question.setdefault(row["source_question_id"], row)
+
+        cursor.close()
+        conn.close()
+
+        for q in questions:
+            q["answered"] = q["answer_id"] is not None
+            q["is_correct"] = bool(q["is_correct"]) if q["answered"] else None
+            explanation = explanation_by_question.get(q["question_id"])
+            q["explanation_artifact_id"] = explanation["artifact_id"] if explanation else None
+            q["explanation_mode"] = explanation["mode"] if explanation else None
+            q["already_rated"] = bool(explanation["already_rated"]) if explanation else False
+
+        del attempt["student_id"]
+        return jsonify({"attempt": attempt, "questions": questions}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 # =========================
 # 9) Run
 # =========================
