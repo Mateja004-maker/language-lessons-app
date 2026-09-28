@@ -118,3 +118,34 @@ export const generateSimilarQuestion = (questionId, provider) =>
   api.post(`/questions/${questionId}/generate-similar`, null, {
     params: { provider }
   })
+
+// =========================
+// AI OBJASNJENJA API (Andrejev modul)
+// =========================
+
+// mode: 'mode_a' | 'mode_b'; evaluationBatchId je opcion (bez njega run je
+// razvojna proba) - axios izostavlja undefined parametre.
+export const generateExplanation = (questionId, mode, provider, evaluationBatchId) =>
+  api.post(`/questions/${questionId}/generate-explanation`, null, {
+    params: { mode, provider, evaluation_batch_id: evaluationBatchId }
+  })
+
+export const getExplanationArtifacts = (status = 'predlog') =>
+  api.get('/ai-artifacts/explanation', { params: { status } })
+
+export const getExplanationArtifact = (id) =>
+  api.get(`/ai-artifacts/explanation/${id}`)
+
+// data: { action: 'approve' | 'edit' | 'reject', scores, edited_text, rejection_reason }
+// edited_text mora biti JSON string istog oblika kao original
+// ({"explanation": ...} ili {"solution": ..., "explanation": ...}) - studentska
+// ruta ga parsira sa json.loads.
+export const reviewExplanationArtifact = (id, data) =>
+  api.post(`/ai-artifacts/explanation/${id}/review`, data)
+
+export const getQuestionExplanation = (questionId, mode) =>
+  api.get(`/questions/${questionId}/explanation`, { params: { mode } })
+
+// scores: [{ dimension_key, score, comment? }] za sve STUDENT dimenzije
+export const rateExplanationArtifact = (id, scores) =>
+  api.post(`/ai-artifacts/explanation/${id}/rate`, { scores })
