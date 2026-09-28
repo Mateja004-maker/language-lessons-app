@@ -27,7 +27,7 @@ MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 # upisan u ai_models ostane dosledan modelu koji se stvarno poziva.
 DEFAULT_MODELS = {
     "groq": "openai/gpt-oss-20b",
-    "gemini": "gemini-2.0-flash",
+    "gemini": "gemini-3.6-flash",
     "mistral": "mistral-small-latest",
 }
 
