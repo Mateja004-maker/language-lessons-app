@@ -20,6 +20,7 @@ import SubjectsView from '@/views/SubjectsView.vue'
 import SubjectAreasView from '@/views/SubjectAreasView.vue'
 import AiProposalsListView from '@/views/AiProposalsListView.vue'
 import AiProposalDetailView from '@/views/AiProposalDetailView.vue'
+import AiExplanationsListView from '@/views/AiExplanationsListView.vue'
 
 
 const routes = [
@@ -65,7 +66,9 @@ const routes = [
 
     { path: '/ai/predlozi', name: 'ai-proposals', component: AiProposalsListView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
 
-    { path: '/ai/predlozi/:id', name: 'ai-proposal-detail', component: AiProposalDetailView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } }
+    { path: '/ai/predlozi/:id', name: 'ai-proposal-detail', component: AiProposalDetailView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
+
+    { path: '/ai/objasnjenja', name: 'ai-explanations', component: AiExplanationsListView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } }
 
 ]
 
