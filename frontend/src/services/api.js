@@ -71,6 +71,9 @@ export const getExamResults = (examId) =>
 export const getMyResults = () =>
   api.get('/my-results')
 
+export const getMyResultDetail = (attemptId) =>
+  api.get(`/my-results/${attemptId}`)
+
 
 export const exportExamResults = (examId) =>
   api.get(`/exams/${examId}/results/export`, {

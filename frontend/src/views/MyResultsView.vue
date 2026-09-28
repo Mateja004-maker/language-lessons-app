@@ -46,6 +46,7 @@ export default {
             <th>Total</th>
             <th>Status</th>
             <th>Date</th>
+            <th></th>
           </tr>
         </thead>
 
@@ -65,6 +66,12 @@ export default {
             </td>
 
             <td>{{ new Date(r.submitted_at).toLocaleString() }}</td>
+
+            <td class="text-end">
+              <router-link :to="`/my-results/${r.id}`" class="btn btn-outline-primary btn-sm">
+                Detalji
+              </router-link>
+            </td>
           </tr>
         </tbody>
       </table>

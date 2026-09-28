@@ -22,6 +22,7 @@ import AiProposalsListView from '@/views/AiProposalsListView.vue'
 import AiProposalDetailView from '@/views/AiProposalDetailView.vue'
 import AiExplanationsListView from '@/views/AiExplanationsListView.vue'
 import AiExplanationDetailView from '@/views/AiExplanationDetailView.vue'
+import MyResultDetailView from '@/views/MyResultDetailView.vue'
 
 
 const routes = [
@@ -57,6 +58,8 @@ const routes = [
     { path: '/exams/:id/results', name: 'exam-results', component: ExamResultsView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
 
     { path: '/my-results', name: 'my-results', component: MyResultsView, meta: { requiresAuth: true, roles: ['STUDENT'] } },
+
+    { path: '/my-results/:attemptId', name: 'my-result-detail', component: MyResultDetailView, meta: { requiresAuth: true, roles: ['STUDENT'] } },
 
     // Privremeni test-ekran za AI generisanje pitanja - samo rucno otvaranje, ne ide u navbar
     { path: '/test-ai-generisanje', name: 'test-ai-generisanje', component: TestAiGenerisanjeView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
