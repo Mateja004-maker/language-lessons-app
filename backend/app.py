@@ -701,7 +701,8 @@ def list_bank_questions(subject_id):
                 """
                 SELECT
                     eq.id, eq.subject_id, eq.area_id, eq.question_text, eq.points,
-                    (SELECT COUNT(*) FROM exam_answers ea WHERE ea.question_id = eq.id) AS answer_count
+                    (SELECT COUNT(*) FROM exam_answers ea WHERE ea.question_id = eq.id) AS answer_count,
+                    (eq.reference_solution IS NOT NULL AND eq.reference_solution <> '') AS has_reference_solution
                 FROM exam_questions eq
                 WHERE eq.subject_id = %s AND eq.area_id = %s
                 ORDER BY eq.id ASC
@@ -713,7 +714,8 @@ def list_bank_questions(subject_id):
                 """
                 SELECT
                     eq.id, eq.subject_id, eq.area_id, eq.question_text, eq.points,
-                    (SELECT COUNT(*) FROM exam_answers ea WHERE ea.question_id = eq.id) AS answer_count
+                    (SELECT COUNT(*) FROM exam_answers ea WHERE ea.question_id = eq.id) AS answer_count,
+                    (eq.reference_solution IS NOT NULL AND eq.reference_solution <> '') AS has_reference_solution
                 FROM exam_questions eq
                 WHERE eq.subject_id = %s
                 ORDER BY eq.id ASC
@@ -724,6 +726,10 @@ def list_bank_questions(subject_id):
         rows = cur.fetchall()
         cur.close()
         conn.close()
+
+        for row in rows:
+            row["has_reference_solution"] = bool(row["has_reference_solution"])
+
         return jsonify(rows), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
