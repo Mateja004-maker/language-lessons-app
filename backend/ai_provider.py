@@ -22,6 +22,9 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:ge
 MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY", "")
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
 # Jedini izvor istine za default model po provideru - i _call_* funkcije
 # ispod i pozivaoci van ovog fajla (npr. app.py) čitaju odavde, da model
 # upisan u ai_models ostane dosledan modelu koji se stvarno poziva.
@@ -29,6 +32,7 @@ DEFAULT_MODELS = {
     "groq": "openai/gpt-oss-20b",
     "gemini": "gemini-3.6-flash",
     "mistral": "mistral-small-latest",
+    "openrouter": "nvidia/nemotron-3-super-120b-a12b:free",
 }
 
 
@@ -213,12 +217,76 @@ def _call_mistral(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MO
     }
 
 
+def _openrouter_error(data):
+    """OpenRouter može da vrati grešku u telu i uz status 200 - na vrhu
+    odgovora ili u choices[0] (greška provajdera tokom generisanja). Vraća
+    poruku ili None. metadata se namerno ne prenosi (ume da sadrži dugačak
+    sirov odgovor provajdera)."""
+    if not isinstance(data, dict):
+        return None
+    err = data.get("error")
+    if not err:
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+            err = choices[0].get("error")
+    if not err:
+        return None
+    if isinstance(err, dict):
+        return f"OpenRouter: greška u odgovoru (code={err.get('code')}, message={str(err.get('message'))[:200]})"
+    return f"OpenRouter: greška u odgovoru ({str(err)[:200]})"
+
+
+def _call_openrouter(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODELS["openrouter"]) -> dict:
+    """Poziva OpenRouter API (OpenAI format). Vraća sirov tekstualni odgovor + tehničke podatke."""
+    start = time.time()
+    try:
+        response = requests.post(
+            OPENROUTER_URL,
+            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": temperature,
+            },
+            timeout=30,
+        )
+    except requests.RequestException as e:
+        return _failure(f"OpenRouter: mrežna greška ({type(e).__name__})", int((time.time() - start) * 1000))
+    elapsed_ms = int((time.time() - start) * 1000)
+
+    if response.status_code != 200:
+        return {
+            "success": False,
+            "error": f"OpenRouter API greška: {response.status_code} {response.text[:200]}",
+            "response_time_ms": elapsed_ms,
+        }
+
+    try:
+        data = response.json()
+    except ValueError:
+        return _failure("OpenRouter: odgovor nije validan JSON", elapsed_ms)
+    error = _openrouter_error(data)
+    if error:
+        return _failure(error, elapsed_ms)
+    text, error = _extract_openai_text(data, "OpenRouter")
+    if error:
+        return _failure(error, elapsed_ms)
+    tokens = data.get("usage", {}).get("total_tokens")
+
+    return {
+        "success": True,
+        "raw_text": text,
+        "response_time_ms": elapsed_ms,
+        "tokens_used": tokens,
+    }
+
+
 def generate(prompt: str, provider: str = "groq", options: dict | None = None) -> dict:
     """
     Jedinstvena funkcija koju ostatak aplikacije koristi.
 
     prompt   - tekst koji se šalje modelu
-    provider - koji model koristiti: "groq", "gemini" ili "mistral"
+    provider - koji model koristiti: "groq", "gemini", "mistral" ili "openrouter"
     options  - dict, npr. {"temperature": 0.7}
 
     Vraća dict: {success, raw_text, response_time_ms, tokens_used} ili {success: False, error}
@@ -246,6 +314,11 @@ def generate(prompt: str, provider: str = "groq", options: dict | None = None) -
         if model is not None:
             return _call_mistral(prompt, temperature=temperature, model=model)
         return _call_mistral(prompt, temperature=temperature)
+
+    elif provider == "openrouter":
+        if model is not None:
+            return _call_openrouter(prompt, temperature=temperature, model=model)
+        return _call_openrouter(prompt, temperature=temperature)
 
     return {"success": False, "error": f"Nepoznat provider: {provider}"}
 
