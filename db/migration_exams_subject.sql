@@ -21,6 +21,16 @@
 -- language_id iz {1, 2, 5, 6}, svi imaju par sa istim id-jem i istim nazivom u
 -- subjects; nijedan test sa language_id = 7; nijedno pitanje u testu nema
 -- subject_id različit od testa.
+--
+-- NAPOMENA POSLE POKRETANJA (2026-09-29): korak 2 (UPDATE) je promenio
+-- exams.updated_at za svih 25 testova na vreme migracije, jer kolona ima
+-- ON UPDATE current_timestamp(). Stare vrednosti postoje samo u backup-u i
+-- namerno se ne vraćaju (updated_at testa se u kodu nigde ne čita).
+-- Ispravna verzija koraka 2, koja čuva updated_at - koristiti u budućim
+-- migracijama sa UPDATE nad tabelama koje imaju ON UPDATE kolonu:
+--   UPDATE exams e
+--     JOIN subjects s ON s.id = e.language_id
+--   SET e.subject_id = e.language_id, e.updated_at = e.updated_at;
 
 -- 1) Nova kolona subject_id (nullable, isto kao exam_questions.subject_id i
 --    areas.subject_id; FK ON DELETE RESTRICT - predmet se ne sme obrisati dok

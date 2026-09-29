@@ -1732,7 +1732,8 @@ def get_exams():
             cursor.execute(f"""
                 SELECT
                     e.*,
-                    l.name AS language_name,
+                    s.name AS subject_name,
+                    s.name AS language_name,
 
                     ea.id AS attempt_id,
                     ea.score,
@@ -1741,8 +1742,8 @@ def get_exams():
 
                 FROM exams e
 
-                JOIN languages l
-                    ON e.language_id = l.id
+                JOIN subjects s
+                    ON s.id = e.subject_id
 
                 LEFT JOIN exam_attempts ea
                     ON ea.exam_id = e.id
@@ -1750,7 +1751,7 @@ def get_exams():
                     AND ea.status = 'COMPLETED'
 
                 WHERE e.is_published = 1
-                AND e.language_id IN ({placeholders})
+                AND e.subject_id IN ({placeholders})
 
                 ORDER BY e.created_at DESC
             """, (user_id, *subject_ids))
@@ -1766,17 +1767,17 @@ def get_exams():
             placeholders = ", ".join(["%s"] * len(subject_ids))
 
             cursor.execute(f"""
-                SELECT e.*, l.name AS language_name
+                SELECT e.*, s.name AS subject_name, s.name AS language_name
                 FROM exams e
-                JOIN languages l ON e.language_id = l.id
-                WHERE e.language_id IN ({placeholders})
+                JOIN subjects s ON s.id = e.subject_id
+                WHERE e.subject_id IN ({placeholders})
             """, tuple(subject_ids))
 
         else:
             cursor.execute("""
-                SELECT e.*, l.name AS language_name
+                SELECT e.*, s.name AS subject_name, s.name AS language_name
                 FROM exams e
-                JOIN languages l ON e.language_id = l.id
+                LEFT JOIN subjects s ON s.id = e.subject_id
             """)
 
         exams = cursor.fetchall()
@@ -1798,7 +1799,9 @@ def create_exam():
 
     title = (data.get("title") or "").strip()
     description = (data.get("description") or "").strip()
-    language_id = data.get("language_id")
+    # Test pripada predmetu (exams.subject_id). language_id se jos prima kao
+    # rezerva dok frontend ne predje na subject_id (u exams se vise ne upisuje).
+    subject_id = data.get("subject_id") or data.get("language_id")
     level = (data.get("level") or "").strip()
     duration_minutes = data.get("duration_minutes", 30)
     open_at = data.get("open_at")
@@ -1807,7 +1810,7 @@ def create_exam():
 
     created_by = get_jwt_identity()
 
-    if not title or not language_id or not level:
+    if not title or not subject_id or not level:
         return jsonify({"error": "Title, language and level are required"}), 400
 
     try:
@@ -1815,17 +1818,23 @@ def create_exam():
         cursor = conn.cursor(dictionary=True)
 
         if role == "TEACHER":
-            if not user_has_subject(int(created_by), int(language_id), "TEACHER"):
+            if not user_has_subject(int(created_by), int(subject_id), "TEACHER"):
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "Teacher can create exams only for assigned language"}), 403
+
+        cursor.execute("SELECT id FROM subjects WHERE id = %s", (int(subject_id),))
+        if not cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Subject not found"}), 400
 
         cursor.execute("""
             INSERT INTO exams
             (
                 title,
                 description,
-                language_id,
+                subject_id,
                 level,
                 duration_minutes,
                 open_at,
@@ -1838,7 +1847,7 @@ def create_exam():
         """, (
             title,
             description,
-            language_id,
+            int(subject_id),
             level,
             duration_minutes,
             open_at,
@@ -1872,9 +1881,10 @@ def get_exam_details(exam_id):
         cursor.execute("""
             SELECT
                 e.*,
-                l.name AS language_name
+                s.name AS subject_name,
+                s.name AS language_name
             FROM exams e
-            JOIN languages l ON e.language_id = l.id
+            LEFT JOIN subjects s ON s.id = e.subject_id
             WHERE e.id = %s
         """, (exam_id,))
 
@@ -1896,7 +1906,7 @@ def get_exam_details(exam_id):
                 conn.close()
                 return jsonify({"error": "Exam is not published"}), 403
 
-            if not user_has_subject(int(user_id), exam["language_id"], "STUDENT"):
+            if not user_has_subject(int(user_id), exam["subject_id"], "STUDENT"):
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "You can access only exams for your language"}), 403
@@ -2036,7 +2046,7 @@ def add_exam_question(exam_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        cursor.execute("SELECT language_id FROM exams WHERE id = %s", (exam_id,))
+        cursor.execute("SELECT subject_id FROM exams WHERE id = %s", (exam_id,))
         exam_row = cursor.fetchone()
         if not exam_row:
             cursor.close()
@@ -2051,7 +2061,7 @@ def add_exam_question(exam_id):
                 conn.close()
                 return jsonify({"error": "Selected area does not exist"}), 400
 
-            if area_row["subject_id"] != exam_row["language_id"]:
+            if area_row["subject_id"] != exam_row["subject_id"]:
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "Selected area does not belong to this exam's subject"}), 400
@@ -2060,7 +2070,7 @@ def add_exam_question(exam_id):
             INSERT INTO exam_questions
             (exam_id, subject_id, area_id, question_text, points, order_no)
             VALUES (%s, %s, %s, %s, %s, %s)
-        """, (exam_id, exam_row["language_id"], area_id, question_text, points, order_no))
+        """, (exam_id, exam_row["subject_id"], area_id, question_text, points, order_no))
 
         question_id = cursor.lastrowid
 
@@ -2098,7 +2108,7 @@ def assign_bank_question_to_exam(exam_id, question_id):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
 
-        cursor.execute("SELECT language_id FROM exams WHERE id = %s", (exam_id,))
+        cursor.execute("SELECT subject_id FROM exams WHERE id = %s", (exam_id,))
         exam_row = cursor.fetchone()
         if not exam_row:
             cursor.close()
@@ -2112,7 +2122,7 @@ def assign_bank_question_to_exam(exam_id, question_id):
             conn.close()
             return jsonify({"error": "Question not found"}), 404
 
-        if question_row["subject_id"] != exam_row["language_id"]:
+        if question_row["subject_id"] != exam_row["subject_id"]:
             cursor.close()
             conn.close()
             return jsonify({"error": "Question does not belong to this exam's subject"}), 400
@@ -2399,9 +2409,9 @@ def generate_similar_question(question_id):
                 subject_name = subject_row["name"]
         elif question["exam_id"]:
             cursor.execute("""
-                SELECT l.name AS subject_name
+                SELECT s.name AS subject_name
                 FROM exams e
-                JOIN languages l ON e.language_id = l.id
+                JOIN subjects s ON s.id = e.subject_id
                 WHERE e.id = %s
             """, (question["exam_id"],))
             exam_row = cursor.fetchone()
@@ -2851,7 +2861,7 @@ def delete_exam(exam_id):
 
         # Provera da li test postoji
         cursor.execute("""
-            SELECT id, language_id
+            SELECT id, subject_id
             FROM exams
             WHERE id = %s
         """, (exam_id,))
@@ -2863,9 +2873,9 @@ def delete_exam(exam_id):
             conn.close()
             return jsonify({"error": "Exam not found"}), 404
 
-        # Teacher sme da briše samo testove za svoj jezik
+        # Teacher sme da briše samo testove za svoj predmet
         if role == "TEACHER":
-            if not user_has_subject(int(user_id), exam["language_id"], "TEACHER"):
+            if not user_has_subject(int(user_id), exam["subject_id"], "TEACHER"):
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "You can delete only exams for your assigned language"}), 403
@@ -3049,10 +3059,10 @@ def get_exam_results(exam_id):
         cursor = conn.cursor(dictionary=True)
 
         if role == "TEACHER":
-            cursor.execute("SELECT id, language_id FROM exams WHERE id = %s", (exam_id,))
+            cursor.execute("SELECT id, subject_id FROM exams WHERE id = %s", (exam_id,))
             exam_row = cursor.fetchone()
 
-            if not exam_row or not user_has_subject(int(user_id), exam_row["language_id"], "TEACHER"):
+            if not exam_row or not user_has_subject(int(user_id), exam_row["subject_id"], "TEACHER"):
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "You can view results only for your assigned language"}), 403
@@ -3099,10 +3109,10 @@ def export_exam_results(exam_id):
         cursor = conn.cursor(dictionary=True)
 
         if role == "TEACHER":
-            cursor.execute("SELECT id, language_id FROM exams WHERE id = %s", (exam_id,))
+            cursor.execute("SELECT id, subject_id FROM exams WHERE id = %s", (exam_id,))
             exam_row = cursor.fetchone()
 
-            if not exam_row or not user_has_subject(int(user_id), exam_row["language_id"], "TEACHER"):
+            if not exam_row or not user_has_subject(int(user_id), exam_row["subject_id"], "TEACHER"):
                 cursor.close()
                 conn.close()
                 return jsonify({"error": "You can export results only for your assigned language"}), 403
