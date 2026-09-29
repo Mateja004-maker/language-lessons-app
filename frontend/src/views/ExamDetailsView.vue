@@ -5,9 +5,10 @@ import {
   getExamDetails,
   getAreas,
   getBankQuestions,
+  assignBankQuestionToExam,
+  removeQuestionFromExam,
   addExamQuestion,
   addQuestionAnswer,
-  deleteQuestion,
   deleteAnswer,
   updateQuestion,
   updateAnswer,
@@ -81,7 +82,59 @@ export default {
 
     const onAreaChange = async () => {
       selectedBankIds.value = []
+      addErrors.value = {}
+      addSummary.value = ''
       await loadBank()
+    }
+
+    const adding = ref(false)
+    // question_id -> { text, error } za pitanja koja nisu dodata
+    const addErrors = ref({})
+    const addSummary = ref('')
+
+    // Greske za pitanja koja vise nisu u listi (npr. 409 - u medjuvremenu su
+    // vec u testu), pa ne mogu da se prikazu pored pitanja.
+    const hiddenAddErrors = computed(() => {
+      const visible = new Set(availableBankQuestions.value.map(q => q.id))
+      return Object.entries(addErrors.value)
+        .filter(([id]) => !visible.has(Number(id)))
+        .map(([id, e]) => ({ id, ...e }))
+    })
+
+    // Pitanja se dodaju redom (ne paralelno), da order_no ide max+1, max+2, ...
+    // redom kojim su prikazana; greska jednog pitanja ne prekida ostala.
+    const addSelectedToExam = async () => {
+      if (adding.value || !selectedBankIds.value.length) return
+      adding.value = true
+      addErrors.value = {}
+      addSummary.value = ''
+
+      const selected = availableBankQuestions.value.filter(q => selectedBankIds.value.includes(q.id))
+      let nextOrder = Math.max(0, ...exam.value.questions.map(q => q.order_no || 0)) + 1
+      let added = 0
+      const errors = {}
+
+      for (const q of selected) {
+        try {
+          await assignBankQuestionToExam(route.params.id, q.id, nextOrder)
+          nextOrder += 1
+          added += 1
+        } catch (err) {
+          errors[q.id] = {
+            text: q.question_text,
+            error: err.response?.data?.error || 'Greška pri dodavanju'
+          }
+        }
+      }
+
+      try {
+        await loadExam()
+      } finally {
+        selectedBankIds.value = []
+        addErrors.value = errors
+        addSummary.value = `Dodato ${added} od ${selected.length} pitanja.`
+        adding.value = false
+      }
     }
 
     const loadBankSection = async () => {
@@ -135,8 +188,15 @@ export default {
       await loadExam()
     }
 
+    // Uklanja pitanje samo iz ovog testa - pitanje ostaje u banci (i vraca se
+    // u listu za dodavanje). Ranije je ovde bio deleteQuestion, koji je za
+    // pitanje vezano za test uvek vracao 409, pa dugme nije radilo.
     const removeQuestion = async (id) => {
-      await deleteQuestion(id)
+      try {
+        await removeQuestionFromExam(route.params.id, id)
+      } catch (err) {
+        alert(err.response?.data?.error || 'Error removing question from exam')
+      }
       await loadExam()
     }
 
@@ -204,6 +264,11 @@ export default {
       availableBankQuestions,
       hiddenOpenCount,
       onAreaChange,
+      adding,
+      addErrors,
+      addSummary,
+      hiddenAddErrors,
+      addSelectedToExam,
       question_text,
       points,
       answerText,
@@ -254,7 +319,7 @@ export default {
 
       <div v-if="exam.is_published" class="alert alert-secondary mb-4">
         <i class="fa-solid fa-lock me-2"></i>
-        Test je objavljen - pitanja se više ne dodaju.
+        Test je objavljen - pitanja se više ne dodaju niti uklanjaju.
       </div>
 
       <div v-else class="card shadow-sm mb-4">
@@ -282,6 +347,17 @@ export default {
 
             <div v-if="bankError" class="alert alert-danger">{{ bankError }}</div>
 
+            <div
+              v-if="addSummary"
+              class="alert"
+              :class="Object.keys(addErrors).length ? 'alert-warning' : 'alert-success'"
+            >
+              {{ addSummary }}
+              <ul v-if="hiddenAddErrors.length" class="mb-0 mt-1 small">
+                <li v-for="e in hiddenAddErrors" :key="e.id">{{ e.text }} - {{ e.error }}</li>
+              </ul>
+            </div>
+
             <div v-if="bankLoading" class="d-flex align-items-center gap-2 text-muted">
               <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
               Učitavanje...
@@ -301,6 +377,7 @@ export default {
                   :id="`bank-q-${q.id}`"
                   v-model="selectedBankIds"
                   :value="q.id"
+                  :disabled="adding"
                   type="checkbox"
                   class="form-check-input"
                 />
@@ -312,12 +389,26 @@ export default {
                     <span class="badge bg-light text-dark border">{{ q.answer_count }} odgovora</span>
                   </span>
                 </label>
+                <div v-if="addErrors[q.id]" class="small text-danger mt-1">
+                  <i class="fa-solid fa-circle-exclamation me-1"></i>
+                  Nije dodato: {{ addErrors[q.id].error }}
+                </div>
               </div>
             </div>
 
             <div v-if="hiddenOpenCount" class="form-text mt-2">
               {{ hiddenOpenCount }} pitanja bez ponuđenih odgovora nije prikazano - test podržava samo pitanja sa ponuđenim odgovorima.
             </div>
+
+            <button
+              class="btn btn-primary mt-3"
+              :disabled="!selectedBankIds.length || adding"
+              @click="addSelectedToExam"
+            >
+              <span v-if="adding" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+              <i v-else class="fa-solid fa-plus me-2"></i>
+              {{ adding ? 'Dodajem...' : `Dodaj izabrana pitanja u test (${selectedBankIds.length})` }}
+            </button>
           </template>
         </div>
       </div>
@@ -380,7 +471,7 @@ export default {
               Edit
             </button>
 
-            <button @click="removeQuestion(q.id)" class="btn btn-sm btn-danger">
+            <button v-if="!exam.is_published" @click="removeQuestion(q.id)" class="btn btn-sm btn-danger">
               <i class="fa-solid fa-trash me-1"></i>
               Delete
             </button>
