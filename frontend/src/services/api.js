@@ -41,6 +41,15 @@ export const getExamDetails = (id) => api.get(`/exams/${id}`)
 export const addExamQuestion = (examId, data) =>
   api.post(`/exams/${examId}/questions`, data)
 
+// Postojece pitanje iz banke u test (exam_test_questions); 409 ako je vec u
+// testu, 400 ako je iz drugog predmeta.
+export const assignBankQuestionToExam = (examId, questionId, orderNo) =>
+  api.post(`/exams/${examId}/questions/${questionId}`, { order_no: orderNo })
+
+// Uklanja pitanje samo iz ovog testa - pitanje ostaje u banci.
+export const removeQuestionFromExam = (examId, questionId) =>
+  api.delete(`/exams/${examId}/questions/${questionId}`)
+
 export const addQuestionAnswer = (questionId, data) =>
   api.post(`/questions/${questionId}/answers`, data)
 
