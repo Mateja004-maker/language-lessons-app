@@ -7,7 +7,6 @@ import {
   getBankQuestions,
   assignBankQuestionToExam,
   removeQuestionFromExam,
-  addExamQuestion,
   publishExam
 } from '@/services/api'
 
@@ -18,9 +17,6 @@ export default {
 
     const exam = ref(null)
     const loading = ref(true)
-
-    const question_text = ref('')
-    const points = ref(1)
 
     // Pitanja iz banke predmeta ovog testa (dodavanje postojecih pitanja u test)
     const areas = ref([])
@@ -148,18 +144,6 @@ export default {
       loading.value = false
     }
 
-    const submitQuestion = async () => {
-      if (!question_text.value.trim()) return
-
-      await addExamQuestion(route.params.id, {
-        question_text: question_text.value,
-        points: points.value
-      })
-
-      question_text.value = ''
-      points.value = 1
-      await loadExam()
-    }
 
     // Uklanja pitanje samo iz ovog testa - pitanje ostaje u banci (i vraca se
     // u listu za dodavanje). Ranije je ovde bio deleteQuestion, koji je za
@@ -205,9 +189,6 @@ export default {
       addSummary,
       hiddenAddErrors,
       addSelectedToExam,
-      question_text,
-      points,
-      submitQuestion,
       removeQuestion,
       publish,
       canPublish
@@ -332,33 +313,6 @@ export default {
               {{ adding ? 'Dodajem...' : `Dodaj izabrana pitanja u test (${selectedBankIds.length})` }}
             </button>
           </template>
-        </div>
-      </div>
-
-      <div class="card shadow-sm mb-4">
-        <div class="card-body">
-          <h5 class="mb-3">
-            <i class="fa-solid fa-circle-plus me-2"></i>
-            Add Question
-          </h5>
-
-          <input
-            v-model="question_text"
-            class="form-control mb-2"
-            placeholder="Question text"
-          />
-
-          <input
-            v-model="points"
-            type="number"
-            class="form-control mb-2"
-            placeholder="Points"
-          />
-
-          <button @click="submitQuestion" class="btn btn-primary">
-            <i class="fa-solid fa-plus me-2"></i>
-            Add Question
-          </button>
         </div>
       </div>
 
