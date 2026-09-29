@@ -21,18 +21,18 @@
         No exams available.
       </div>
 
-      <!-- ADMIN LANGUAGE FILTER -->
+      <!-- ADMIN SUBJECT FILTER -->
       <div v-if="role === 'ADMIN'" class="card border-0 shadow-sm mb-4">
         <div class="card-body">
-          <label class="form-label fw-semibold">Filter by language</label>
-          <select v-model="selectedLanguage" class="form-select">
-            <option value="">All languages</option>
+          <label class="form-label fw-semibold">Filter by subject</label>
+          <select v-model="selectedSubject" class="form-select">
+            <option value="">All subjects</option>
             <option
-              v-for="language in languages"
-              :key="language"
-              :value="language"
+              v-for="subject in subjects"
+              :key="subject"
+              :value="subject"
             >
-              {{ language }}
+              {{ subject }}
             </option>
           </select>
         </div>
@@ -58,7 +58,7 @@
                       Exam mode
                     </span>
                     <span class="badge bg-light text-dark border">
-                      {{ exam.language_name }}
+                      {{ exam.subject_name }}
                     </span>
                     <span class="badge bg-light text-dark border ms-1">
                       {{ exam.level }}
@@ -109,7 +109,7 @@
 
                   <div class="mb-2">
                     <span class="badge bg-light text-dark border">
-                      {{ exam.language_name }}
+                      {{ exam.subject_name }}
                     </span>
                     <span class="badge bg-light text-dark border ms-1">
                       {{ exam.level }}
@@ -160,7 +160,7 @@
 
                   <div class="mb-2">
                     <span class="badge bg-light text-dark border">
-                      {{ exam.language_name }}
+                      {{ exam.subject_name }}
                     </span>
                     <span class="badge bg-light text-dark border ms-1">
                       {{ exam.level }}
@@ -210,7 +210,7 @@
 
                   <div class="mb-2">
                     <span class="badge bg-light text-dark border">
-                      {{ exam.language_name }}
+                      {{ exam.subject_name }}
                     </span>
                     <span class="badge bg-light text-dark border ms-1">
                       {{ exam.level }}
@@ -261,21 +261,21 @@ export default {
       exams: [],
       loading: true,
       role: localStorage.getItem('user_role'),
-      selectedLanguage: ''
+      selectedSubject: ''
     }
   },
 
   computed: {
     filteredExams() {
-      if (this.role !== 'ADMIN' || !this.selectedLanguage) {
+      if (this.role !== 'ADMIN' || !this.selectedSubject) {
         return this.exams
       }
 
-      return this.exams.filter(e => e.language_name === this.selectedLanguage)
+      return this.exams.filter(e => e.subject_name === this.selectedSubject)
     },
 
-    languages() {
-      return [...new Set(this.exams.map(e => e.language_name).filter(Boolean))]
+    subjects() {
+      return [...new Set(this.exams.map(e => e.subject_name).filter(Boolean))]
     },
 
     pendingExams() {

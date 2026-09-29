@@ -9,10 +9,10 @@ export default {
 
     const title = ref('')
     const description = ref('')
-    const language_id = ref('')
+    const subject_id = ref('')
     const level = ref('')
     const duration_minutes = ref(30)
-    const languages = ref([])
+    const allSubjects = ref([])
     const profile = ref(null)
     const open_at = ref('')
     const close_at = ref('')
@@ -38,13 +38,14 @@ export default {
           )
 
           if (teacherSubjects.value.length === 1) {
-            language_id.value = teacherSubjects.value[0].id
+            subject_id.value = teacherSubjects.value[0].id
           }
         }
 
+        // Test pripada predmetu (exams.subject_id) - i ADMIN bira iz subjects
         if (role === 'ADMIN') {
-          const res = await api.get('/languages')
-          languages.value = res.data
+          const res = await api.get('/subjects')
+          allSubjects.value = res.data
         }
       } catch (err) {
         console.error(err)
@@ -57,7 +58,7 @@ export default {
         const res = await createExam({
           title: title.value,
           description: description.value,
-          language_id: language_id.value,
+          subject_id: subject_id.value,
           level: level.value,
           duration_minutes: duration_minutes.value,
           is_published: 0,
@@ -76,10 +77,10 @@ export default {
     return {
       title,
       description,
-      language_id,
+      subject_id,
       level,
       duration_minutes,
-      languages,
+      allSubjects,
       teacherSubjects,
       profile,
       isTeacher,
@@ -117,24 +118,24 @@ export default {
 
         <div v-if="isAdmin" class="mb-3">
           <label class="form-label">
-            <i class="fa-solid fa-globe me-1"></i>
-            Language
+            <i class="fa-solid fa-book me-1"></i>
+            Predmet
           </label>
-          <select v-model="language_id" class="form-select">
-            <option value="">Select language</option>
-            <option v-for="language in languages" :key="language.id" :value="language.id">
-              {{ language.name }}
+          <select v-model="subject_id" class="form-select">
+            <option value="">Izaberi predmet</option>
+            <option v-for="subject in allSubjects" :key="subject.id" :value="subject.id">
+              {{ subject.name }}
             </option>
           </select>
         </div>
 
         <div v-if="isTeacher" class="mb-3">
           <label class="form-label">
-            <i class="fa-solid fa-globe me-1"></i>
-            Language
+            <i class="fa-solid fa-book me-1"></i>
+            Predmet
           </label>
-          <select v-model="language_id" class="form-select">
-            <option value="">Select language</option>
+          <select v-model="subject_id" class="form-select">
+            <option value="">Izaberi predmet</option>
             <option v-for="subject in teacherSubjects" :key="subject.id" :value="subject.id">
               {{ subject.name }}
             </option>

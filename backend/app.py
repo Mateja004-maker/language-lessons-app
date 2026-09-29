@@ -1811,7 +1811,7 @@ def create_exam():
     created_by = get_jwt_identity()
 
     if not title or not subject_id or not level:
-        return jsonify({"error": "Title, language and level are required"}), 400
+        return jsonify({"error": "Title, subject and level are required"}), 400
 
     try:
         conn = get_db_connection()
@@ -1821,7 +1821,7 @@ def create_exam():
             if not user_has_subject(int(created_by), int(subject_id), "TEACHER"):
                 cursor.close()
                 conn.close()
-                return jsonify({"error": "Teacher can create exams only for assigned language"}), 403
+                return jsonify({"error": "Teacher can create exams only for assigned subjects"}), 403
 
         cursor.execute("SELECT id FROM subjects WHERE id = %s", (int(subject_id),))
         if not cursor.fetchone():
@@ -1909,7 +1909,7 @@ def get_exam_details(exam_id):
             if not user_has_subject(int(user_id), exam["subject_id"], "STUDENT"):
                 cursor.close()
                 conn.close()
-                return jsonify({"error": "You can access only exams for your language"}), 403
+                return jsonify({"error": "You can access only exams for your subjects"}), 403
 
             cursor.execute("""
                 SELECT NOW() AS now_time
@@ -2878,7 +2878,7 @@ def delete_exam(exam_id):
             if not user_has_subject(int(user_id), exam["subject_id"], "TEACHER"):
                 cursor.close()
                 conn.close()
-                return jsonify({"error": "You can delete only exams for your assigned language"}), 403
+                return jsonify({"error": "You can delete only exams for your assigned subjects"}), 403
 
         # Prvo brišemo odgovore studenata za pokušaje tog testa
         cursor.execute("""
@@ -3065,7 +3065,7 @@ def get_exam_results(exam_id):
             if not exam_row or not user_has_subject(int(user_id), exam_row["subject_id"], "TEACHER"):
                 cursor.close()
                 conn.close()
-                return jsonify({"error": "You can view results only for your assigned language"}), 403
+                return jsonify({"error": "You can view results only for your assigned subjects"}), 403
 
         cursor.execute("""
             SELECT
@@ -3115,7 +3115,7 @@ def export_exam_results(exam_id):
             if not exam_row or not user_has_subject(int(user_id), exam_row["subject_id"], "TEACHER"):
                 cursor.close()
                 conn.close()
-                return jsonify({"error": "You can export results only for your assigned language"}), 403
+                return jsonify({"error": "You can export results only for your assigned subjects"}), 403
 
         cursor.execute("""
             SELECT title
