@@ -192,12 +192,21 @@ class Versions(unittest.TestCase):
         self.assertFalse(strict_fields_enabled(None))
         self.assertTrue(strict_fields_enabled("mc-v3"))
 
-    def test_current_prompt_files_are_not_strict(self):
-        # Strogo pravilo ne sme biti aktivno dok v3 prompt ne postoji
+    def test_active_prompt_files_are_v3(self):
+        # Aktivni šabloni su v3: strogo pravilo i obavezne oznake važe za nova generisanja
         import prompt_templates
-        for question_type in ("mc", "open"):
-            version, _ = prompt_templates._read_template_file(question_type)
-            self.assertFalse(strict_fields_enabled(version), version)
+        for question_type, expected in (("mc", "mc-v3"), ("open", "open-v3")):
+            version, template = prompt_templates._read_template_file(question_type)
+            self.assertEqual(version, expected)
+            self.assertTrue(strict_fields_enabled(version))
+            self.assertIn('"difficulty"', template)
+            self.assertIn('"bloom_level"', template)
+
+    def test_archived_v2_prompts_kept(self):
+        import prompt_templates
+        for name, expected in (("similar_question_mc_v2.txt", "mc-v2"), ("similar_question_open_v2.txt", "open-v2")):
+            text = (prompt_templates.PROMPTS_DIR / name).read_text(encoding="utf-8")
+            self.assertEqual(prompt_templates.template_version(text), expected)
 
 
 class CommandLine(unittest.TestCase):

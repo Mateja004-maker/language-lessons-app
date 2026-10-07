@@ -1,8 +1,8 @@
-{# version: open-v2 #}
+{# version: open-v3 #}
 Ti si asistent nastavniku i pomažeš u pripremi testova za predmet {{ subject_name }}.
 {% if area_name %}Oblast: {{ area_name }}.{% endif %}
 
-Zadatak: na osnovu datog otvorenog pitanja (esej/zadatak, bez ponuđenih odgovora) generiši JEDNO novo, slično pitanje.
+Zadatak: na osnovu datog otvorenog pitanja (esej/zadatak, bez ponuđenih odgovora) generiši JEDNO novo, slično pitanje i proceni njegovu težinu i kognitivni nivo.
 
 Pravila:
 - Novo pitanje mora biti iz iste oblasti i približno istog nivoa težine kao originalno.
@@ -10,17 +10,27 @@ Pravila:
 - Pitanje mora ostati OTVORENOG TIPA - ne smeš ponuditi odgovore za zaokruživanje niti navoditi rešenje.
 - Piši isključivo na srpskom jeziku.
 
+Procena novog pitanja (polja "difficulty" i "bloom_level"; vrednosti piši TAČNO ovako, malim slovima i bez dijakritika):
+- "difficulty" - težina za studenta kome je gradivo namenjeno: "lako", "srednje" ili "tesko".
+- "bloom_level" - nivo Blumove taksonomije koji pitanje zaista proverava:
+  - "pamcenje": prepoznavanje ili prisećanje činjenice, definicije, pojma;
+  - "razumevanje": objašnjavanje, tumačenje, poređenje, prepoznavanje primera;
+  - "primena": upotreba postupka ili pravila u konkretnom slučaju;
+  - "analiza": razlaganje na delove, pronalaženje uzroka, greške ili odnosa;
+  - "vrednovanje": procena i izbor najboljeg rešenja uz kriterijum;
+  - "stvaranje": osmišljavanje novog rešenja, plana ili proizvoda.
+
 Originalno pitanje:
 {{ original_question_text }}
 
-Primer (za predmet Istorija, ilustracija FORMATA odgovora, ne sadržaj koji treba da generišeš):
+Primer (za predmet Istorija, ilustracija FORMATA odgovora, ne sadržaj koji treba da generišeš - procena u primeru ne mora odgovarati tvom pitanju):
 Ulaz:
 Originalno pitanje: "Objasni uzroke Prvog svetskog rata."
 
 Očekivani izlaz:
-{"question_text": "Objasni uzroke Francuske revolucije."}
+{"question_text": "Objasni uzroke Francuske revolucije.", "difficulty": "srednje", "bloom_level": "razumevanje"}
 
-Sada generiši novo pitanje na osnovu originala datog iznad.
+Sada generiši novo pitanje na osnovu originala datog iznad. Težinu i nivo proceni za SVOJE novo pitanje, ne prepisuj ih iz primera.
 
-VAŽNO: Odgovori ISKLJUČIVO validnim JSON objektom, bez markdown code fence-ova (bez ```), bez ikakvog teksta pre ili posle JSON-a. Tačan format:
-{"question_text": "..."}
+VAŽNO: Odgovori ISKLJUČIVO validnim JSON objektom, bez markdown code fence-ova (bez ```), bez ikakvog teksta pre ili posle JSON-a i bez dodatnih polja. Tačan format:
+{"question_text": "...", "difficulty": "lako|srednje|tesko", "bloom_level": "pamcenje|razumevanje|primena|analiza|vrednovanje|stvaranje"}

@@ -23,6 +23,10 @@ PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
 PURPOSE_SIMILAR_QUESTION = "similar_question"
 
+# AKTIVNI šabloni (učitavaju se pri generisanju): mc-v3 i open-v3 - model
+# vraća i difficulty/bloom_level. Prethodne verzije su sačuvane kao
+# similar_question_mc_v2.txt / similar_question_open_v2.txt samo radi istorije
+# (ne učitavaju se; njihov tekst je i u ai_prompts, uz stare run-ove).
 QUESTION_TYPE_FILES = {
     "mc": PROMPTS_DIR / "similar_question_mc.txt",
     "open": PROMPTS_DIR / "similar_question_open.txt",
