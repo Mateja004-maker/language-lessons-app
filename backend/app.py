@@ -220,6 +220,9 @@ BLIND_REVIEW_MODEL_FIELDS = ("provider", "model_name")
 # Posredni signali: redosled generisanja moze da oda model (npr. ako su
 # modeli pokretani jedan za drugim), pa se i oni kriju dok je 'predlog'.
 BLIND_REVIEW_ORDER_FIELDS = ("created_at", "generation_run_id")
+# Težina/Blumov nivo koje je model predložio (v3): nastavnik bira svoje
+# NE videvši modelove, pa se i one kriju dok je 'predlog'.
+BLIND_REVIEW_LABEL_FIELDS = ("model_difficulty", "model_bloom_level")
 
 
 def blind_review_reveal_requested():
@@ -236,6 +239,45 @@ def blind_review_order(rows, user_id):
         rows,
         key=lambda row: hashlib.sha256(f"{seed}:{row['id']}".encode()).hexdigest(),
     )
+
+
+# Kolone iz db/migration_question_labels.sql. Kod radi i pre migracije:
+# modelove oznake su ionako u original_text, a kolone se pišu samo ako postoje.
+QUESTION_LABEL_COLUMNS = {
+    "ai_generated_artifacts": ("model_difficulty", "model_bloom_level",
+                               "reviewed_difficulty", "reviewed_bloom_level"),
+    "exam_questions": ("difficulty", "bloom_level"),
+}
+
+
+def question_labels_enabled(cursor):
+    """True kad postoje sve kolone iz db/migration_question_labels.sql.
+    Proverava se pri svakom pozivu (bez keša), pa posle migracije nije
+    potreban restart."""
+    conditions = " OR ".join(
+        f"(TABLE_NAME = %s AND COLUMN_NAME IN ({', '.join(['%s'] * len(cols))}))"
+        for cols in QUESTION_LABEL_COLUMNS.values()
+    )
+    params = [value for table, cols in QUESTION_LABEL_COLUMNS.items() for value in (table, *cols)]
+    cursor.execute(
+        f"SELECT COUNT(*) AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND ({conditions})",
+        params,
+    )
+    row = cursor.fetchone()
+    count = row["n"] if isinstance(row, dict) else row[0]
+    return count == sum(len(cols) for cols in QUESTION_LABEL_COLUMNS.values())
+
+
+def move_model_labels(row, parsed):
+    """v3 predlog: difficulty/bloom_level iz odgovora modela premešta iz
+    original_text u model_difficulty/model_bloom_level (koja se kriju dok je
+    'predlog') i označava da pregled traži nastavnikove oznake. v2 predlog
+    (bez oznaka) ostaje nepromenjen."""
+    if not isinstance(parsed, dict) or not any(k in parsed for k in question_validation.LABEL_FIELDS):
+        return
+    row["model_difficulty"] = parsed.pop("difficulty", None)
+    row["model_bloom_level"] = parsed.pop("bloom_level", None)
+    row["labels_required"] = True
 
 
 def hide_while_pending(row, fields):
@@ -2520,8 +2562,16 @@ def generate_similar_question(question_id):
             "predlog",
             json.dumps(parsed_result),
         ))
-        conn.commit()
         artifact_id = cursor.lastrowid
+
+        # v3: kopija modelovih oznaka u kolone (radi SQL upita), ako je migracija pokrenuta
+        if "difficulty" in parsed_result and question_labels_enabled(cursor):
+            cursor.execute("""
+                UPDATE ai_generated_artifacts
+                SET model_difficulty = %s, model_bloom_level = %s
+                WHERE id = %s
+            """, (parsed_result["difficulty"], parsed_result["bloom_level"], artifact_id))
+        conn.commit()
 
         cursor.close()
         conn.close()
@@ -2531,7 +2581,10 @@ def generate_similar_question(question_id):
             "generation_run_id": generation_run_id,
             "artifact_id": artifact_id,
             "question_type": question_type,
-            "proposed_question": parsed_result,
+            # bez modelove težine/Blumovog nivoa - nastavnik ih bira pri pregledu ne videvši ih
+            "proposed_question": {
+                k: v for k, v in parsed_result.items() if k not in question_validation.LABEL_FIELDS
+            },
         }), 201
 
     except Exception as e:
@@ -2576,11 +2629,12 @@ def list_ai_artifacts():
 
         for row in rows:
             parsed = json.loads(row["original_text"]) if row["original_text"] else None
+            move_model_labels(row, parsed)
             row["original_text"] = parsed
             row["question_type"] = prompt_templates.detect_question_type(
                 (parsed or {}).get("answers") or []
             )
-            hide_while_pending(row, BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS)
+            hide_while_pending(row, BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS + BLIND_REVIEW_LABEL_FIELDS)
 
         return jsonify(blind_review_order(rows, user_id)), 200
 
@@ -2638,13 +2692,24 @@ def get_ai_artifact(artifact_id):
         artifact["source_answers"] = cursor.fetchall()
 
         parsed_original = json.loads(artifact["original_text"]) if artifact["original_text"] else None
+        move_model_labels(artifact, parsed_original)
         artifact["original_text"] = parsed_original
         artifact["edited_text"] = json.loads(artifact["edited_text"]) if artifact["edited_text"] else None
+
+        # Nastavnikove oznake (posle odluke); samo ako je migracija pokrenuta i ako postoje
+        if question_labels_enabled(cursor):
+            cursor.execute("""
+                SELECT reviewed_difficulty, reviewed_bloom_level
+                FROM ai_generated_artifacts WHERE id = %s
+            """, (artifact_id,))
+            for key, value in (cursor.fetchone() or {}).items():
+                if value is not None:
+                    artifact[key] = value
 
         question_type = prompt_templates.detect_question_type((parsed_original or {}).get("answers") or [])
         artifact["question_type"] = question_type
         artifact["rubric_criteria"] = get_applicable_rubric_definitions(cursor, question_type)
-        hide_while_pending(artifact, BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS)
+        hide_while_pending(artifact, BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS + BLIND_REVIEW_LABEL_FIELDS)
 
         cursor.close()
         conn.close()
@@ -2665,6 +2730,11 @@ def review_ai_artifact(artifact_id):
         scores = data.get("scores")
         edited_text = data.get("edited_text")
         rejection_reason = (data.get("rejection_reason") or "").strip() or None
+        # Nastavnikova težina i Blumov nivo (bira ih ne videvši modelove)
+        reviewed_labels = {
+            "difficulty": data.get("reviewed_difficulty"),
+            "bloom_level": data.get("reviewed_bloom_level"),
+        }
 
         if decision not in ARTIFACT_DECISIONS:
             return jsonify({
@@ -2773,6 +2843,33 @@ def review_ai_artifact(artifact_id):
                 return jsonify({"error": f"edited_text nije validan: {'; '.join(validation.errors)}"}), 400
             edited_parsed = edited_text
 
+        # v3 predlog: oznake obavezne za prihvatanje i izmenu, opcione za odbacivanje;
+        # v2 predlog: opcione
+        labels_v3 = question_validation.strict_fields_enabled(artifact["prompt_version"])
+        if labels_v3 and decision != ARTIFACT_STATUS_REJECTED and None in reviewed_labels.values():
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "reviewed_difficulty i reviewed_bloom_level su obavezni za prihvatanje ovog predloga"
+            }), 400
+
+        for field_name, value in reviewed_labels.items():
+            allowed = question_validation.LABEL_FIELDS[field_name]
+            if value is not None and value not in allowed:
+                cursor.close()
+                conn.close()
+                return jsonify({
+                    "error": f"reviewed_{field_name} mora biti jedno od: {', '.join(allowed)}"
+                }), 400
+
+        labels_given = any(value is not None for value in reviewed_labels.values())
+        if labels_given and not question_labels_enabled(cursor):
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "Kolone za težinu i Blumov nivo ne postoje - pokrenite migraciju db/migration_question_labels.sql"
+            }), 409
+
         try:
             for rubric_id, score_value in score_by_id.items():
                 cursor.execute("""
@@ -2799,6 +2896,11 @@ def review_ai_artifact(artifact_id):
                     source_question["points"] if source_question else 1,
                 ))
                 created_question_id = cursor.lastrowid
+
+                if labels_given:
+                    cursor.execute("""
+                        UPDATE exam_questions SET difficulty = %s, bloom_level = %s WHERE id = %s
+                    """, (reviewed_labels["difficulty"], reviewed_labels["bloom_level"], created_question_id))
 
                 if question_type == "mc":
                     for answer in final_payload["answers"]:
@@ -2828,6 +2930,13 @@ def review_ai_artifact(artifact_id):
                 created_question_id,
                 artifact_id,
             ))
+
+            if labels_given:
+                cursor.execute("""
+                    UPDATE ai_generated_artifacts
+                    SET reviewed_difficulty = %s, reviewed_bloom_level = %s
+                    WHERE id = %s
+                """, (reviewed_labels["difficulty"], reviewed_labels["bloom_level"], artifact_id))
 
             conn.commit()
         except Exception:
