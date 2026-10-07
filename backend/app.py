@@ -20,7 +20,8 @@ from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
+import hashlib
 from io import BytesIO
 from flask import send_file
 from openpyxl import Workbook
@@ -223,6 +224,17 @@ BLIND_REVIEW_ORDER_FIELDS = ("created_at", "generation_run_id")
 def blind_review_reveal_requested():
     """ADMIN moze da trazi ?reveal=1 da vidi skrivena polja; TEACHER ne."""
     return get_jwt().get("role") == "ADMIN" and request.args.get("reveal") == "1"
+
+
+def blind_review_order(rows, user_id):
+    """Slucajan redosled liste predloga, stabilan za istog korisnika u toku dana.
+    Kljuc je hash(user_id, datum, id), pa novi ili odluceni predlog ne
+    premesta ostale; filter po statusu se radi pre ovoga, u SQL-u."""
+    seed = f"{user_id}:{date.today().isoformat()}"
+    return sorted(
+        rows,
+        key=lambda row: hashlib.sha256(f"{seed}:{row['id']}".encode()).hexdigest(),
+    )
 
 
 def hide_while_pending(row, fields):
@@ -2585,7 +2597,7 @@ def list_ai_artifacts():
             )
             hide_while_pending(row, BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS)
 
-        return jsonify(rows), 200
+        return jsonify(blind_review_order(rows, user_id)), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -3797,7 +3809,7 @@ def list_explanation_artifacts():
     conn.close()
     for row in rows:
         hide_while_pending(row, BLIND_REVIEW_ORDER_FIELDS)
-    return jsonify(rows), 200
+    return jsonify(blind_review_order(rows, get_jwt_identity())), 200
 
 
 @app.get("/api/ai-artifacts/explanation/<int:artifact_id>")  # detalji jednog predloga + TEACHER rubrika za formu ocenjivanja
