@@ -45,6 +45,7 @@ import ai_provider
 import prompt_templates
 import question_validation
 import edit_distance
+import question_similarity
 import explanation_prompts
 import code_executor
 import explanation_review
@@ -266,6 +267,142 @@ def table_columns_exist(cursor, table, columns):
 
 # db/migration_edit_distance.sql (tačka B)
 EDIT_DISTANCE_COLUMNS = ("edit_distance", "edit_distance_norm")
+
+
+# db/migration_duplicate_check.sql (tačka C)
+DUPLICATE_COLUMNS = ("max_similarity", "similar_source", "similar_question_id",
+                     "similar_artifact_id", "reviewed_duplicate")
+
+
+def duplicate_check_enabled(cursor):
+    return table_columns_exist(cursor, "ai_generated_artifacts", DUPLICATE_COLUMNS)
+
+
+def _question_payloads(cursor, question_ids):
+    """{id: {'question_text', 'answers'}} za pitanja iz banke."""
+    if not question_ids:
+        return {}
+    placeholders = ", ".join(["%s"] * len(question_ids))
+    cursor.execute(f"SELECT id, question_text FROM exam_questions WHERE id IN ({placeholders})", tuple(question_ids))
+    payloads = {row["id"]: {"question_text": row["question_text"], "answers": []} for row in cursor.fetchall()}
+    cursor.execute(
+        f"SELECT question_id, answer_text, is_correct FROM exam_answers WHERE question_id IN ({placeholders}) ORDER BY id",
+        tuple(question_ids),
+    )
+    for row in cursor.fetchall():
+        payloads[row["question_id"]]["answers"].append(
+            {"answer_text": row["answer_text"], "is_correct": bool(row["is_correct"])}
+        )
+    return payloads
+
+
+def compute_artifact_similarity(cursor, artifact_id):
+    """Najsličnije pitanje/predlog za AI predlog pitanja (question_similarity).
+    Poredi se sa: izvornim pitanjem, pitanjima iz banke istog predmeta (bez
+    pitanja nastalih iz ovog i kasnijih predloga) i ranijim predlozima istog
+    predmeta - pa ponovni izračun daje isto što i izračun pri generisanju.
+    Vraća {'score', 'source', 'id'} ili None."""
+    cursor.execute("""
+        SELECT a.original_text, r.source_question_id, sq.subject_id
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        LEFT JOIN exam_questions sq ON sq.id = r.source_question_id
+        WHERE a.id = %s AND a.artifact_type = %s
+    """, (artifact_id, ARTIFACT_TYPE_QUESTION))
+    artifact = cursor.fetchone()
+    if not artifact or not artifact["original_text"]:
+        return None
+    candidate = json.loads(artifact["original_text"])
+    source_id, subject_id = artifact["source_question_id"], artifact["subject_id"]
+
+    bank_ids = []
+    earlier = []
+    if subject_id is not None:
+        cursor.execute("""
+            SELECT q.id FROM exam_questions q
+            WHERE q.subject_id = %s
+              AND q.id NOT IN (
+                  SELECT a.created_question_id FROM ai_generated_artifacts a
+                  WHERE a.id >= %s AND a.created_question_id IS NOT NULL)
+        """, (subject_id, artifact_id))
+        bank_ids = [row["id"] for row in cursor.fetchall() if row["id"] != source_id]
+        cursor.execute("""
+            SELECT a.id, a.original_text
+            FROM ai_generated_artifacts a
+            JOIN ai_generation_runs r ON r.id = a.generation_run_id
+            JOIN exam_questions sq ON sq.id = r.source_question_id
+            WHERE a.artifact_type = %s AND a.id < %s AND sq.subject_id = %s AND a.original_text IS NOT NULL
+        """, (ARTIFACT_TYPE_QUESTION, artifact_id, subject_id))
+        earlier = [("artifact", row["id"], json.loads(row["original_text"])) for row in cursor.fetchall()]
+
+    payloads = _question_payloads(cursor, ([source_id] if source_id else []) + bank_ids)
+    pool = ([("source", source_id, payloads[source_id])] if source_id in payloads else [])
+    pool += [("bank", qid, payloads[qid]) for qid in bank_ids if qid in payloads]
+    pool += earlier
+    return question_similarity.find_most_similar(candidate, pool)
+
+
+def store_artifact_similarity(cursor, artifact_id):
+    """Izračuna i upiše max_similarity / similar_* (reviewed_duplicate se ne dira)."""
+    best = compute_artifact_similarity(cursor, artifact_id)
+    cursor.execute("""
+        UPDATE ai_generated_artifacts
+        SET max_similarity = %s, similar_source = %s, similar_question_id = %s, similar_artifact_id = %s
+        WHERE id = %s
+    """, (
+        best["score"] if best else None,
+        best["source"] if best else None,
+        best["id"] if best and best["source"] in ("source", "bank") else None,
+        best["id"] if best and best["source"] == "artifact" else None,
+        artifact_id,
+    ))
+    return best
+
+
+def load_duplicate_info(cursor, artifact_ids, with_text=False):
+    """{artifact_id: podaci o mogućem duplikatu}; prazno ako migracija nije pokrenuta."""
+    if not artifact_ids or not duplicate_check_enabled(cursor):
+        return {}
+    placeholders = ", ".join(["%s"] * len(artifact_ids))
+    cursor.execute(f"""
+        SELECT a.id, a.max_similarity, a.similar_source, a.similar_question_id, a.reviewed_duplicate,
+               sq.question_text AS similar_bank_text, sa.original_text AS similar_artifact_text
+        FROM ai_generated_artifacts a
+        LEFT JOIN exam_questions sq ON sq.id = a.similar_question_id
+        LEFT JOIN ai_generated_artifacts sa ON sa.id = a.similar_artifact_id
+        WHERE a.id IN ({placeholders})
+    """, tuple(artifact_ids))
+    info = {}
+    for row in cursor.fetchall():
+        item = {"reviewed_duplicate": row["reviewed_duplicate"]}
+        if row["max_similarity"] is not None:
+            item.update({
+                "max_similarity": float(row["max_similarity"]),
+                "possible_duplicate": question_similarity.is_possible_duplicate(row["max_similarity"]),
+                "similar_source": row["similar_source"],
+            })
+            # id samo za pitanje iz banke / izvorno; za drugi AI predlog samo tekst
+            if row["similar_source"] in ("source", "bank"):
+                item["similar_question_id"] = row["similar_question_id"]
+            if with_text:
+                text = row["similar_bank_text"]
+                if row["similar_source"] == "artifact" and row["similar_artifact_text"]:
+                    text = (json.loads(row["similar_artifact_text"]) or {}).get("question_text")
+                item["similar_question_text"] = text
+        info[row["id"]] = item
+    return info
+
+
+def attach_duplicate_info(row, info):
+    """Dodaje podatke o duplikatu u odgovor rute samo ako postoje (v2/pre migracije odgovor ostaje isti)."""
+    if not info:
+        return
+    for key, value in info.items():
+        if key == "reviewed_duplicate":
+            if value is not None:
+                row[key] = bool(value)
+        elif value is not None or key == "similar_question_text":
+            row[key] = value
 
 
 def question_labels_enabled(cursor):
@@ -2586,6 +2723,11 @@ def generate_similar_for_question(question_id, provider, evaluation_batch_id=Non
             SET model_difficulty = %s, model_bloom_level = %s
             WHERE id = %s
         """, (parsed_result["difficulty"], parsed_result["bloom_level"], artifact_id))
+
+    # Mogući duplikat (tačka C), ako je migracija pokrenuta; stari se računaju
+    # sa tools/recompute_similarity.py
+    if duplicate_check_enabled(cursor):
+        store_artifact_similarity(cursor, artifact_id)
     conn.commit()
 
     cursor.close()
@@ -2648,6 +2790,7 @@ def list_ai_artifacts():
             ORDER BY a.created_at DESC
         """, (status_filter, ARTIFACT_TYPE_QUESTION))
         rows = cursor.fetchall()
+        duplicate_info = load_duplicate_info(cursor, [row["id"] for row in rows])
         cursor.close()
         conn.close()
 
@@ -2657,6 +2800,7 @@ def list_ai_artifacts():
 
         for row in rows:
             parsed = json.loads(row["original_text"]) if row["original_text"] else None
+            attach_duplicate_info(row, duplicate_info.get(row["id"]))
             move_model_labels(row, parsed)
             row["original_text"] = parsed
             row["question_type"] = prompt_templates.detect_question_type(
@@ -2724,6 +2868,9 @@ def get_ai_artifact(artifact_id):
         artifact["original_text"] = parsed_original
         artifact["edited_text"] = json.loads(artifact["edited_text"]) if artifact["edited_text"] else None
 
+        # Mogući duplikat (tačka C): ocena, sličan tekst i nastavnikova potvrda
+        attach_duplicate_info(artifact, load_duplicate_info(cursor, [artifact_id], with_text=True).get(artifact_id))
+
         # Nastavnikove oznake (posle odluke); samo ako je migracija pokrenuta i ako postoje
         if question_labels_enabled(cursor):
             cursor.execute("""
@@ -2763,6 +2910,10 @@ def review_ai_artifact(artifact_id):
             "difficulty": data.get("reviewed_difficulty"),
             "bloom_level": data.get("reviewed_bloom_level"),
         }
+        # Nastavnikova potvrda mogućeg duplikata (tačka C): true / false / null
+        reviewed_duplicate = data.get("reviewed_duplicate")
+        if reviewed_duplicate is not None and not isinstance(reviewed_duplicate, bool):
+            return jsonify({"error": "reviewed_duplicate mora biti true, false ili null"}), 400
 
         if decision not in ARTIFACT_DECISIONS:
             return jsonify({
@@ -2900,6 +3051,13 @@ def review_ai_artifact(artifact_id):
                 "error": "Kolone za težinu i Blumov nivo ne postoje - pokrenite migraciju db/migration_question_labels.sql"
             }), 409
 
+        if reviewed_duplicate is not None and not duplicate_check_enabled(cursor):
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "Kolone za proveru duplikata ne postoje - pokrenite migraciju db/migration_duplicate_check.sql"
+            }), 409
+
         try:
             for rubric_id, score_value in score_by_id.items():
                 cursor.execute("""
@@ -2967,6 +3125,10 @@ def review_ai_artifact(artifact_id):
                     SET reviewed_difficulty = %s, reviewed_bloom_level = %s
                     WHERE id = %s
                 """, (reviewed_labels["difficulty"], reviewed_labels["bloom_level"], artifact_id))
+
+            if reviewed_duplicate is not None:
+                cursor.execute("UPDATE ai_generated_artifacts SET reviewed_duplicate = %s WHERE id = %s",
+                               (1 if reviewed_duplicate else 0, artifact_id))
 
             # Obim intervencije (tačka B), samo za izmenu i samo ako je migracija pokrenuta;
             # stari/propušteni se dopunjuju sa tools/backfill_edit_distance.py
