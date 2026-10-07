@@ -2413,179 +2413,189 @@ def update_answer(answer_id):
         return jsonify({"error": str(e)}), 500
 
 
+def generate_similar_for_question(question_id, provider, evaluation_batch_id=None):
+    """Generiše jedan predlog sličnog pitanja i beleži run - zajednička logika
+    rute POST /api/questions/<id>/generate-similar i pokretača eksperimenta
+    (backend/tools/run_experiment.py). Vraća (telo_odgovora, http_status);
+    izuzetke prepušta pozivaocu (ruta ih vraća kao 500)."""
+    if provider not in ai_provider.DEFAULT_MODELS:
+        return ({"error": f"Nepoznat provider: {provider}"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    if evaluation_batch_id is not None:
+        cursor.execute("SELECT id FROM evaluation_batches WHERE id = %s", (evaluation_batch_id,))
+        if not cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return ({"error": f"evaluation_batch_id {evaluation_batch_id} ne postoji"}), 400
+
+    cursor.execute("SELECT * FROM exam_questions WHERE id = %s", (question_id,))
+    question = cursor.fetchone()
+
+    if not question:
+        cursor.close()
+        conn.close()
+        return ({"error": "Question not found"}), 404
+
+    cursor.execute("""
+        SELECT answer_text, is_correct
+        FROM exam_answers
+        WHERE question_id = %s
+        ORDER BY id ASC
+    """, (question_id,))
+    original_answers = cursor.fetchall()
+
+    subject_name = "Nepoznat predmet"
+
+    if question["subject_id"]:
+        cursor.execute("SELECT name FROM subjects WHERE id = %s", (question["subject_id"],))
+        subject_row = cursor.fetchone()
+        if subject_row:
+            subject_name = subject_row["name"]
+    elif question["exam_id"]:
+        cursor.execute("""
+            SELECT s.name AS subject_name
+            FROM exams e
+            JOIN subjects s ON s.id = e.subject_id
+            WHERE e.id = %s
+        """, (question["exam_id"],))
+        exam_row = cursor.fetchone()
+        if exam_row:
+            subject_name = exam_row["subject_name"]
+
+    area_name = None
+
+    if question["area_id"]:
+        cursor.execute("SELECT name FROM areas WHERE id = %s", (question["area_id"],))
+        area_row = cursor.fetchone()
+        if area_row:
+            area_name = area_row["name"]
+
+    question_type = prompt_templates.detect_question_type(original_answers)
+    prompt_id, template_text = prompt_templates.ensure_prompt_synced(conn, question_type)
+    prompt_text = prompt_templates.build_similar_question_prompt(
+        template_text,
+        question["question_text"],
+        original_answers,
+        subject_name,
+        area_name,
+    )
+
+    model_name = ai_provider.DEFAULT_MODELS[provider]
+    model_id = ensure_ai_model(conn, provider=provider, model_name=model_name)
+
+    options = {"temperature": 0.7}
+    result = ai_provider.generate(prompt_text, provider=provider, options=options)
+
+    parsed_result = None
+    validation_errors = None
+
+    if not result.get("success"):
+        validation_errors = result.get("error", "Nepoznata greška pri pozivu AI modela")
+    else:
+        try:
+            parsed_result = json.loads(result["raw_text"])
+        except (ValueError, TypeError):
+            validation_errors = "Odgovor modela nije validan JSON"
+
+        if parsed_result is not None:
+            validation = question_validation.validate(
+                parsed_result,
+                question_type,
+                len(original_answers),
+                prompt_templates.template_version(template_text),
+            )
+            validation_errors = None if validation.passed else "; ".join(validation.errors)
+
+    validation_passed = validation_errors is None and parsed_result is not None
+
+    cursor.execute("""
+        INSERT INTO ai_generation_runs
+        (model_id, prompt_id, purpose, mode, source_question_id, params_used,
+         raw_response, parsed_result, validation_passed, validation_errors,
+         response_time_ms, tokens_used, retry_count, evaluation_batch_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
+    """, (
+        model_id,
+        prompt_id,
+        prompt_templates.PURPOSE_SIMILAR_QUESTION,
+        None,
+        question_id,
+        # attempts/finish_reason nisu kolone - cuvaju se uz parametre poziva
+        json.dumps({
+            **options,
+            "attempts": result.get("attempts"),
+            "finish_reason": result.get("finish_reason"),
+        }),
+        result.get("raw_text"),
+        json.dumps(parsed_result) if parsed_result is not None else None,
+        1 if validation_passed else 0,
+        validation_errors,
+        result.get("response_time_ms"),
+        result.get("tokens_used"),
+        evaluation_batch_id,
+    ))
+    conn.commit()
+    generation_run_id = cursor.lastrowid
+
+    if not validation_passed:
+        cursor.close()
+        conn.close()
+        return ({
+            "error": "AI generisanje nije dalo iskoristiv predlog",
+            "details": validation_errors,
+            "generation_run_id": generation_run_id,
+        }), 422
+
+    cursor.execute("""
+        INSERT INTO ai_generated_artifacts
+        (generation_run_id, artifact_type, status, original_text)
+        VALUES (%s, %s, %s, %s)
+    """, (
+        generation_run_id,
+        "question",
+        "predlog",
+        json.dumps(parsed_result),
+    ))
+    artifact_id = cursor.lastrowid
+
+    # v3: kopija modelovih oznaka u kolone (radi SQL upita), ako je migracija pokrenuta
+    if "difficulty" in parsed_result and question_labels_enabled(cursor):
+        cursor.execute("""
+            UPDATE ai_generated_artifacts
+            SET model_difficulty = %s, model_bloom_level = %s
+            WHERE id = %s
+        """, (parsed_result["difficulty"], parsed_result["bloom_level"], artifact_id))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return ({
+        "message": "Predlog pitanja generisan",
+        "generation_run_id": generation_run_id,
+        "artifact_id": artifact_id,
+        "question_type": question_type,
+        # bez modelove težine/Blumovog nivoa - nastavnik ih bira pri pregledu ne videvši ih
+        "proposed_question": {
+            k: v for k, v in parsed_result.items() if k not in question_validation.LABEL_FIELDS
+        },
+    }), 201
+
+
 @app.post("/api/questions/<int:question_id>/generate-similar") #AI generisanje slicnog pitanja na osnovu postojeceg
 @role_required(["TEACHER", "ADMIN"])
 def generate_similar_question(question_id):
     try:
-        provider = request.args.get("provider", "groq")
-        if provider not in ai_provider.DEFAULT_MODELS:
-            return jsonify({"error": f"Nepoznat provider: {provider}"}), 400
-
         # Opciono: oznaka evaluacione serije (eksperiment); bez nje run je razvojna proba.
-        evaluation_batch_id = request.args.get("evaluation_batch_id", type=int)
-
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        if evaluation_batch_id is not None:
-            cursor.execute("SELECT id FROM evaluation_batches WHERE id = %s", (evaluation_batch_id,))
-            if not cursor.fetchone():
-                cursor.close()
-                conn.close()
-                return jsonify({"error": f"evaluation_batch_id {evaluation_batch_id} ne postoji"}), 400
-
-        cursor.execute("SELECT * FROM exam_questions WHERE id = %s", (question_id,))
-        question = cursor.fetchone()
-
-        if not question:
-            cursor.close()
-            conn.close()
-            return jsonify({"error": "Question not found"}), 404
-
-        cursor.execute("""
-            SELECT answer_text, is_correct
-            FROM exam_answers
-            WHERE question_id = %s
-            ORDER BY id ASC
-        """, (question_id,))
-        original_answers = cursor.fetchall()
-
-        subject_name = "Nepoznat predmet"
-
-        if question["subject_id"]:
-            cursor.execute("SELECT name FROM subjects WHERE id = %s", (question["subject_id"],))
-            subject_row = cursor.fetchone()
-            if subject_row:
-                subject_name = subject_row["name"]
-        elif question["exam_id"]:
-            cursor.execute("""
-                SELECT s.name AS subject_name
-                FROM exams e
-                JOIN subjects s ON s.id = e.subject_id
-                WHERE e.id = %s
-            """, (question["exam_id"],))
-            exam_row = cursor.fetchone()
-            if exam_row:
-                subject_name = exam_row["subject_name"]
-
-        area_name = None
-
-        if question["area_id"]:
-            cursor.execute("SELECT name FROM areas WHERE id = %s", (question["area_id"],))
-            area_row = cursor.fetchone()
-            if area_row:
-                area_name = area_row["name"]
-
-        question_type = prompt_templates.detect_question_type(original_answers)
-        prompt_id, template_text = prompt_templates.ensure_prompt_synced(conn, question_type)
-        prompt_text = prompt_templates.build_similar_question_prompt(
-            template_text,
-            question["question_text"],
-            original_answers,
-            subject_name,
-            area_name,
-        )
-
-        model_name = ai_provider.DEFAULT_MODELS[provider]
-        model_id = ensure_ai_model(conn, provider=provider, model_name=model_name)
-
-        options = {"temperature": 0.7}
-        result = ai_provider.generate(prompt_text, provider=provider, options=options)
-
-        parsed_result = None
-        validation_errors = None
-
-        if not result.get("success"):
-            validation_errors = result.get("error", "Nepoznata greška pri pozivu AI modela")
-        else:
-            try:
-                parsed_result = json.loads(result["raw_text"])
-            except (ValueError, TypeError):
-                validation_errors = "Odgovor modela nije validan JSON"
-
-            if parsed_result is not None:
-                validation = question_validation.validate(
-                    parsed_result,
-                    question_type,
-                    len(original_answers),
-                    prompt_templates.template_version(template_text),
-                )
-                validation_errors = None if validation.passed else "; ".join(validation.errors)
-
-        validation_passed = validation_errors is None and parsed_result is not None
-
-        cursor.execute("""
-            INSERT INTO ai_generation_runs
-            (model_id, prompt_id, purpose, mode, source_question_id, params_used,
-             raw_response, parsed_result, validation_passed, validation_errors,
-             response_time_ms, tokens_used, retry_count, evaluation_batch_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
-        """, (
-            model_id,
-            prompt_id,
-            prompt_templates.PURPOSE_SIMILAR_QUESTION,
-            None,
+        body, status = generate_similar_for_question(
             question_id,
-            # attempts/finish_reason nisu kolone - cuvaju se uz parametre poziva
-            json.dumps({
-                **options,
-                "attempts": result.get("attempts"),
-                "finish_reason": result.get("finish_reason"),
-            }),
-            result.get("raw_text"),
-            json.dumps(parsed_result) if parsed_result is not None else None,
-            1 if validation_passed else 0,
-            validation_errors,
-            result.get("response_time_ms"),
-            result.get("tokens_used"),
-            evaluation_batch_id,
-        ))
-        conn.commit()
-        generation_run_id = cursor.lastrowid
-
-        if not validation_passed:
-            cursor.close()
-            conn.close()
-            return jsonify({
-                "error": "AI generisanje nije dalo iskoristiv predlog",
-                "details": validation_errors,
-                "generation_run_id": generation_run_id,
-            }), 422
-
-        cursor.execute("""
-            INSERT INTO ai_generated_artifacts
-            (generation_run_id, artifact_type, status, original_text)
-            VALUES (%s, %s, %s, %s)
-        """, (
-            generation_run_id,
-            "question",
-            "predlog",
-            json.dumps(parsed_result),
-        ))
-        artifact_id = cursor.lastrowid
-
-        # v3: kopija modelovih oznaka u kolone (radi SQL upita), ako je migracija pokrenuta
-        if "difficulty" in parsed_result and question_labels_enabled(cursor):
-            cursor.execute("""
-                UPDATE ai_generated_artifacts
-                SET model_difficulty = %s, model_bloom_level = %s
-                WHERE id = %s
-            """, (parsed_result["difficulty"], parsed_result["bloom_level"], artifact_id))
-        conn.commit()
-
-        cursor.close()
-        conn.close()
-
-        return jsonify({
-            "message": "Predlog pitanja generisan",
-            "generation_run_id": generation_run_id,
-            "artifact_id": artifact_id,
-            "question_type": question_type,
-            # bez modelove težine/Blumovog nivoa - nastavnik ih bira pri pregledu ne videvši ih
-            "proposed_question": {
-                k: v for k, v in parsed_result.items() if k not in question_validation.LABEL_FIELDS
-            },
-        }), 201
+            request.args.get("provider", "groq"),
+            request.args.get("evaluation_batch_id", type=int),
+        )
+        return jsonify(body), status
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
