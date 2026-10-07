@@ -4680,6 +4680,267 @@ def get_reference_set(set_id):
         conn.close()
 
 
+# =====================================================================
+# Drugi ocenjivač (tačka E): zasebna ocena istog predloga, bez odluke,
+# radi saglasnosti ocenjivača. Tabele/kolone iz db/migration_second_rater.sql;
+# pre migracije rute vraćaju 409. Drugi ocenjivač vidi samo original_text,
+# izvorno pitanje, rubriku i sličnost - ne vidi model, status/odluku, izmenu,
+# razlog odbacivanja ni tuđe ocene.
+# =====================================================================
+
+SECOND_RATING_SAMPLE = 0.30  # udeo predloga iz serije koji se nudi svakom ocenjivaču
+
+SECOND_RATER_MIGRATION_ERROR = (
+    "Druga ocena nije dostupna - pokrenite migraciju db/migration_second_rater.sql"
+)
+
+
+def second_rater_enabled(cursor):
+    return (table_columns_exist(cursor, "ai_evaluations", ("evaluation_round",))
+            and table_columns_exist(cursor, "evaluation_batches", ("closed_at",))
+            and table_columns_exist(cursor, "ai_label_evaluations", ("artifact_id", "difficulty", "bloom_level")))
+
+
+def _stable_fraction(*parts):
+    digest = hashlib.sha256(":".join(str(p) for p in parts).encode()).hexdigest()
+    return int(digest[:8], 16) / 0xFFFFFFFF
+
+
+def in_second_rating_sample(user_id, artifact_id):
+    """Stabilan (ne menja se iz dana u dan) nasumičan uzorak po ocenjivaču."""
+    return _stable_fraction("second-rating", user_id, artifact_id) < SECOND_RATING_SAMPLE
+
+
+def _load_rating_artifact(cursor, artifact_id):
+    cursor.execute("""
+        SELECT a.id, a.original_text, r.evaluation_batch_id, b.closed_at, p.version AS prompt_version,
+               r.source_question_id, sq.subject_id, sq.area_id, sq.question_text AS source_question_text,
+               s.name AS subject_name, ar.name AS area_name
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        LEFT JOIN evaluation_batches b ON b.id = r.evaluation_batch_id
+        LEFT JOIN ai_prompts p ON p.id = r.prompt_id
+        LEFT JOIN exam_questions sq ON sq.id = r.source_question_id
+        LEFT JOIN subjects s ON s.id = sq.subject_id
+        LEFT JOIN areas ar ON ar.id = sq.area_id
+        WHERE a.id = %s AND a.artifact_type = %s
+    """, (artifact_id, ARTIFACT_TYPE_QUESTION))
+    return cursor.fetchone()
+
+
+def _second_rating_access_error(cursor, artifact, user_id, role):
+    """(poruka, status) ako korisnik ne sme da da drugu ocenu ovom predlogu, inače None."""
+    if not artifact:
+        return "Artifact not found", 404
+    if role == "TEACHER" and not user_has_subject(int(user_id), artifact["subject_id"], "TEACHER"):
+        return "Forbidden", 403
+    if artifact["evaluation_batch_id"] is None:
+        return "Predlog nije deo evaluacione serije - druga ocena je samo za serije", 400
+    if artifact["closed_at"] is not None:
+        return "Serija je zatvorena - ocena više ne bi bila slepa", 409
+    cursor.execute("SELECT 1 FROM ai_evaluations WHERE artifact_id = %s AND evaluator_id = %s LIMIT 1",
+                   (artifact["id"], user_id))
+    if cursor.fetchone():
+        return "Već ste ocenili ovaj predlog", 409
+    return None
+
+
+def _rating_view(artifact):
+    """Ono što drugi ocenjivač sme da vidi o predlogu."""
+    parsed = json.loads(artifact["original_text"]) if artifact["original_text"] else None
+    view = {"id": artifact["id"], "batch_id": artifact["evaluation_batch_id"]}
+    move_model_labels(view, parsed)          # oznake modela se izdvajaju ...
+    view.pop("model_difficulty", None)       # ... i ne vraćaju
+    view.pop("model_bloom_level", None)
+    view.update({
+        "original_text": parsed,
+        "question_type": prompt_templates.detect_question_type((parsed or {}).get("answers") or []),
+        "subject_name": artifact["subject_name"],
+        "area_name": artifact["area_name"],
+    })
+    return view
+
+
+def validate_rubric_scores(cursor, question_type, scores):
+    """(score_by_id, None) ili (None, poruka) - ista pravila kao pri pregledu."""
+    if not isinstance(scores, list) or not scores:
+        return None, "scores je obavezno i mora biti neprazan niz"
+    rubric_by_id = {row["id"]: row for row in get_applicable_rubric_definitions(cursor, question_type)}
+    score_by_id = {}
+    for item in scores:
+        if not isinstance(item, dict):
+            return None, "Svaki element scores mora biti objekat"
+        rubric_row = rubric_by_id.get(item.get("rubric_definition_id"))
+        if rubric_row is None:
+            return None, f"Nepoznat ili neprimenljiv rubric_definition_id: {item.get('rubric_definition_id')}"
+        value = item.get("score")
+        if isinstance(value, bool) or not isinstance(value, int) or not (rubric_row["scale_min"] <= value <= rubric_row["scale_max"]):
+            return None, (f"Ocena za '{rubric_row['dimension_label']}' mora biti ceo broj "
+                          f"u opsegu {rubric_row['scale_min']}-{rubric_row['scale_max']}")
+        score_by_id[rubric_row["id"]] = value
+    if set(score_by_id) != set(rubric_by_id):
+        return None, "scores mora sadržati tačno jednu ocenu za svaki primenljivi kriterijum rubrike"
+    return score_by_id, None
+
+
+@app.get("/api/ai/artifacts/second-rating")  # predlozi iz otvorenih serija za drugu ocenu (uzorak po ocenjivaču)
+@role_required(["TEACHER", "ADMIN"])
+def list_second_rating():
+    user_id = get_jwt_identity()
+    role = get_jwt().get("role")
+    batch_id = request.args.get("batch_id", type=int)
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if not second_rater_enabled(cursor):
+            return jsonify({"error": SECOND_RATER_MIGRATION_ERROR}), 409
+        cursor.execute(f"""
+            SELECT a.id, a.original_text, r.evaluation_batch_id, NULL AS closed_at, sq.subject_id,
+                   s.name AS subject_name, ar.name AS area_name
+            FROM ai_generated_artifacts a
+            JOIN ai_generation_runs r ON r.id = a.generation_run_id
+            JOIN evaluation_batches b ON b.id = r.evaluation_batch_id AND b.closed_at IS NULL
+            LEFT JOIN exam_questions sq ON sq.id = r.source_question_id
+            LEFT JOIN subjects s ON s.id = sq.subject_id
+            LEFT JOIN areas ar ON ar.id = sq.area_id
+            WHERE a.artifact_type = %s
+              {"AND r.evaluation_batch_id = %s" if batch_id is not None else ""}
+              AND NOT EXISTS (SELECT 1 FROM ai_evaluations e WHERE e.artifact_id = a.id AND e.evaluator_id = %s)
+        """, (ARTIFACT_TYPE_QUESTION, *([batch_id] if batch_id is not None else []), user_id))
+        rows = cursor.fetchall()
+        if role == "TEACHER":
+            allowed = set(get_user_subject_ids(int(user_id), "TEACHER"))
+            rows = [row for row in rows if row["subject_id"] in allowed]
+        rows = [row for row in rows if in_second_rating_sample(user_id, row["id"])]
+        rows.sort(key=lambda row: _stable_fraction("second-rating-order", user_id, row["id"]))
+        return jsonify([_rating_view(row) for row in rows]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.get("/api/ai/artifacts/<int:artifact_id>/second-rating")  # predlog za drugu ocenu (bez modela i odluke)
+@role_required(["TEACHER", "ADMIN"])
+def get_second_rating(artifact_id):
+    user_id = get_jwt_identity()
+    role = get_jwt().get("role")
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if not second_rater_enabled(cursor):
+            return jsonify({"error": SECOND_RATER_MIGRATION_ERROR}), 409
+        artifact = _load_rating_artifact(cursor, artifact_id)
+        denied = _second_rating_access_error(cursor, artifact, user_id, role)
+        if denied:
+            return jsonify({"error": denied[0]}), denied[1]
+
+        view = _rating_view(artifact)
+        cursor.execute("SELECT answer_text, is_correct FROM exam_answers WHERE question_id = %s ORDER BY id",
+                       (artifact["source_question_id"],))
+        view["source_question_text"] = artifact["source_question_text"]
+        view["source_answers"] = cursor.fetchall()
+        view["rubric_criteria"] = get_applicable_rubric_definitions(cursor, view["question_type"])
+        similarity = load_duplicate_info(cursor, [artifact_id], with_text=True).get(artifact_id) or {}
+        similarity.pop("reviewed_duplicate", None)  # odluka prvog ocenjivača
+        attach_duplicate_info(view, similarity)
+        return jsonify(view), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.post("/api/ai/artifacts/<int:artifact_id>/evaluations")  # druga ocena: samo rubrika i težina/Blum, bez odluke
+@role_required(["TEACHER", "ADMIN"])
+def submit_second_rating(artifact_id):
+    user_id = get_jwt_identity()
+    role = get_jwt().get("role")
+    data = request.get_json(silent=True) or {}
+    comment = data.get("comment")
+    comment = (comment.strip() or None) if isinstance(comment, str) else None
+    labels = {"difficulty": data.get("difficulty"), "bloom_level": data.get("bloom_level")}
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if not second_rater_enabled(cursor):
+            return jsonify({"error": SECOND_RATER_MIGRATION_ERROR}), 409
+        artifact = _load_rating_artifact(cursor, artifact_id)
+        denied = _second_rating_access_error(cursor, artifact, user_id, role)
+        if denied:
+            return jsonify({"error": denied[0]}), denied[1]
+
+        view = _rating_view(artifact)
+        score_by_id, error = validate_rubric_scores(cursor, view["question_type"], data.get("scores"))
+        if error:
+            return jsonify({"error": error}), 400
+
+        if question_validation.strict_fields_enabled(artifact["prompt_version"]) and None in labels.values():
+            return jsonify({"error": "difficulty i bloom_level su obavezni za ovaj predlog"}), 400
+        for field_name, value in labels.items():
+            allowed = question_validation.LABEL_FIELDS[field_name]
+            if value is not None and value not in allowed:
+                return jsonify({"error": f"{field_name} mora biti jedno od: {', '.join(allowed)}"}), 400
+
+        try:
+            for rubric_id, score in score_by_id.items():
+                cursor.execute("""
+                    INSERT INTO ai_evaluations
+                    (artifact_id, rubric_definition_id, evaluator_id, evaluator_role, score, comment, evaluation_round)
+                    VALUES (%s, %s, %s, %s, %s, %s, 2)
+                """, (artifact_id, rubric_id, user_id, role, score, comment))
+            if any(value is not None for value in labels.values()):
+                cursor.execute("""
+                    INSERT INTO ai_label_evaluations (artifact_id, evaluator_id, evaluator_role, difficulty, bloom_level)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (artifact_id, user_id, role, labels["difficulty"], labels["bloom_level"]))
+            conn.commit()
+        except mysql.connector.IntegrityError as e:
+            conn.rollback()
+            if e.errno == 1062:
+                return jsonify({"error": "Već ste ocenili ovaj predlog"}), 409
+            raise
+        except Exception:
+            conn.rollback()
+            raise
+
+        return jsonify({"message": "Ocena sačuvana", "artifact_id": artifact_id,
+                        "evaluation_round": 2, "scores": len(score_by_id)}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.post("/api/evaluation-batches/<int:batch_id>/close")  # zatvaranje serije: model i odluke postaju vidljivi
+@role_required(["ADMIN"])
+def close_evaluation_batch(batch_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if not table_columns_exist(cursor, "evaluation_batches", ("closed_at",)):
+            return jsonify({"error": SECOND_RATER_MIGRATION_ERROR}), 409
+        cursor.execute("SELECT id, closed_at FROM evaluation_batches WHERE id = %s", (batch_id,))
+        batch = cursor.fetchone()
+        if not batch:
+            return jsonify({"error": "Batch not found"}), 404
+        if batch["closed_at"] is None:
+            cursor.execute("UPDATE evaluation_batches SET closed_at = NOW() WHERE id = %s", (batch_id,))
+            conn.commit()
+            cursor.execute("SELECT closed_at FROM evaluation_batches WHERE id = %s", (batch_id,))
+            batch = cursor.fetchone()
+        return jsonify({"id": batch_id, "closed_at": batch["closed_at"]}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
 
