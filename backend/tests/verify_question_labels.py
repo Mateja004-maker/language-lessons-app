@@ -233,8 +233,11 @@ def run():
         ("generisanje v3, visak polja", mc_payload(difficulty="lako", bloom_level="primena", note="x"), "Nepoznata polja"),
     ):
         code, b = generate(source_id, payload, admin)
-        record(case, f"422, poruka sadrzi '{expected_msg}'", f"{code}, {b.get('details')}",
-               code == 422 and expected_msg in (b.get("details") or "") and not b.get("artifact_id"))
+        # ruta vraca razumljivu poruku; sirov razlog validacije je u run-u
+        raw_reason = (db_one("SELECT validation_errors FROM ai_generation_runs WHERE id = %s",
+                             (b.get("generation_run_id"),)) or {}).get("validation_errors") or ""
+        record(case, f"422 schema, razlog u run-u sadrzi '{expected_msg}'", f"{code} {b.get('failure_type')}, {raw_reason}",
+               code == 422 and b.get("failure_type") == "schema" and expected_msg in raw_reason and not b.get("artifact_id"))
 
     # --- slepo: modelove oznake se ne vracaju dok je 'predlog' ---
     d = client.get(f"/api/ai/artifacts/{v3_id}", headers=viewer).get_json()

@@ -46,6 +46,7 @@ import prompt_templates
 import question_validation
 import edit_distance
 import question_similarity
+import generation_failures
 import explanation_prompts
 import code_executor
 import explanation_review
@@ -263,6 +264,10 @@ def table_columns_exist(cursor, table, columns):
     )
     row = cursor.fetchone()
     return (row["n"] if isinstance(row, dict) else row[0]) == len(columns)
+
+
+# db/migration_failure_type_retry.sql (tačka I)
+FAILURE_COLUMNS = ("failure_type", "first_attempt_passed", "format_retries")
 
 
 # db/migration_edit_distance.sql (tačka B)
@@ -2642,29 +2647,42 @@ def generate_similar_for_question(question_id, provider, evaluation_batch_id=Non
     model_id = ensure_ai_model(conn, provider=provider, model_name=model_name)
 
     options = {"temperature": 0.7}
-    result = ai_provider.generate(prompt_text, provider=provider, options=options)
+    prompt_version = prompt_templates.template_version(template_text)
 
-    parsed_result = None
-    validation_errors = None
+    def ask_model():
+        answer = ai_provider.generate(prompt_text, provider=provider, options=options)
+        return (answer, *generation_failures.evaluate_similar_question(
+            answer, question_type, len(original_answers), prompt_version))
 
-    if not result.get("success"):
-        validation_errors = result.get("error", "Nepoznata greška pri pozivu AI modela")
-    else:
-        try:
-            parsed_result = json.loads(result["raw_text"])
-        except (ValueError, TypeError):
-            validation_errors = "Odgovor modela nije validan JSON"
+    result, parsed_result, validation_errors, failure_type = ask_model()
+    first_attempt_passed = failure_type is None
+    total_time_ms = result.get("response_time_ms")
+    total_tokens = result.get("tokens_used")
 
-        if parsed_result is not None:
-            validation = question_validation.validate(
-                parsed_result,
-                question_type,
-                len(original_answers),
-                prompt_templates.template_version(template_text),
-            )
-            validation_errors = None if validation.passed else "; ".join(validation.errors)
+    # Ponovni zahtev posle lošeg formata (tačka I): isti prompt i parametri za sve
+    # modele. Infrastrukturne padove ovde ne ponavljamo - to već radi ai_provider.
+    # Konačan ishod ide u kolone run-a; prvi pokušaj ostaje u params_used.first_attempt.
+    format_retries = 0
+    first_attempt = None
+    while failure_type in generation_failures.FORMAT_FAILURES and format_retries < generation_failures.MAX_FORMAT_RETRIES:
+        first_attempt = {
+            "raw_response": result.get("raw_text"),
+            "validation_errors": validation_errors,
+            "failure_type": failure_type,
+            "attempts": result.get("attempts"),
+            "finish_reason": result.get("finish_reason"),
+            "response_time_ms": result.get("response_time_ms"),
+            "tokens_used": result.get("tokens_used"),
+        }
+        format_retries += 1
+        result, parsed_result, validation_errors, failure_type = ask_model()
+        # vreme i tokeni se sabiraju preko pokušaja
+        times = [t for t in (total_time_ms, result.get("response_time_ms")) if t is not None]
+        tokens = [t for t in (total_tokens, result.get("tokens_used")) if t is not None]
+        total_time_ms = sum(times) if times else None
+        total_tokens = sum(tokens) if tokens else None
 
-    validation_passed = validation_errors is None and parsed_result is not None
+    validation_passed = failure_type is None
 
     cursor.execute("""
         INSERT INTO ai_generation_runs
@@ -2683,24 +2701,35 @@ def generate_similar_for_question(question_id, provider, evaluation_batch_id=Non
             **options,
             "attempts": result.get("attempts"),
             "finish_reason": result.get("finish_reason"),
+            **({"first_attempt": first_attempt} if first_attempt else {}),
         }),
         result.get("raw_text"),
         json.dumps(parsed_result) if parsed_result is not None else None,
         1 if validation_passed else 0,
         validation_errors,
-        result.get("response_time_ms"),
-        result.get("tokens_used"),
+        total_time_ms,
+        total_tokens,
         evaluation_batch_id,
     ))
-    conn.commit()
     generation_run_id = cursor.lastrowid
+    if table_columns_exist(cursor, "ai_generation_runs", FAILURE_COLUMNS):
+        cursor.execute("""
+            UPDATE ai_generation_runs
+            SET failure_type = %s, first_attempt_passed = %s, format_retries = %s
+            WHERE id = %s
+        """, (failure_type, 1 if first_attempt_passed else 0, format_retries, generation_run_id))
+    conn.commit()
 
     if not validation_passed:
         cursor.close()
         conn.close()
+        # razumljiva poruka korisniku; sirov razlog ostaje u run-u (validation_errors)
         return ({
             "error": "AI generisanje nije dalo iskoristiv predlog",
-            "details": validation_errors,
+            "details": generation_failures.user_message(failure_type),
+            "failure_type": failure_type,
+            "first_attempt_passed": first_attempt_passed,
+            "format_retries": format_retries,
             "generation_run_id": generation_run_id,
         }), 422
 
@@ -2738,6 +2767,8 @@ def generate_similar_for_question(question_id, provider, evaluation_batch_id=Non
         "generation_run_id": generation_run_id,
         "artifact_id": artifact_id,
         "question_type": question_type,
+        "first_attempt_passed": first_attempt_passed,
+        "format_retries": format_retries,
         # bez modelove težine/Blumovog nivoa - nastavnik ih bira pri pregledu ne videvši ih
         "proposed_question": {
             k: v for k, v in parsed_result.items() if k not in question_validation.LABEL_FIELDS
