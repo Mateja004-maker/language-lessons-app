@@ -47,8 +47,8 @@ CREATE TABLE ai_label_evaluations (
 ALTER TABLE evaluation_batches
   ADD COLUMN closed_at TIMESTAMP NULL DEFAULT NULL;
 
--- Rollback (briše drugu ocenu kategorija, zatvaranje serija i oznaku runde;
--- same ocene u ai_evaluations ostaju):
+-- Napomena za rollback: briše drugu ocenu kategorija, zatvaranje serija i oznaku runde; same ocene u ai_evaluations ostaju.
+-- Rollback:
 -- ALTER TABLE evaluation_batches DROP COLUMN closed_at;
 -- DROP TABLE ai_label_evaluations;
 -- ALTER TABLE ai_evaluations
