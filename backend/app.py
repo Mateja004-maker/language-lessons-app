@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from flask import send_from_directory
 import uuid
+from datetime import timedelta
 from io import BytesIO
 from flask import send_file
 from openpyxl import Workbook
@@ -2993,125 +2994,200 @@ def delete_exam(exam_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+MAX_TAB_WARNINGS = 1000
+
+
+def _parse_int_id(value):
+    """Pozitivan ceo broj iz JSON vrednosti (int ili string cifara), inace None."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str) and value.isdigit():
+        return int(value) if int(value) > 0 else None
+    return None
+
+
 @app.post("/api/exams/<int:exam_id>/submit") #student kad radi test, da ga submituje
-@jwt_required()
+@role_required(["STUDENT"])
 def submit_exam(exam_id):
     student_id = get_jwt_identity()
 
-    data = request.get_json() or {}
-    answers = data.get("answers", {})
-    tab_warnings = int(data.get("tab_warnings", 0))
+    data = request.get_json(silent=True) or {}
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    # Provera da li je student već završio ovaj test
-    cursor.execute("""
-        SELECT id
-        FROM exam_attempts
-        WHERE exam_id = %s 
-          AND student_id = %s
-          AND status = 'COMPLETED'
-    """, (exam_id, student_id))
-
-    existing = cursor.fetchone()
-
-    if existing:
-        cursor.close()
-        conn.close()
-        return jsonify({"error": "You already took this exam"}), 400
-
-    # Kreiranje attempt-a
-    cursor.execute("""
-        INSERT INTO exam_attempts 
-        (exam_id, student_id, status)
-        VALUES (%s, %s, 'IN_PROGRESS')
-    """, (exam_id, student_id))
-
-    attempt_id = cursor.lastrowid
-
-    score = 0
-
-    cursor.execute("""
-        SELECT COALESCE(SUM(eq.points), 0) AS total
-        FROM exam_test_questions etq
-        JOIN exam_questions eq ON eq.id = etq.question_id
-        WHERE etq.exam_id = %s
-    """, (exam_id,))
-
-    total_row = cursor.fetchone()
-    total = total_row["total"] or 0
-
-    for question_id, answer_id in answers.items():
+    try:
         cursor.execute("""
-            SELECT eq.id, eq.points
+            SELECT id, subject_id, is_published, open_at, close_at, duration_minutes
+            FROM exams
+            WHERE id = %s
+        """, (exam_id,))
+        exam = cursor.fetchone()
+
+        if not exam:
+            return jsonify({"error": "Exam not found"}), 404
+
+        if exam["is_published"] != 1:
+            return jsonify({"error": "Exam is not published"}), 403
+
+        if not user_has_subject(int(student_id), exam["subject_id"], "STUDENT"):
+            return jsonify({"error": "You can access only exams for your subjects"}), 403
+
+        # Vreme iz baze (NOW()), isto kao provera u get_exam_details.
+        cursor.execute("SELECT NOW() AS now_time")
+        now = cursor.fetchone()["now_time"]
+
+        if exam["open_at"] and now < exam["open_at"]:
+            return jsonify({"error": "Exam is not open yet"}), 403
+
+        # Student koji je ucitao test pre close_at ima jos trajanje testa + 2 min za predaju.
+        if exam["close_at"] and now > exam["close_at"] + timedelta(minutes=exam["duration_minutes"] + 2):
+            return jsonify({"error": "Exam has expired"}), 403
+
+        # Validacija ulaza pre bilo kakvog upisa
+        if not isinstance(data, dict):
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+
+        answers_raw = data.get("answers", {})
+        if not isinstance(answers_raw, dict):
+            return jsonify({"error": "answers must be an object {question_id: answer_id}"}), 400
+
+        answers = {}
+        for question_key, answer_value in answers_raw.items():
+            question_id = _parse_int_id(question_key)
+            answer_id = _parse_int_id(answer_value)
+            if question_id is None or answer_id is None:
+                return jsonify({"error": "answers keys and values must be integers"}), 400
+            answers[question_id] = answer_id
+
+        tab_warnings = data.get("tab_warnings", 0)
+        if isinstance(tab_warnings, bool) or not isinstance(tab_warnings, int) or not 0 <= tab_warnings <= MAX_TAB_WARNINGS:
+            return jsonify({"error": f"tab_warnings must be an integer between 0 and {MAX_TAB_WARNINGS}"}), 400
+
+        # Provera da li je student već završio ovaj test
+        cursor.execute("""
+            SELECT id
+            FROM exam_attempts
+            WHERE exam_id = %s
+              AND student_id = %s
+              AND status = 'COMPLETED'
+        """, (exam_id, student_id))
+
+        existing = cursor.fetchone()
+
+        if existing:
+            return jsonify({"error": "You already took this exam"}), 400
+
+        # Bodovanje pre upisa: pitanje van testa se preskace (kao ranije),
+        # a answer_id koji ne postoji ili ne pripada pitanju odbija celu predaju.
+        graded = []
+        score = 0
+
+        for question_id, answer_id in answers.items():
+            cursor.execute("""
+                SELECT eq.id, eq.points
+                FROM exam_test_questions etq
+                JOIN exam_questions eq ON eq.id = etq.question_id
+                WHERE eq.id = %s AND etq.exam_id = %s
+            """, (question_id, exam_id))
+
+            question = cursor.fetchone()
+
+            if not question:
+                continue
+
+            cursor.execute("""
+                SELECT id, is_correct
+                FROM exam_answers
+                WHERE id = %s AND question_id = %s
+            """, (answer_id, question_id))
+
+            answer = cursor.fetchone()
+
+            if not answer:
+                return jsonify({
+                    "error": f"Answer {answer_id} does not belong to question {question_id}"
+                }), 400
+
+            is_correct = 0
+            points_awarded = 0
+
+            if answer["is_correct"] == 1:
+                is_correct = 1
+                points_awarded = question["points"]
+                score += question["points"]
+
+            graded.append((question_id, answer_id, is_correct, points_awarded))
+
+        cursor.execute("""
+            SELECT COALESCE(SUM(eq.points), 0) AS total
             FROM exam_test_questions etq
             JOIN exam_questions eq ON eq.id = etq.question_id
-            WHERE eq.id = %s AND etq.exam_id = %s
-        """, (question_id, exam_id))
+            WHERE etq.exam_id = %s
+        """, (exam_id,))
 
-        question = cursor.fetchone()
+        total_row = cursor.fetchone()
+        total = total_row["total"] or 0
 
-        if not question:
-            continue
+        # Ceo upis (pokusaj, odgovori, bodovi) u jednoj transakciji
+        try:
+            cursor.execute("""
+                INSERT INTO exam_attempts
+                (exam_id, student_id, status)
+                VALUES (%s, %s, 'IN_PROGRESS')
+            """, (exam_id, student_id))
 
-        
+            attempt_id = cursor.lastrowid
 
-        cursor.execute("""
-            SELECT id, is_correct
-            FROM exam_answers
-            WHERE id = %s AND question_id = %s
-        """, (answer_id, question_id))
+            for question_id, answer_id, is_correct, points_awarded in graded:
+                cursor.execute("""
+                    INSERT INTO exam_attempt_answers
+                    (attempt_id, question_id, answer_id, is_correct, points_awarded)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    attempt_id,
+                    question_id,
+                    answer_id,
+                    is_correct,
+                    points_awarded
+                ))
 
-        answer = cursor.fetchone()
+            # Završavanje attempt-a
+            cursor.execute("""
+                UPDATE exam_attempts
+                SET
+                    submitted_at = CURRENT_TIMESTAMP,
+                    score = %s,
+                    total_points = %s,
+                    status = 'COMPLETED',
+                    tab_warnings = %s
+                WHERE id = %s
+            """, (
+                score,
+                total,
+                tab_warnings,
+                attempt_id
+            ))
 
-        is_correct = 0
-        points_awarded = 0
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
-        if answer and answer["is_correct"] == 1:
-            is_correct = 1
-            points_awarded = question["points"]
-            score += question["points"]
+        return jsonify({
+            "attempt_id": attempt_id,
+            "score": score,
+            "total": total
+        }), 200
 
-        cursor.execute("""
-            INSERT INTO exam_attempt_answers
-            (attempt_id, question_id, answer_id, is_correct, points_awarded)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (
-            attempt_id,
-            question_id,
-            answer_id,
-            is_correct,
-            points_awarded
-        ))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    # Završavanje attempt-a
-    cursor.execute("""
-        UPDATE exam_attempts
-        SET 
-            submitted_at = CURRENT_TIMESTAMP,
-            score = %s,
-            total_points = %s,
-            status = 'COMPLETED',
-            tab_warnings = %s
-        WHERE id = %s
-    """, (
-        score,
-        total,
-        tab_warnings,
-        attempt_id
-    ))
-
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return jsonify({
-        "attempt_id": attempt_id,
-        "score": score,
-        "total": total
-    }), 200
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.get("/api/exams/<int:exam_id>/results") #Pregled rezultata za jedan test
 @role_required(["TEACHER", "ADMIN"])
