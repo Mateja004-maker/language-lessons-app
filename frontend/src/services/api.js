@@ -126,10 +126,16 @@ export const reviewAiArtifact = (id, data) =>
 // skriveno na ekranima za generisanje; backend ga i dalje podržava.
 export const MISTRAL_ENABLED = false
 
-export const generateSimilarQuestion = (questionId, provider) =>
+// evaluationBatchId je opcion (bez njega run je razvojna proba) - axios
+// izostavlja undefined/null parametre.
+export const generateSimilarQuestion = (questionId, provider, evaluationBatchId) =>
   api.post(`/questions/${questionId}/generate-similar`, null, {
-    params: { provider }
+    params: { provider, evaluation_batch_id: evaluationBatchId }
   })
+
+// Evaluacione serije (oznaka eksperimenta za generisanje), najnovija prva
+export const getEvaluationBatches = () =>
+  api.get('/evaluation-batches')
 
 // =========================
 // AI OBJASNJENJA API (Andrejev modul)
