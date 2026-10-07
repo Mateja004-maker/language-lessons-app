@@ -9,6 +9,9 @@ bez diranja ostatka koda, i mogu se porediti pod identičnim uslovima.
 
 import os
 import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+
 import requests
 
 # --- Konfiguracija modela (kasnije prebaciti API ključeve u .env, ne u kod) ---
@@ -45,6 +48,65 @@ DEFAULT_MODELS = {
 
 def _failure(error: str, elapsed_ms: int) -> dict:
     return {"success": False, "error": error, "response_time_ms": elapsed_ms}
+
+
+# --- Ponovni pokušaji (groq, gemini, openrouter; mistral namerno ne) ---
+# Do 2 ponavljanja, samo za 429, 5xx i mrežne greške; ostali 4xx se ne
+# ponavljaju. Pauza pre 2. i 3. pokušaja je 5s i 15s. Ako provajder pošalje
+# Retry-After, čeka se koliko traži (ali najviše 30s), a ne kraće od pauze.
+
+RETRY_PAUSES_S = (5, 15)
+RETRY_AFTER_MAX_S = 30
+
+
+def _is_retryable_status(status_code: int) -> bool:
+    return status_code == 429 or 500 <= status_code <= 599
+
+
+def _retry_after_seconds(response):
+    """Retry-After u sekundama (broj ili HTTP datum), ograničen na RETRY_AFTER_MAX_S; None ako ga nema."""
+    value = (response.headers or {}).get("Retry-After")
+    if not value:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        try:
+            seconds = (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds()
+        except (TypeError, ValueError):
+            return None
+    return min(max(seconds, 0.0), RETRY_AFTER_MAX_S)
+
+
+def _post_with_retry(*args, **kwargs):
+    """requests.post sa ponovnim pokušajima.
+    Vraća (response, exception, attempts, elapsed_ms); tačno jedno od
+    response/exception nije None. elapsed_ms je trajanje POSLEDNJEG pokušaja
+    (bez pauza), da response_time_ms i dalje meri odziv modela."""
+    attempts = 0
+    while True:
+        attempts += 1
+        start = time.time()
+        try:
+            response, exception = requests.post(*args, **kwargs), None
+        except requests.RequestException as e:
+            response, exception = None, e
+        elapsed_ms = int((time.time() - start) * 1000)
+
+        retryable = exception is not None or _is_retryable_status(response.status_code)
+        if not retryable or attempts > len(RETRY_PAUSES_S):
+            return response, exception, attempts, elapsed_ms
+
+        pause = RETRY_PAUSES_S[attempts - 1]
+        if response is not None:
+            retry_after = _retry_after_seconds(response)
+            if retry_after is not None:
+                pause = max(pause, retry_after)
+        time.sleep(pause)
+
+
+def _attempts_note(attempts: int) -> str:
+    return f" (pokušaja: {attempts})" if attempts > 1 else ""
 
 
 def _extract_openai_text(data, label: str):
@@ -94,26 +156,23 @@ def _extract_gemini_text(data):
 
 def _call_groq(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODELS["groq"]) -> dict:
     """Poziva Groq API. Vraća sirov tekstualni odgovor + tehničke podatke."""
-    start = time.time()
-    try:
-        response = requests.post(
-            GROQ_URL,
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": temperature,
-            },
-            timeout=30,
-        )
-    except requests.RequestException as e:
-        return _failure(f"Groq: mrežna greška ({type(e).__name__})", int((time.time() - start) * 1000))
-    elapsed_ms = int((time.time() - start) * 1000)
+    response, exception, attempts, elapsed_ms = _post_with_retry(
+        GROQ_URL,
+        headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+        },
+        timeout=30,
+    )
+    if exception is not None:
+        return _failure(f"Groq: mrežna greška ({type(exception).__name__}){_attempts_note(attempts)}", elapsed_ms)
 
     if response.status_code != 200:
         return {
             "success": False,
-            "error": f"Groq API greška: {response.status_code} {response.text[:200]}",
+            "error": f"Groq API greška: {response.status_code} {response.text[:200]}{_attempts_note(attempts)}",
             "response_time_ms": elapsed_ms,
         }
 
@@ -136,25 +195,22 @@ def _call_groq(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODEL
 
 def _call_gemini(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODELS["gemini"]) -> dict:
     """Poziva Gemini API. Vraća sirov tekstualni odgovor + tehničke podatke."""
-    start = time.time()
-    try:
-        response = requests.post(
-            GEMINI_URL.format(model=model),
-            params={"key": GEMINI_API_KEY},
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": temperature},
-            },
-            timeout=30,
-        )
-    except requests.RequestException as e:
-        return _failure(f"Gemini: mrežna greška ({type(e).__name__})", int((time.time() - start) * 1000))
-    elapsed_ms = int((time.time() - start) * 1000)
+    response, exception, attempts, elapsed_ms = _post_with_retry(
+        GEMINI_URL.format(model=model),
+        params={"key": GEMINI_API_KEY},
+        json={
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": temperature},
+        },
+        timeout=30,
+    )
+    if exception is not None:
+        return _failure(f"Gemini: mrežna greška ({type(exception).__name__}){_attempts_note(attempts)}", elapsed_ms)
 
     if response.status_code != 200:
         return {
             "success": False,
-            "error": f"Gemini API greška: {response.status_code} {response.text[:200]}",
+            "error": f"Gemini API greška: {response.status_code} {response.text[:200]}{_attempts_note(attempts)}",
             "response_time_ms": elapsed_ms,
         }
 
@@ -238,26 +294,23 @@ def _openrouter_error(data):
 
 def _call_openrouter(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODELS["openrouter"]) -> dict:
     """Poziva OpenRouter API (OpenAI format). Vraća sirov tekstualni odgovor + tehničke podatke."""
-    start = time.time()
-    try:
-        response = requests.post(
-            OPENROUTER_URL,
-            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": temperature,
-            },
-            timeout=30,
-        )
-    except requests.RequestException as e:
-        return _failure(f"OpenRouter: mrežna greška ({type(e).__name__})", int((time.time() - start) * 1000))
-    elapsed_ms = int((time.time() - start) * 1000)
+    response, exception, attempts, elapsed_ms = _post_with_retry(
+        OPENROUTER_URL,
+        headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+        },
+        timeout=30,
+    )
+    if exception is not None:
+        return _failure(f"OpenRouter: mrežna greška ({type(exception).__name__}){_attempts_note(attempts)}", elapsed_ms)
 
     if response.status_code != 200:
         return {
             "success": False,
-            "error": f"OpenRouter API greška: {response.status_code} {response.text[:200]}",
+            "error": f"OpenRouter API greška: {response.status_code} {response.text[:200]}{_attempts_note(attempts)}",
             "response_time_ms": elapsed_ms,
         }
 
