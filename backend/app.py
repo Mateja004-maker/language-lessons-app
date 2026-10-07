@@ -2515,7 +2515,12 @@ def generate_similar_question(question_id):
             prompt_templates.PURPOSE_SIMILAR_QUESTION,
             None,
             question_id,
-            json.dumps(options),
+            # attempts/finish_reason nisu kolone - cuvaju se uz parametre poziva
+            json.dumps({
+                **options,
+                "attempts": result.get("attempts"),
+                "finish_reason": result.get("finish_reason"),
+            }),
             result.get("raw_text"),
             json.dumps(parsed_result) if parsed_result is not None else None,
             1 if validation_passed else 0,
@@ -3734,7 +3739,13 @@ def generate_explanation(question_id):
                 explanation_prompts.PURPOSE_EXPLANATION,
                 mode,
                 question_id,
-                json.dumps({**options, "solution_source": source["solution_source"]}),
+                # attempts/finish_reason nisu kolone - cuvaju se uz parametre poziva
+                json.dumps({
+                    **options,
+                    "solution_source": source["solution_source"],
+                    "attempts": result.get("attempts"),
+                    "finish_reason": result.get("finish_reason"),
+                }),
                 result.get("raw_text"),
                 json.dumps(parsed_result, ensure_ascii=False) if parsed_result is not None else None,
                 1 if validation_passed else 0,
