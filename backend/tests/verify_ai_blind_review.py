@@ -4,18 +4,26 @@ Pokretanje (iz foldera backend/):
     python tests/verify_ai_blind_review.py
 
 Gadja stvarne rute kroz app.test_client() nad stvarnom bazom iz backend/.env.
-SAMO CITA: koristi postojece predloge i korisnike, ne pravi privremene
-podatke; na kraju proverava da su brojevi redova u bazi isti kao na pocetku.
+Prvi deo SAMO CITA postojece predloge i korisnike. Drugi deo (drugi
+ocenjivac, tacka E) pravi privremene nastavnike, seriju i predloge (lazni
+provajder - pravi AI servis se ne poziva) i sve brise po zabelezenim
+id-jevima. Oba dela proveravaju da su brojevi redova isti pre i posle.
 JWT tokeni se prave u procesu (create_access_token) - bez kljuceva u fajlu.
+Slucajevi drugog ocenjivaca koji traze db/migration_second_rater.sql se
+pre migracije oznacavaju kao PRESKOCENO.
 """
+import json
 import os
 import sys
+import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import requests  # noqa: E402
 from flask_jwt_extended import create_access_token  # noqa: E402
 
-from app import app, get_db_connection  # noqa: E402
+import ai_provider  # noqa: E402
+from app import app, get_db_connection, in_second_rating_sample, second_rater_enabled  # noqa: E402
 
 MODEL_FIELDS = ("provider", "model_name")
 ORDER_FIELDS = ("created_at", "generation_run_id")
@@ -226,6 +234,206 @@ def run():
     record("brojevi redova u bazi pre/posle", "isti", "isti" if not changed else str(changed), not changed)
 
 
+# ---------- drugi ocenjivac (tacka E) ----------
+
+SECOND_COUNT_TABLES = COUNT_TABLES + ("users", "teacher_subjects")
+HIDDEN_FROM_SECOND_RATER = ("status", "edited_text", "rejection_reason", "reviewed_by", "reviewed_at",
+                            "created_question_id", "reviewed_difficulty", "reviewed_bloom_level",
+                            "reviewed_duplicate", "model_difficulty", "model_bloom_level") + MODEL_FIELDS + ORDER_FIELDS
+created = {"users": [], "batches": [], "artifacts": [], "runs": [], "prompts_before": set()}
+
+
+def db_exec(sql, params=()):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(sql, params)
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        cur.close()
+        conn.close()
+
+
+def skip(case, why):
+    results.append((case, "-", why, "PRESKOCENO"))
+
+
+class _FakeResponse:
+    def __init__(self, body):
+        self.status_code, self.headers, self._body, self.text = 200, {}, body, json.dumps(body)
+
+    def json(self):
+        return self._body
+
+
+def _cleanup_second():
+    arts, runs, users = created["artifacts"], created["runs"], created["users"]
+
+    def ph(ids):
+        return ",".join(["%s"] * len(ids))
+
+    if arts:
+        questions = [r["created_question_id"] for r in db_all(
+            f"SELECT created_question_id FROM ai_generated_artifacts WHERE id IN ({ph(arts)}) AND created_question_id IS NOT NULL", arts)]
+        if db_all("SHOW TABLES LIKE 'ai_label_evaluations'"):
+            db_exec(f"DELETE FROM ai_label_evaluations WHERE artifact_id IN ({ph(arts)})", arts)
+        db_exec(f"DELETE FROM ai_evaluations WHERE artifact_id IN ({ph(arts)})", arts)
+        db_exec(f"DELETE FROM ai_generated_artifacts WHERE id IN ({ph(arts)})", arts)
+        if questions:
+            db_exec(f"DELETE FROM exam_answers WHERE question_id IN ({ph(questions)})", questions)
+            db_exec(f"DELETE FROM exam_questions WHERE id IN ({ph(questions)})", questions)
+    if runs:
+        db_exec(f"DELETE FROM ai_generation_runs WHERE id IN ({ph(runs)})", runs)
+    if created["batches"]:
+        db_exec(f"DELETE FROM evaluation_batches WHERE id IN ({ph(created['batches'])})", created["batches"])
+    if users:
+        db_exec(f"DELETE FROM teacher_subjects WHERE teacher_id IN ({ph(users)})", users)
+        db_exec(f"DELETE FROM users WHERE id IN ({ph(users)})", users)
+    for row in db_all("SELECT id FROM ai_prompts"):
+        if row["id"] not in created["prompts_before"] and not db_all(
+                "SELECT 1 FROM ai_generation_runs WHERE prompt_id = %s LIMIT 1", (row["id"],)):
+            db_exec("DELETE FROM ai_prompts WHERE id = %s", (row["id"],))
+
+
+def run_second_rater():
+    conn = get_db_connection()
+    cur = conn.cursor(dictionary=True)
+    try:
+        enabled = second_rater_enabled(cur)
+    finally:
+        cur.close()
+        conn.close()
+    print(f"Migracija db/migration_second_rater.sql: {'POKRENUTA' if enabled else 'NIJE pokrenuta'}")
+
+    tag = uuid.uuid4().hex[:6]
+    src = db_all("""SELECT q.id, q.subject_id FROM exam_questions q JOIN exam_answers a ON a.question_id = q.id
+                    WHERE q.subject_id IS NOT NULL GROUP BY q.id, q.subject_id
+                    HAVING SUM(a.is_correct) = 1 AND COUNT(*) >= 2 ORDER BY q.id DESC LIMIT 1""")[0]
+    n = db_all("SELECT COUNT(*) AS n FROM exam_answers WHERE question_id = %s", (src["id"],))[0]["n"]
+
+    def teacher(label):
+        uid = db_exec("INSERT INTO users (email, password_hash, role_id, display_name, is_active) VALUES (%s, '!', 2, %s, 1)",
+                      (f"tmp-blind-{tag}-{label}@example.invalid", f"tmp {label}"))
+        created["users"].append(uid)
+        db_exec("INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES (%s, %s)", (uid, src["subject_id"]))
+        return uid, headers(uid, "TEACHER")
+
+    a_id, a = teacher("A")      # odlucuje
+    b_id, b = teacher("B")      # drugi ocenjivac
+    _, c = teacher("C")         # jos nije ocenio
+    admin_id = db_all("SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.name = 'ADMIN' ORDER BY u.id LIMIT 1")[0]["id"]
+    admin = headers(admin_id, "ADMIN")
+    batch = db_exec("INSERT INTO evaluation_batches (name, description) VALUES (%s, 'tmp verify')", (f"tmp-blind-{tag}",))
+    created["batches"].append(batch)
+
+    payload = {"question_text": "Probno pitanje za drugu ocenu", "difficulty": "srednje", "bloom_level": "primena",
+               "answers": [{"answer_text": f"o{i}", "is_correct": i == 0} for i in range(n)]}
+    body = {"choices": [{"message": {"content": json.dumps(payload)}, "finish_reason": "stop"}], "usage": {"total_tokens": 1}}
+    real_post = requests.post
+    requests.post = lambda *args, **kwargs: _FakeResponse(body)
+    try:
+        ids = []
+        for _ in range(2):
+            r = client.post(f"/api/questions/{src['id']}/generate-similar?provider=groq&evaluation_batch_id={batch}", headers=admin)
+            data = r.get_json() or {}
+            created["runs"].append(data.get("generation_run_id"))
+            created["artifacts"].append(data.get("artifact_id"))
+            ids.append(data.get("artifact_id"))
+    finally:
+        requests.post = real_post
+    x, y = ids
+
+    def scores_for(art_id, h):
+        detail = client.get(f"/api/ai/artifacts/{art_id}/second-rating", headers=h).get_json() or {}
+        crit = detail.get("rubric_criteria") or client.get(f"/api/ai/artifacts/{y}", headers=admin).get_json()["rubric_criteria"]
+        return [{"rubric_definition_id": c["id"], "score": 4} for c in crit]
+
+    # A donosi odluku o X
+    rubric = client.get(f"/api/ai/artifacts/{x}", headers=a).get_json()["rubric_criteria"]
+    r = client.post(f"/api/ai/artifacts/{x}/review", headers=a, json={
+        "decision": "prihvaceno", "scores": [{"rubric_definition_id": c["id"], "score": 3} for c in rubric],
+        "reviewed_difficulty": "srednje", "reviewed_bloom_level": "primena"})
+    record("E: A donosi odluku (predlog iz serije)", "200", f"{r.status_code}", r.status_code == 200)
+
+    r = client.get(f"/api/ai/artifacts/{x}", headers=b)
+    record("E: B ne vidi odluku ni model pre svoje ocene (detalj)", "403 sa uputom na drugu ocenu",
+           f"{r.status_code} second_rating={(r.get_json() or {}).get('second_rating')}",
+           r.status_code == 403 and (r.get_json() or {}).get("second_rating") is True)
+    listed = [row["id"] for row in client.get("/api/ai/artifacts?status=prihvaceno", headers=b).get_json()]
+    record("E: B ne vidi odluku u listi (status=prihvaceno)", "X nije u listi", f"X u listi={x in listed}", x not in listed)
+    d = client.get(f"/api/ai/artifacts/{x}", headers=a).get_json() or {}
+    record("E: A (ocenio) vidi model posle odluke", "provider/model_name prisutni",
+           f"nedostaje: {[f for f in MODEL_FIELDS if f not in d] or 'nista'}", all(f in d for f in MODEL_FIELDS))
+    r = client.get(f"/api/ai/artifacts/{x}", headers=admin)
+    record("E: ADMIN bez ?reveal=1 (nije ocenio)", "403", f"{r.status_code}", r.status_code == 403)
+    d = client.get(f"/api/ai/artifacts/{x}?reveal=1", headers=admin).get_json() or {}
+    record("E: ADMIN sa ?reveal=1", "model vidljiv", f"nedostaje: {[f for f in MODEL_FIELDS if f not in d] or 'nista'}",
+           all(f in d for f in MODEL_FIELDS))
+
+    if not enabled:
+        statuses = [client.get("/api/ai/artifacts/second-rating", headers=b).status_code,
+                    client.get(f"/api/ai/artifacts/{x}/second-rating", headers=b).status_code,
+                    client.post(f"/api/ai/artifacts/{x}/evaluations", headers=b, json={}).status_code,
+                    client.post(f"/api/evaluation-batches/{batch}/close", headers=admin).status_code]
+        record("E pre migracije: rute druge ocene i zatvaranja", "409 x 4", f"{statuses}", statuses == [409] * 4)
+        for case in ("E: pogled drugog ocenjivaca bez modela i odluke", "E: druga ocena ne menja status",
+                     "E: dupla ocena 409", "E: prvi ocenjivac ne moze da bude drugi", "E: B vidi model posle svoje ocene",
+                     "E: ko je dao drugu ocenu ne moze da odluci", "E: lista druge ocene = uzorak",
+                     "E: posle zatvaranja serije C vidi", "E: posle zatvaranja nema druge ocene"):
+            skip(case, "migracija nije pokrenuta")
+        return
+
+    view = client.get(f"/api/ai/artifacts/{x}/second-rating", headers=b).get_json() or {}
+    leaked = [k for k in HIDDEN_FROM_SECOND_RATER if k in view] + \
+             [k for k in ("difficulty", "bloom_level") if k in (view.get("original_text") or {})]
+    record("E: pogled drugog ocenjivaca bez modela i odluke", "nema modela, statusa, odluke, izmene, oznaka",
+           f"procurelo: {leaked or 'nista'}, labels_required={view.get('labels_required')}", not leaked and view.get("rubric_criteria"))
+
+    before = db_all("SELECT status, edited_text, reviewed_by, reviewed_at FROM ai_generated_artifacts WHERE id = %s", (x,))[0]
+    r = client.post(f"/api/ai/artifacts/{x}/evaluations", headers=b,
+                    json={"scores": scores_for(x, b), "difficulty": "tesko", "bloom_level": "analiza"})
+    after = db_all("SELECT status, edited_text, reviewed_by, reviewed_at FROM ai_generated_artifacts WHERE id = %s", (x,))[0]
+    rounds = db_all("SELECT evaluation_round, COUNT(*) AS n FROM ai_evaluations WHERE artifact_id = %s AND evaluator_id = %s GROUP BY 1", (x, b_id))
+    labels = db_all("SELECT difficulty, bloom_level FROM ai_label_evaluations WHERE artifact_id = %s AND evaluator_id = %s", (x, b_id))
+    record("E: druga ocena ne menja status", "201, status/izmena/reviewed_by isti, runda 2, oznake upisane",
+           f"{r.status_code}, isto={before == after}, runde={[(row['evaluation_round'], row['n']) for row in rounds]}, oznake={labels}",
+           r.status_code == 201 and before == after and rounds and all(row["evaluation_round"] == 2 for row in rounds)
+           and labels == [{"difficulty": "tesko", "bloom_level": "analiza"}])
+
+    r = client.post(f"/api/ai/artifacts/{x}/evaluations", headers=b, json={"scores": scores_for(y, b)})
+    record("E: dupla ocena 409", "409", f"{r.status_code} {(r.get_json() or {}).get('error')}", r.status_code == 409)
+    r = client.post(f"/api/ai/artifacts/{x}/evaluations", headers=a, json={"scores": scores_for(y, a)})
+    record("E: prvi ocenjivac ne moze da bude drugi", "409", f"{r.status_code} {(r.get_json() or {}).get('error')}", r.status_code == 409)
+    d = client.get(f"/api/ai/artifacts/{x}", headers=b).get_json() or {}
+    record("E: B vidi model posle svoje ocene", "200, model vidljiv",
+           f"nedostaje: {[f for f in MODEL_FIELDS if f not in d] or 'nista'}", all(f in d for f in MODEL_FIELDS))
+
+    r1 = client.post(f"/api/ai/artifacts/{y}/evaluations", headers=b,
+                     json={"scores": scores_for(y, b), "difficulty": "lako", "bloom_level": "pamcenje"})
+    rubric_y = client.get(f"/api/ai/artifacts/{y}", headers=admin).get_json()["rubric_criteria"]
+    r2 = client.post(f"/api/ai/artifacts/{y}/review", headers=b, json={
+        "decision": "odbaceno", "rejection_reason": "x", "scores": [{"rubric_definition_id": c["id"], "score": 2} for c in rubric_y]})
+    record("E: ko je dao drugu ocenu ne moze da odluci", "201, pa 409 pri pregledu",
+           f"{r1.status_code}, {r2.status_code} {(r2.get_json() or {}).get('error')}", r1.status_code == 201 and r2.status_code == 409)
+
+    listed = [row["id"] for row in client.get(f"/api/ai/artifacts/second-rating?batch_id={batch}", headers=c).get_json()]
+    c_id = created["users"][2]
+    expected = [art for art in (x, y) if in_second_rating_sample(c_id, art)]
+    record("E: lista druge ocene = uzorak", f"{sorted(expected)} (uzorak 30 %, stabilan)", f"{sorted(listed)}",
+           sorted(listed) == sorted(expected))
+
+    r_before = client.get(f"/api/ai/artifacts/{x}", headers=c)
+    r_close = client.post(f"/api/evaluation-batches/{batch}/close", headers=admin)
+    d = client.get(f"/api/ai/artifacts/{x}", headers=c)
+    record("E: posle zatvaranja serije C vidi", "403 pa 200 sa modelom",
+           f"{r_before.status_code} -> zatvaranje {r_close.status_code} -> {d.status_code}, model={'da' if all(f in (d.get_json() or {}) for f in MODEL_FIELDS) else 'ne'}",
+           r_before.status_code == 403 and r_close.status_code == 200 and d.status_code == 200
+           and all(f in d.get_json() for f in MODEL_FIELDS))
+    r = client.post(f"/api/ai/artifacts/{x}/evaluations", headers=c, json={"scores": scores_for(y, admin)})
+    record("E: posle zatvaranja nema druge ocene", "409", f"{r.status_code} {(r.get_json() or {}).get('error')}", r.status_code == 409)
+
+
 def print_table():
     headers_row = ("Slucaj", "Ocekivano", "Dobijeno", "")
     rows = [(c, e, g if len(g) <= 80 else g[:77] + "...", s) for c, e, g, s in results]
@@ -242,5 +450,19 @@ def print_table():
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     run()
+    real_sleep = ai_provider.time.sleep
+    ai_provider.time.sleep = lambda s: None
+    created["prompts_before"] = {row["id"] for row in db_all("SELECT id FROM ai_prompts")}
+    second_before = {t: db_all(f"SELECT COUNT(*) AS n FROM {t}")[0]["n"] for t in SECOND_COUNT_TABLES}
+    try:
+        run_second_rater()
+    finally:
+        ai_provider.time.sleep = real_sleep
+        _cleanup_second()
+        second_after = {t: db_all(f"SELECT COUNT(*) AS n FROM {t}")[0]["n"] for t in SECOND_COUNT_TABLES}
+        changed = {t: (second_before[t], second_after[t]) for t in SECOND_COUNT_TABLES if second_before[t] != second_after[t]}
+        record("E: brojevi redova pre/posle (privremeni podaci obrisani)", "isti", "isti" if not changed else str(changed), not changed)
     sys.exit(1 if print_table() else 0)
