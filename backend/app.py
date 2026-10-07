@@ -215,6 +215,9 @@ ARTIFACT_DECISIONS = {
 # Slepo ocenjivanje: dok je predlog u statusu 'predlog', ocenjivac ne sme da
 # vidi koji ga je model generisao. Podaci ostaju u bazi, krije se samo odgovor.
 BLIND_REVIEW_MODEL_FIELDS = ("provider", "model_name")
+# Posredni signali: redosled generisanja moze da oda model (npr. ako su
+# modeli pokretani jedan za drugim), pa se i oni kriju dok je 'predlog'.
+BLIND_REVIEW_ORDER_FIELDS = ("created_at", "generation_run_id")
 
 
 def blind_review_reveal_requested():
@@ -2580,7 +2583,7 @@ def list_ai_artifacts():
             row["question_type"] = prompt_templates.detect_question_type(
                 (parsed or {}).get("answers") or []
             )
-            hide_while_pending(row, BLIND_REVIEW_MODEL_FIELDS)
+            hide_while_pending(row, BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS)
 
         return jsonify(rows), 200
 
@@ -2644,7 +2647,7 @@ def get_ai_artifact(artifact_id):
         question_type = prompt_templates.detect_question_type((parsed_original or {}).get("answers") or [])
         artifact["question_type"] = question_type
         artifact["rubric_criteria"] = get_applicable_rubric_definitions(cursor, question_type)
-        hide_while_pending(artifact, BLIND_REVIEW_MODEL_FIELDS)
+        hide_while_pending(artifact, BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS)
 
         cursor.close()
         conn.close()
@@ -3792,6 +3795,8 @@ def list_explanation_artifacts():
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
+    for row in rows:
+        hide_while_pending(row, BLIND_REVIEW_ORDER_FIELDS)
     return jsonify(rows), 200
 
 
@@ -3829,6 +3834,8 @@ def get_explanation_artifact(artifact_id):
     rubric_definitions = cursor.fetchall()
     cursor.close()
     conn.close()
+
+    hide_while_pending(artifact, BLIND_REVIEW_ORDER_FIELDS)
 
     return jsonify({
         "artifact": artifact,
