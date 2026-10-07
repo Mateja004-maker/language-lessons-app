@@ -15,11 +15,14 @@
 -- Napomena: ovim se zabranjuje i svako buduce ponovno polaganje istog testa
 -- (vise pokusaja po studentu). Ako to zatreba, indeks se mora ukloniti/promeniti.
 --
--- Postojeci KEY exam_id (exam_id) ostaje; novi indeks pocinje istom kolonom,
--- pa stari postaje suvisan, ali ga ne diramo (koristi ga FK exam_attempts_ibfk_1).
+-- Pokrenuto 2026-10-07. Baza je pri tome SAMA uklonila stari KEY exam_id
+-- (exam_id): novi indeks pocinje istom kolonom pa sada on pokriva FK
+-- exam_attempts_ibfk_1.
 
 ALTER TABLE exam_attempts
   ADD CONSTRAINT uq_exam_attempts_exam_student UNIQUE (exam_id, student_id);
 
--- Rollback:
--- ALTER TABLE exam_attempts DROP INDEX uq_exam_attempts_exam_student;
+-- Rollback (FK na exam_id mora imati indeks, pa se stari KEY vraca u istoj naredbi):
+-- ALTER TABLE exam_attempts
+--   ADD KEY exam_id (exam_id),
+--   DROP INDEX uq_exam_attempts_exam_student;
