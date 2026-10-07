@@ -2831,8 +2831,73 @@ def review_ai_artifact(artifact_id):
 @role_required(["TEACHER", "ADMIN"])
 def publish_exam(exam_id):
     try:
+        user_id = get_jwt_identity()
+        role = get_jwt().get("role")
+
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT id, subject_id, is_published
+            FROM exams
+            WHERE id = %s
+        """, (exam_id,))
+        exam = cursor.fetchone()
+
+        if not exam:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Exam not found"}), 404
+
+        # Teacher sme da objavi samo test za svoj predmet (isto kao delete_exam)
+        if role == "TEACHER":
+            if not user_has_subject(int(user_id), exam["subject_id"], "TEACHER"):
+                cursor.close()
+                conn.close()
+                return jsonify({"error": "You can publish only exams for your assigned subjects"}), 403
+
+        if exam["is_published"] == 1:
+            cursor.close()
+            conn.close()
+            return jsonify({"message": "Exam published"}), 200
+
+        # Ista pravila kao canPublish u ExamDetailsView.vue: bar jedno pitanje,
+        # svako pitanje ima bar 2 odgovora i bar jedan tacan.
+        cursor.execute("""
+            SELECT
+                eq.id,
+                eq.question_text,
+                COUNT(ea.id) AS answer_count,
+                COALESCE(SUM(ea.is_correct = 1), 0) AS correct_count
+            FROM exam_test_questions etq
+            JOIN exam_questions eq ON eq.id = etq.question_id
+            LEFT JOIN exam_answers ea ON ea.question_id = eq.id
+            WHERE etq.exam_id = %s
+            GROUP BY eq.id, eq.question_text, etq.order_no
+            ORDER BY etq.order_no ASC, eq.id ASC
+        """, (exam_id,))
+        questions = cursor.fetchall()
+
+        if not questions:
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Exam has no questions"}), 400
+
+        for question in questions:
+            if question["answer_count"] < 2:
+                cursor.close()
+                conn.close()
+                return jsonify({
+                    "error": f"Question {question['id']} ('{question['question_text']}') must have at least 2 answers",
+                    "question_id": question["id"],
+                }), 400
+            if question["correct_count"] < 1:
+                cursor.close()
+                conn.close()
+                return jsonify({
+                    "error": f"Question {question['id']} ('{question['question_text']}') has no correct answer",
+                    "question_id": question["id"],
+                }), 400
 
         cursor.execute("""
             UPDATE exams
