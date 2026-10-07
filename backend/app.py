@@ -2001,8 +2001,9 @@ def get_exam_details(exam_id):
 
         for question in questions:
             if role == "STUDENT":
+                # Student ne sme da dobije is_correct pre predaje testa.
                 cursor.execute("""
-                    SELECT id, answer_text, is_correct
+                    SELECT id, answer_text
                     FROM exam_answers
                     WHERE question_id = %s
                     ORDER BY RAND()
