@@ -2414,8 +2414,18 @@ def generate_similar_question(question_id):
         if provider not in ai_provider.DEFAULT_MODELS:
             return jsonify({"error": f"Nepoznat provider: {provider}"}), 400
 
+        # Opciono: oznaka evaluacione serije (eksperiment); bez nje run je razvojna proba.
+        evaluation_batch_id = request.args.get("evaluation_batch_id", type=int)
+
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
+
+        if evaluation_batch_id is not None:
+            cursor.execute("SELECT id FROM evaluation_batches WHERE id = %s", (evaluation_batch_id,))
+            if not cursor.fetchone():
+                cursor.close()
+                conn.close()
+                return jsonify({"error": f"evaluation_batch_id {evaluation_batch_id} ne postoji"}), 400
 
         cursor.execute("SELECT * FROM exam_questions WHERE id = %s", (question_id,))
         question = cursor.fetchone()
@@ -2497,8 +2507,8 @@ def generate_similar_question(question_id):
             INSERT INTO ai_generation_runs
             (model_id, prompt_id, purpose, mode, source_question_id, params_used,
              raw_response, parsed_result, validation_passed, validation_errors,
-             response_time_ms, tokens_used, retry_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
+             response_time_ms, tokens_used, retry_count, evaluation_batch_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
         """, (
             model_id,
             prompt_id,
@@ -2512,6 +2522,7 @@ def generate_similar_question(question_id):
             validation_errors,
             result.get("response_time_ms"),
             result.get("tokens_used"),
+            evaluation_batch_id,
         ))
         conn.commit()
         generation_run_id = cursor.lastrowid
