@@ -27,6 +27,37 @@ const editCorrectIndex = ref(0)
 const showRejectForm = ref(false)
 const rejectReason = ref('')
 
+// Težina i Blumov nivo (v3 predlog): nastavnik ih bira NE videvši modelove;
+// modelove vraća ruta tek posle odluke. Vrednosti su iste kao u backendu.
+const DIFFICULTY_OPTIONS = [
+  { value: 'lako', label: 'Lako' },
+  { value: 'srednje', label: 'Srednje' },
+  { value: 'tesko', label: 'Teško' }
+]
+const BLOOM_OPTIONS = [
+  { value: 'pamcenje', label: 'Pamćenje' },
+  { value: 'razumevanje', label: 'Razumevanje' },
+  { value: 'primena', label: 'Primena' },
+  { value: 'analiza', label: 'Analiza' },
+  { value: 'vrednovanje', label: 'Vrednovanje' },
+  { value: 'stvaranje', label: 'Stvaranje' }
+]
+const reviewedDifficulty = ref('')
+const reviewedBloom = ref('')
+
+function labelOf(options, value) {
+  return options.find((o) => o.value === value)?.label || '—'
+}
+
+const labelsRequired = computed(() => !!artifact.value?.labels_required)
+const labelsChosen = computed(() => !!reviewedDifficulty.value && !!reviewedBloom.value)
+// Prihvatanje i izmena v3 predloga traže obe oznake; odbacivanje ne
+const canAccept = computed(() => allScored.value && (!labelsRequired.value || labelsChosen.value))
+const showLabelComparison = computed(() => {
+  const a = artifact.value
+  return a && a.status !== 'predlog' && (a.model_difficulty || a.reviewed_difficulty)
+})
+
 const questionTypeLabel = computed(() => {
   if (!artifact.value) return ''
   return artifact.value.question_type === 'mc' ? 'MC' : 'Otvoreno pitanje'
@@ -68,6 +99,13 @@ function buildScoresPayload() {
   }))
 }
 
+function labelsPayload() {
+  return {
+    reviewed_difficulty: reviewedDifficulty.value || undefined,
+    reviewed_bloom_level: reviewedBloom.value || undefined
+  }
+}
+
 async function acceptWithoutChange() {
   if (submitting.value) return
   submitError.value = ''
@@ -76,7 +114,8 @@ async function acceptWithoutChange() {
     await reviewAiArtifact(artifactId, {
       decision: 'prihvaceno',
       comment: comment.value.trim() || undefined,
-      scores: buildScoresPayload()
+      scores: buildScoresPayload(),
+      ...labelsPayload()
     })
     router.push('/ai/predlozi')
   } catch (e) {
@@ -117,7 +156,8 @@ async function acceptWithChange() {
       decision: 'prihvaceno_izmena',
       comment: comment.value.trim() || undefined,
       scores: buildScoresPayload(),
-      edited_text: editedText
+      edited_text: editedText,
+      ...labelsPayload()
     })
     router.push('/ai/predlozi')
   } catch (e) {
@@ -146,7 +186,8 @@ async function reject() {
       decision: 'odbaceno',
       comment: comment.value.trim() || undefined,
       scores: buildScoresPayload(),
-      rejection_reason: rejectReason.value.trim()
+      rejection_reason: rejectReason.value.trim(),
+      ...labelsPayload()
     })
     router.push('/ai/predlozi')
   } catch (e) {
@@ -281,6 +322,65 @@ onMounted(loadArtifact)
         </div>
       </div>
 
+      <!-- Slepo ocenjivanje: nastavnik bira težinu i Blumov nivo pre nego što vidi modelove -->
+      <div v-if="labelsRequired && artifact.status === 'predlog'" class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+          <i class="fa-solid fa-layer-group me-2 text-muted"></i>
+          Težina i kognitivni nivo (tvoja procena)
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="reviewed-difficulty">Težina</label>
+              <select id="reviewed-difficulty" v-model="reviewedDifficulty" class="form-select" :disabled="submitting">
+                <option value="">Izaberi...</option>
+                <option v-for="o in DIFFICULTY_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="reviewed-bloom">Nivo Blumove taksonomije</label>
+              <select id="reviewed-bloom" v-model="reviewedBloom" class="form-select" :disabled="submitting">
+                <option value="">Izaberi...</option>
+                <option v-for="o in BLOOM_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-text">
+            Obavezno za prihvatanje. Procena modela se prikazuje tek posle odluke.
+          </div>
+        </div>
+      </div>
+
+      <div v-if="showLabelComparison" class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+          <i class="fa-solid fa-layer-group me-2 text-muted"></i>
+          Težina i kognitivni nivo
+        </div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Nastavnik</th>
+                <th>Model</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th class="fw-semibold">Težina</th>
+                <td>{{ labelOf(DIFFICULTY_OPTIONS, artifact.reviewed_difficulty) }}</td>
+                <td>{{ labelOf(DIFFICULTY_OPTIONS, artifact.model_difficulty) }}</td>
+              </tr>
+              <tr>
+                <th class="fw-semibold">Blumov nivo</th>
+                <td>{{ labelOf(BLOOM_OPTIONS, artifact.reviewed_bloom_level) }}</td>
+                <td>{{ labelOf(BLOOM_OPTIONS, artifact.model_bloom_level) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div v-if="showEditForm" class="card shadow-sm mb-4 border-warning">
         <div class="card-header bg-warning bg-opacity-25">
           <i class="fa-solid fa-pen me-2"></i>
@@ -344,11 +444,14 @@ onMounted(loadArtifact)
           <div v-if="!allScored" class="text-muted small mb-2">
             Oceni sve kriterijume rubrike da bi mogao da doneseš odluku.
           </div>
+          <div v-else-if="!canAccept" class="text-muted small mb-2">
+            Izaberi težinu i nivo Blumove taksonomije da bi mogao da prihvatiš predlog.
+          </div>
 
           <div class="d-flex flex-wrap gap-2">
             <button
               class="btn btn-success"
-              :disabled="!allScored || submitting"
+              :disabled="!canAccept || submitting"
               @click="acceptWithoutChange"
             >
               <span v-if="submitting" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
@@ -359,7 +462,7 @@ onMounted(loadArtifact)
             <button
               v-if="!showEditForm"
               class="btn btn-outline-warning"
-              :disabled="!allScored || submitting"
+              :disabled="!canAccept || submitting"
               @click="openEditForm"
             >
               <i class="fa-solid fa-pen me-2"></i>
@@ -369,7 +472,7 @@ onMounted(loadArtifact)
             <button
               v-else
               class="btn btn-warning"
-              :disabled="!allScored || submitting"
+              :disabled="!canAccept || submitting"
               @click="acceptWithChange"
             >
               <span v-if="submitting" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
