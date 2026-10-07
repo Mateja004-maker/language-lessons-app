@@ -43,6 +43,7 @@ load_dotenv(BASE_DIR / ".env", override=True)
 # nivou modula, pa importi moraju doći POSLE load_dotenv().
 import ai_provider
 import prompt_templates
+import question_validation
 import explanation_prompts
 import code_executor
 import explanation_review
@@ -265,42 +266,6 @@ def get_applicable_rubric_definitions(cursor, question_type):
         tuple(applies_to_values),
     )
     return cursor.fetchall()
-
-
-def validate_similar_question_payload(parsed, question_type, expected_answer_count):
-    """Vraća None ako je JSON iz AI odgovora ispravan za dati tip pitanja,
-    inače string sa opisom greške."""
-    if not isinstance(parsed, dict):
-        return "Odgovor modela mora biti JSON objekat"
-
-    question_text = parsed.get("question_text")
-    if not isinstance(question_text, str) or not question_text.strip():
-        return "Nedostaje ili je prazan question_text"
-
-    if question_type == "mc":
-        answers = parsed.get("answers")
-        if not isinstance(answers, list) or len(answers) != expected_answer_count:
-            return f"Očekivano je tačno {expected_answer_count} ponuđenih odgovora"
-
-        correct_count = 0
-        for a in answers:
-            if not isinstance(a, dict):
-                return "Svaki ponuđeni odgovor mora biti JSON objekat"
-            if not isinstance(a.get("answer_text"), str) or not a["answer_text"].strip():
-                return "Ponuđeni odgovor bez teksta"
-            if not isinstance(a.get("is_correct"), bool):
-                return "is_correct mora biti true/false"
-            if a["is_correct"]:
-                correct_count += 1
-
-        if correct_count != 1:
-            return f"Očekivan je tačno jedan tačan odgovor, pronađeno {correct_count}"
-
-    else:  # "open"
-        if "answers" in parsed:
-            return "Otvoreno pitanje ne sme imati ponuđene odgovore"
-
-    return None
 
 
 
@@ -2497,9 +2462,13 @@ def generate_similar_question(question_id):
                 validation_errors = "Odgovor modela nije validan JSON"
 
             if parsed_result is not None:
-                validation_errors = validate_similar_question_payload(
-                    parsed_result, question_type, len(original_answers)
+                validation = question_validation.validate(
+                    parsed_result,
+                    question_type,
+                    len(original_answers),
+                    prompt_templates.template_version(template_text),
                 )
+                validation_errors = None if validation.passed else "; ".join(validation.errors)
 
         validation_passed = validation_errors is None and parsed_result is not None
 
@@ -2720,9 +2689,10 @@ def review_ai_artifact(artifact_id):
 
         cursor.execute("""
             SELECT a.id, a.status, a.original_text, a.generation_run_id,
-                   r.source_question_id
+                   r.source_question_id, p.version AS prompt_version
             FROM ai_generated_artifacts a
             JOIN ai_generation_runs r ON r.id = a.generation_run_id
+            LEFT JOIN ai_prompts p ON p.id = r.prompt_id
             WHERE a.id = %s AND a.artifact_type = %s
         """, (artifact_id, ARTIFACT_TYPE_QUESTION))
         artifact = cursor.fetchone()
@@ -2793,13 +2763,14 @@ def review_ai_artifact(artifact_id):
 
         edited_parsed = None
         if decision == ARTIFACT_STATUS_ACCEPTED_EDITED:
-            validation_error = validate_similar_question_payload(
-                edited_text, question_type, expected_answer_count
+            # Izmena se proverava po istoj verziji prompta kao original
+            validation = question_validation.validate(
+                edited_text, question_type, expected_answer_count, artifact["prompt_version"]
             )
-            if validation_error:
+            if not validation.passed:
                 cursor.close()
                 conn.close()
-                return jsonify({"error": f"edited_text nije validan: {validation_error}"}), 400
+                return jsonify({"error": f"edited_text nije validan: {'; '.join(validation.errors)}"}), 400
             edited_parsed = edited_text
 
         try:

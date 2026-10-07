@@ -52,6 +52,12 @@ def _read_template_file(question_type: str) -> tuple[str, str]:
     return match.group(1), content
 
 
+def template_version(template_text: str):
+    """Verzija iz '{# version: ... #}' komentara u šablonu, ili None."""
+    match = _VERSION_COMMENT_RE.search(template_text or "")
+    return match.group(1) if match else None
+
+
 def ensure_prompt_synced(conn, question_type: str) -> tuple[int, str]:
     """
     Učitava .txt fajl za dati question_type i osigurava da postoji
