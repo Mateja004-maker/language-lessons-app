@@ -45,6 +45,15 @@ const BLOOM_OPTIONS = [
 const reviewedDifficulty = ref('')
 const reviewedBloom = ref('')
 
+// Mogući duplikat: nastavnik potvrđuje (true) / odbacuje (false) ili ne označava ('')
+const reviewedDuplicate = ref('')
+const SIMILAR_SOURCE_LABELS = {
+  source: 'izvorno pitanje',
+  bank: 'pitanje iz banke',
+  artifact: 'drugi AI predlog'
+}
+const hasSimilarity = computed(() => artifact.value?.max_similarity !== undefined)
+
 function labelOf(options, value) {
   return options.find((o) => o.value === value)?.label || '—'
 }
@@ -102,7 +111,8 @@ function buildScoresPayload() {
 function labelsPayload() {
   return {
     reviewed_difficulty: reviewedDifficulty.value || undefined,
-    reviewed_bloom_level: reviewedBloom.value || undefined
+    reviewed_bloom_level: reviewedBloom.value || undefined,
+    reviewed_duplicate: reviewedDuplicate.value === '' ? undefined : reviewedDuplicate.value === 'da'
   }
 }
 
@@ -227,6 +237,15 @@ onMounted(loadArtifact)
         <span class="badge bg-dark">{{ artifact.subject_name || 'Nepoznat predmet' }}</span>
         <span v-if="artifact.area_name" class="badge bg-secondary">{{ artifact.area_name }}</span>
         <span class="badge bg-info text-dark">{{ questionTypeLabel }}</span>
+        <!-- Mogući duplikat (sličnost teksta; ne otkriva model) -->
+        <span
+          v-if="artifact.possible_duplicate"
+          class="badge bg-warning text-dark"
+          :title="artifact.similar_source === 'artifact' ? 'Sličan drugom AI predlogu' : 'Sličan pitanju iz banke'"
+        >
+          <i class="fa-solid fa-clone me-1"></i>
+          mogući duplikat ({{ Math.round(artifact.max_similarity * 100) }} % sa {{ artifact.similar_question_id ? '#' + artifact.similar_question_id : 'drugim predlogom' }})
+        </span>
         <!-- Slepo ocenjivanje: model i vreme generisanja se ne prikazuju dok je predlog u statusu 'predlog' -->
         <template v-if="artifact.status !== 'predlog'">
           <span v-if="artifact.model_name" class="badge bg-light text-dark border">{{ artifact.provider }} / {{ artifact.model_name }}</span>
@@ -278,6 +297,37 @@ onMounted(loadArtifact)
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="hasSimilarity" class="card shadow-sm mb-4" :class="artifact.possible_duplicate ? 'border-warning' : ''">
+        <div class="card-header bg-white">
+          <i class="fa-solid fa-clone me-2 text-muted"></i>
+          Najsličnije postojeće pitanje
+          <span class="text-muted small ms-2">
+            {{ Math.round(artifact.max_similarity * 100) }} % -
+            {{ SIMILAR_SOURCE_LABELS[artifact.similar_source] || artifact.similar_source }}
+            <template v-if="artifact.similar_question_id">#{{ artifact.similar_question_id }}</template>
+          </span>
+        </div>
+        <div class="card-body">
+          <p class="mb-3">{{ artifact.similar_question_text || '—' }}</p>
+
+          <template v-if="artifact.status === 'predlog'">
+            <label class="form-label d-block">Da li je predlog duplikat ovog pitanja?</label>
+            <div class="btn-group" role="group">
+              <input type="radio" class="btn-check" id="dup-da" value="da" v-model="reviewedDuplicate" :disabled="submitting" />
+              <label class="btn btn-outline-warning" for="dup-da">Da, duplikat</label>
+              <input type="radio" class="btn-check" id="dup-ne" value="ne" v-model="reviewedDuplicate" :disabled="submitting" />
+              <label class="btn btn-outline-secondary" for="dup-ne">Ne</label>
+              <input type="radio" class="btn-check" id="dup-none" value="" v-model="reviewedDuplicate" :disabled="submitting" />
+              <label class="btn btn-outline-light text-dark border" for="dup-none">Nije označeno</label>
+            </div>
+            <div class="form-text">Opciono; čuva se uz odluku.</div>
+          </template>
+          <div v-else-if="artifact.reviewed_duplicate !== undefined" class="small">
+            Nastavnik: <strong>{{ artifact.reviewed_duplicate ? 'duplikat' : 'nije duplikat' }}</strong>
           </div>
         </div>
       </div>

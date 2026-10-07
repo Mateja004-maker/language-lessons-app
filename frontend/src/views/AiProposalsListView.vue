@@ -68,6 +68,15 @@ onMounted(loadArtifacts)
             <span class="badge bg-dark">{{ artifact.subject_name || 'Nepoznat predmet' }}</span>
             <span v-if="artifact.area_name" class="badge bg-secondary">{{ artifact.area_name }}</span>
             <span class="badge bg-info text-dark">{{ questionTypeLabel(artifact) }}</span>
+            <!-- Mogući duplikat (sličnost teksta; ne otkriva model) -->
+            <span
+              v-if="artifact.possible_duplicate"
+              class="badge bg-warning text-dark"
+              :title="artifact.similar_source === 'artifact' ? 'Sličan drugom AI predlogu' : 'Sličan pitanju iz banke'"
+            >
+              <i class="fa-solid fa-clone me-1"></i>
+              mogući duplikat ({{ Math.round(artifact.max_similarity * 100) }} % sa {{ artifact.similar_question_id ? '#' + artifact.similar_question_id : 'drugim predlogom' }})
+            </span>
             <!-- Slepo ocenjivanje: model se ne prikazuje dok je predlog u statusu 'predlog' -->
             <span v-if="artifact.status !== 'predlog' && artifact.model_name" class="badge bg-light text-dark border">{{ artifact.provider }} / {{ artifact.model_name }}</span>
           </div>
