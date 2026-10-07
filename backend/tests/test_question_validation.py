@@ -15,7 +15,15 @@ import unittest
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BACKEND_DIR)
 
-from question_validation import validate, prompt_version_number, strict_fields_enabled  # noqa: E402
+from question_validation import (  # noqa: E402
+    BLOOM_LEVELS,
+    DIFFICULTY_VALUES,
+    prompt_version_number,
+    strict_fields_enabled,
+    validate,
+)
+
+LABELS = {"difficulty": "srednje", "bloom_level": "primena"}
 
 
 def mc(question_text="Koliko je 2 + 2?", answers=None, **extra):
@@ -47,8 +55,24 @@ class PassCases(unittest.TestCase):
     def test_no_version_behaves_like_v2(self):
         self.assertTrue(validate(mc(extra=1), "mc", 3, None).passed)
 
-    def test_v3_valid_without_extra_fields(self):
-        self.assertTrue(validate(mc(), "mc", 3, "mc-v3").passed)
+    def test_v3_valid_with_labels(self):
+        self.assertTrue(validate(mc(**LABELS), "mc", 3, "mc-v3").passed)
+
+    def test_v3_open_valid_with_labels(self):
+        self.assertTrue(validate({"question_text": "Objasni.", **LABELS}, "open", 0, "open-v3").passed)
+
+    def test_v3_every_allowed_label_value(self):
+        for difficulty in DIFFICULTY_VALUES:
+            for bloom in BLOOM_LEVELS:
+                result = validate(mc(difficulty=difficulty, bloom_level=bloom), "mc", 3, "mc-v3")
+                self.assertTrue(result.passed, (difficulty, bloom, result.errors))
+
+    def test_v2_ignores_labels_even_invalid(self):
+        self.assertTrue(validate(mc(difficulty="hard", bloom_level=1), "mc", 3, "mc-v2").passed)
+
+    def test_v3_edited_text_without_labels(self):
+        # nastavnikova izmena: oznake nisu obavezne (bira ih posebno)
+        self.assertTrue(validate(mc(), "mc", 3, "mc-v3", require_labels=False).passed)
 
 
 class FailCases(unittest.TestCase):
@@ -112,6 +136,47 @@ class FailCases(unittest.TestCase):
     def test_v3_open_rejects_extra_field(self):
         self.assertFail(validate({"question_text": "x", "note": 1}, "open", 0, "open-v3"),
                         "Nepoznata polja u odgovoru: note")
+
+
+class V3LabelCases(unittest.TestCase):
+    DIFFICULTY_ERROR = "Nedostaje ili je nevažeće difficulty (dozvoljeno: lako, srednje, tesko)"
+    BLOOM_ERROR = ("Nedostaje ili je nevažeće bloom_level (dozvoljeno: pamcenje, razumevanje, "
+                   "primena, analiza, vrednovanje, stvaranje)")
+
+    def assertFail(self, result, message):
+        self.assertFalse(result.passed)
+        self.assertEqual(result.errors, [message])
+
+    def test_missing_difficulty(self):
+        self.assertFail(validate(mc(bloom_level="primena"), "mc", 3, "mc-v3"), self.DIFFICULTY_ERROR)
+
+    def test_missing_bloom_level(self):
+        self.assertFail(validate(mc(difficulty="lako"), "mc", 3, "mc-v3"), self.BLOOM_ERROR)
+
+    def test_missing_both_reports_difficulty_first(self):
+        self.assertFail(validate(mc(), "mc", 3, "mc-v3"), self.DIFFICULTY_ERROR)
+
+    def test_invalid_difficulty_values(self):
+        for bad in ("teško", "Lako", "hard", "", " lako", None, 1, ["lako"]):
+            with self.subTest(bad=bad):
+                self.assertFail(validate(mc(difficulty=bad, bloom_level="primena"), "mc", 3, "mc-v3"),
+                                self.DIFFICULTY_ERROR)
+
+    def test_invalid_bloom_values(self):
+        for bad in ("pamćenje", "Primena", "kreiranje", "remember", "", None, 3):
+            with self.subTest(bad=bad):
+                self.assertFail(validate(mc(difficulty="lako", bloom_level=bad), "mc", 3, "mc-v3"),
+                                self.BLOOM_ERROR)
+
+    def test_open_missing_labels(self):
+        self.assertFail(validate({"question_text": "x"}, "open", 0, "open-v3"), self.DIFFICULTY_ERROR)
+
+    def test_edited_text_invalid_label_still_fails(self):
+        self.assertFail(validate(mc(difficulty="hard"), "mc", 3, "mc-v3", require_labels=False),
+                        self.DIFFICULTY_ERROR)
+
+    def test_format_error_comes_before_label_error(self):
+        self.assertFail(validate(mc(question_text=""), "mc", 3, "mc-v3"), "Nedostaje ili je prazan question_text")
 
 
 class Versions(unittest.TestCase):

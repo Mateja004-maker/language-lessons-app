@@ -12,8 +12,9 @@ isti kao pre izdvajanja.
 Verzije prompta:
 - do v2 (mc-v1, mc-v2, open-v1, open-v2, i nepoznata/bez verzije): polja
   koja nisu deo formata se ignorišu - ponašanje kao do sada;
-- od v3: nepoznata polja (na vrhu i u ponuđenim odgovorima) su greška.
-  Nijedan v3 prompt još ne postoji, pa ovo pravilo za sada nije aktivno.
+- od v3: nepoznata polja (na vrhu i u ponuđenim odgovorima) su greška, a
+  "difficulty" i "bloom_level" su obavezni, sa dozvoljenim vrednostima
+  (ključevi i vrednosti bez dijakritika).
 """
 
 import json
@@ -23,14 +24,19 @@ from dataclasses import dataclass, field
 
 QUESTION_TYPES = ("mc", "open")
 
-# Od koje verzije prompta se nepoznata polja odbijaju
+# Od koje verzije prompta se nepoznata polja odbijaju i traže oznake
 STRICT_FIELDS_FROM_VERSION = 3
 
-# Dozvoljena polja u strogom režimu (v3+). Tačka A (težina/Blumov nivo)
-# ovde dodaje svoja polja kada uvede v3 prompt.
+# Težina i nivo Blumove taksonomije (v3+): model ih predlaže, nastavnik ih
+# pri pregledu bira nezavisno. Vrednosti bez dijakritika.
+DIFFICULTY_VALUES = ("lako", "srednje", "tesko")
+BLOOM_LEVELS = ("pamcenje", "razumevanje", "primena", "analiza", "vrednovanje", "stvaranje")
+LABEL_FIELDS = {"difficulty": DIFFICULTY_VALUES, "bloom_level": BLOOM_LEVELS}
+
+# Dozvoljena polja u strogom režimu (v3+)
 ALLOWED_TOP_LEVEL_FIELDS = {
-    "mc": {"question_text", "answers"},
-    "open": {"question_text"},
+    "mc": {"question_text", "answers", "difficulty", "bloom_level"},
+    "open": {"question_text", "difficulty", "bloom_level"},
 }
 ALLOWED_ANSWER_FIELDS = {"answer_text", "is_correct"}
 
@@ -60,8 +66,20 @@ def _fail(message):
     return ValidationResult(passed=False, errors=[message])
 
 
-def validate(parsed, question_type, expected_answer_count, prompt_version=None) -> ValidationResult:
-    """Proverava isparsiran JSON odgovora modela za dati tip pitanja."""
+def label_error(field_name, value):
+    """Poruka greške za vrednost oznake (difficulty / bloom_level), ili None ako je ispravna."""
+    allowed = LABEL_FIELDS[field_name]
+    if not isinstance(value, str) or value not in allowed:
+        return f"Nedostaje ili je nevažeće {field_name} (dozvoljeno: {', '.join(allowed)})"
+    return None
+
+
+def validate(parsed, question_type, expected_answer_count, prompt_version=None,
+             require_labels=True) -> ValidationResult:
+    """Proverava isparsiran JSON odgovora modela za dati tip pitanja.
+    require_labels=False se koristi za nastavnikovu izmenu (edited_text):
+    oznake tada nisu obavezne jer nastavnik svoje bira posebno, ali ako
+    su prisutne moraju imati dozvoljenu vrednost."""
     if not isinstance(parsed, dict):
         return _fail("Odgovor modela mora biti JSON objekat")
 
@@ -102,6 +120,14 @@ def validate(parsed, question_type, expected_answer_count, prompt_version=None) 
     else:  # "open"
         if "answers" in parsed:
             return _fail("Otvoreno pitanje ne sme imati ponuđene odgovore")
+
+    if strict:
+        for field_name in LABEL_FIELDS:
+            if field_name not in parsed and not require_labels:
+                continue
+            error = label_error(field_name, parsed.get(field_name))
+            if error:
+                return _fail(error)
 
     return ValidationResult(passed=True)
 
