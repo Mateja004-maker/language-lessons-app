@@ -4209,6 +4209,178 @@ def list_evaluation_batches():
     return jsonify(rows), 200
 
 
+# =====================================================================
+# Referentni skup pitanja (tačka D): zamrznut spisak izvornih pitanja
+# jednog predmeta koji ulazi u svaki model istim redosledom. Tabele su iz
+# db/migration_reference_sets.sql; pre migracije rute vraćaju 409.
+# Pokretač eksperimenta: backend/tools/run_experiment.py.
+# =====================================================================
+
+def reference_sets_enabled(cursor):
+    """True kad postoje tabele/kolona iz db/migration_reference_sets.sql."""
+    cursor.execute("""
+        SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND ((TABLE_NAME = 'reference_sets' AND COLUMN_NAME = 'id')
+            OR (TABLE_NAME = 'reference_set_questions' AND COLUMN_NAME = 'question_id')
+            OR (TABLE_NAME = 'evaluation_batches' AND COLUMN_NAME = 'reference_set_id'))
+    """)
+    row = cursor.fetchone()
+    return (row["n"] if isinstance(row, dict) else row[0]) == 3
+
+
+REFERENCE_SETS_MIGRATION_ERROR = (
+    "Tabele za referentni skup ne postoje - pokrenite migraciju db/migration_reference_sets.sql"
+)
+
+
+@app.post("/api/reference-sets")  # pravljenje referentnog skupa (samo pitanja iz predmeta skupa)
+@role_required(["ADMIN"])
+def create_reference_set():
+    data = request.get_json(silent=True) or {}
+    name = data.get("name")
+    subject_id = data.get("subject_id")
+    question_ids = data.get("question_ids")
+
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 150:
+        return jsonify({"error": "name je obavezan (najviše 150 znakova)"}), 400
+    if isinstance(subject_id, bool) or not isinstance(subject_id, int):
+        return jsonify({"error": "subject_id je obavezan ceo broj"}), 400
+    if (not isinstance(question_ids, list) or not question_ids
+            or any(isinstance(q, bool) or not isinstance(q, int) or q <= 0 for q in question_ids)):
+        return jsonify({"error": "question_ids mora biti neprazan niz pozitivnih celih brojeva"}), 400
+    duplicates = sorted({q for q in question_ids if question_ids.count(q) > 1})
+    if duplicates:
+        return jsonify({"error": f"Pitanja se ponavljaju u skupu: {duplicates}"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT id FROM subjects WHERE id = %s", (subject_id,))
+        if not cursor.fetchone():
+            return jsonify({"error": f"subject_id {subject_id} ne postoji"}), 400
+
+        placeholders = ", ".join(["%s"] * len(question_ids))
+        cursor.execute(
+            f"SELECT id, subject_id FROM exam_questions WHERE id IN ({placeholders})",
+            tuple(question_ids),
+        )
+        found = {row["id"]: row["subject_id"] for row in cursor.fetchall()}
+        missing = [q for q in question_ids if q not in found]
+        if missing:
+            return jsonify({"error": f"Pitanja ne postoje: {missing}"}), 400
+        outside = [q for q in question_ids if found[q] != subject_id]
+        if outside:
+            return jsonify({
+                "error": f"Pitanja nisu iz predmeta skupa (subject_id {subject_id}): {outside}",
+                "question_ids": outside,
+            }), 400
+
+        if not reference_sets_enabled(cursor):
+            return jsonify({"error": REFERENCE_SETS_MIGRATION_ERROR}), 409
+
+        try:
+            cursor.execute(
+                "INSERT INTO reference_sets (name, subject_id) VALUES (%s, %s)",
+                (name.strip(), subject_id),
+            )
+            set_id = cursor.lastrowid
+            for order_no, question_id in enumerate(question_ids, start=1):
+                cursor.execute("""
+                    INSERT INTO reference_set_questions (reference_set_id, question_id, order_no)
+                    VALUES (%s, %s, %s)
+                """, (set_id, question_id, order_no))
+            conn.commit()
+        except mysql.connector.IntegrityError as e:
+            conn.rollback()
+            if e.errno == 1062:
+                return jsonify({"error": f"Referentni skup sa imenom '{name.strip()}' već postoji"}), 409
+            raise
+        except Exception:
+            conn.rollback()
+            raise
+
+        return jsonify({
+            "id": set_id,
+            "name": name.strip(),
+            "subject_id": subject_id,
+            "questions": [
+                {"question_id": question_id, "order_no": order_no}
+                for order_no, question_id in enumerate(question_ids, start=1)
+            ],
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.get("/api/reference-sets")  # lista referentnih skupova
+@role_required(["ADMIN"])
+def list_reference_sets():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if not reference_sets_enabled(cursor):
+            return jsonify({"error": REFERENCE_SETS_MIGRATION_ERROR}), 409
+        cursor.execute("""
+            SELECT rs.id, rs.name, rs.subject_id, s.name AS subject_name, rs.created_at,
+                   (SELECT COUNT(*) FROM reference_set_questions q WHERE q.reference_set_id = rs.id) AS question_count,
+                   (SELECT COUNT(*) FROM evaluation_batches b WHERE b.reference_set_id = rs.id) AS batch_count
+            FROM reference_sets rs
+            JOIN subjects s ON s.id = rs.subject_id
+            ORDER BY rs.id DESC
+        """)
+        return jsonify(cursor.fetchall()), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.get("/api/reference-sets/<int:set_id>")  # detalj skupa: pitanja po redu i serije koje ga koriste
+@role_required(["ADMIN"])
+def get_reference_set(set_id):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if not reference_sets_enabled(cursor):
+            return jsonify({"error": REFERENCE_SETS_MIGRATION_ERROR}), 409
+        cursor.execute("""
+            SELECT rs.id, rs.name, rs.subject_id, s.name AS subject_name, rs.created_at
+            FROM reference_sets rs JOIN subjects s ON s.id = rs.subject_id
+            WHERE rs.id = %s
+        """, (set_id,))
+        reference_set = cursor.fetchone()
+        if not reference_set:
+            return jsonify({"error": "Reference set not found"}), 404
+
+        cursor.execute("""
+            SELECT rq.question_id, rq.order_no, q.question_text, q.area_id,
+                   (SELECT COUNT(*) FROM exam_answers a WHERE a.question_id = q.id) AS answer_count
+            FROM reference_set_questions rq
+            JOIN exam_questions q ON q.id = rq.question_id
+            WHERE rq.reference_set_id = %s
+            ORDER BY rq.order_no ASC, rq.question_id ASC
+        """, (set_id,))
+        reference_set["questions"] = cursor.fetchall()
+
+        cursor.execute(
+            "SELECT id, name, is_final FROM evaluation_batches WHERE reference_set_id = %s ORDER BY id",
+            (set_id,),
+        )
+        reference_set["batches"] = cursor.fetchall()
+        return jsonify(reference_set), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
 
