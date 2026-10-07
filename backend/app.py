@@ -2834,8 +2834,10 @@ def review_ai_artifact(artifact_id):
         edited_parsed = None
         if decision == ARTIFACT_STATUS_ACCEPTED_EDITED:
             # Izmena se proverava po istoj verziji prompta kao original
+            # Oznake nisu deo izmene - nastavnik ih bira posebno (reviewed_*)
             validation = question_validation.validate(
-                edited_text, question_type, expected_answer_count, artifact["prompt_version"]
+                edited_text, question_type, expected_answer_count, artifact["prompt_version"],
+                require_labels=False,
             )
             if not validation.passed:
                 cursor.close()
