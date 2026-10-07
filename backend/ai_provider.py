@@ -109,6 +109,28 @@ def _attempts_note(attempts: int) -> str:
     return f" (pokušaja: {attempts})" if attempts > 1 else ""
 
 
+def _with_meta(result: dict, attempts: int, finish_reason) -> dict:
+    """Dodaje attempts i finish_reason (vrednost kako je provajder vraća, ili
+    None ako odgovor nije stigao do tela) u rezultat; ostali ključevi ostaju isti."""
+    result["attempts"] = attempts
+    result["finish_reason"] = finish_reason
+    return result
+
+
+def _openai_finish_reason(data):
+    choices = data.get("choices") if isinstance(data, dict) else None
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        return choices[0].get("finish_reason")
+    return None
+
+
+def _gemini_finish_reason(data):
+    candidates = data.get("candidates") if isinstance(data, dict) else None
+    if isinstance(candidates, list) and candidates and isinstance(candidates[0], dict):
+        return candidates[0].get("finishReason")
+    return None
+
+
 def _extract_openai_text(data, label: str):
     """Groq i Mistral (OpenAI format). Vraća (text, None) ili (None, poruka)."""
     choices = data.get("choices") if isinstance(data, dict) else None
@@ -167,30 +189,34 @@ def _call_groq(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODEL
         timeout=30,
     )
     if exception is not None:
-        return _failure(f"Groq: mrežna greška ({type(exception).__name__}){_attempts_note(attempts)}", elapsed_ms)
+        return _with_meta(
+            _failure(f"Groq: mrežna greška ({type(exception).__name__}){_attempts_note(attempts)}", elapsed_ms),
+            attempts, None,
+        )
 
     if response.status_code != 200:
-        return {
+        return _with_meta({
             "success": False,
             "error": f"Groq API greška: {response.status_code} {response.text[:200]}{_attempts_note(attempts)}",
             "response_time_ms": elapsed_ms,
-        }
+        }, attempts, None)
 
     try:
         data = response.json()
     except ValueError:
-        return _failure("Groq: odgovor nije validan JSON", elapsed_ms)
+        return _with_meta(_failure("Groq: odgovor nije validan JSON", elapsed_ms), attempts, None)
+    finish_reason = _openai_finish_reason(data)
     text, error = _extract_openai_text(data, "Groq")
     if error:
-        return _failure(error, elapsed_ms)
+        return _with_meta(_failure(error, elapsed_ms), attempts, finish_reason)
     tokens = data.get("usage", {}).get("total_tokens")
 
-    return {
+    return _with_meta({
         "success": True,
         "raw_text": text,
         "response_time_ms": elapsed_ms,
         "tokens_used": tokens,
-    }
+    }, attempts, finish_reason)
 
 
 def _call_gemini(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODELS["gemini"]) -> dict:
@@ -205,30 +231,34 @@ def _call_gemini(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MOD
         timeout=30,
     )
     if exception is not None:
-        return _failure(f"Gemini: mrežna greška ({type(exception).__name__}){_attempts_note(attempts)}", elapsed_ms)
+        return _with_meta(
+            _failure(f"Gemini: mrežna greška ({type(exception).__name__}){_attempts_note(attempts)}", elapsed_ms),
+            attempts, None,
+        )
 
     if response.status_code != 200:
-        return {
+        return _with_meta({
             "success": False,
             "error": f"Gemini API greška: {response.status_code} {response.text[:200]}{_attempts_note(attempts)}",
             "response_time_ms": elapsed_ms,
-        }
+        }, attempts, None)
 
     try:
         data = response.json()
     except ValueError:
-        return _failure("Gemini: odgovor nije validan JSON", elapsed_ms)
+        return _with_meta(_failure("Gemini: odgovor nije validan JSON", elapsed_ms), attempts, None)
+    finish_reason = _gemini_finish_reason(data)
     text, error = _extract_gemini_text(data)
     if error:
-        return _failure(error, elapsed_ms)
+        return _with_meta(_failure(error, elapsed_ms), attempts, finish_reason)
     tokens = data.get("usageMetadata", {}).get("totalTokenCount")
 
-    return {
+    return _with_meta({
         "success": True,
         "raw_text": text,
         "response_time_ms": elapsed_ms,
         "tokens_used": tokens,
-    }
+    }, attempts, finish_reason)
 
 
 def _call_mistral(prompt: str, temperature: float = 0.7, model: str = DEFAULT_MODELS["mistral"]) -> dict:
@@ -305,33 +335,37 @@ def _call_openrouter(prompt: str, temperature: float = 0.7, model: str = DEFAULT
         timeout=30,
     )
     if exception is not None:
-        return _failure(f"OpenRouter: mrežna greška ({type(exception).__name__}){_attempts_note(attempts)}", elapsed_ms)
+        return _with_meta(
+            _failure(f"OpenRouter: mrežna greška ({type(exception).__name__}){_attempts_note(attempts)}", elapsed_ms),
+            attempts, None,
+        )
 
     if response.status_code != 200:
-        return {
+        return _with_meta({
             "success": False,
             "error": f"OpenRouter API greška: {response.status_code} {response.text[:200]}{_attempts_note(attempts)}",
             "response_time_ms": elapsed_ms,
-        }
+        }, attempts, None)
 
     try:
         data = response.json()
     except ValueError:
-        return _failure("OpenRouter: odgovor nije validan JSON", elapsed_ms)
+        return _with_meta(_failure("OpenRouter: odgovor nije validan JSON", elapsed_ms), attempts, None)
+    finish_reason = _openai_finish_reason(data)
     error = _openrouter_error(data)
     if error:
-        return _failure(error, elapsed_ms)
+        return _with_meta(_failure(error, elapsed_ms), attempts, finish_reason)
     text, error = _extract_openai_text(data, "OpenRouter")
     if error:
-        return _failure(error, elapsed_ms)
+        return _with_meta(_failure(error, elapsed_ms), attempts, finish_reason)
     tokens = data.get("usage", {}).get("total_tokens")
 
-    return {
+    return _with_meta({
         "success": True,
         "raw_text": text,
         "response_time_ms": elapsed_ms,
         "tokens_used": tokens,
-    }
+    }, attempts, finish_reason)
 
 
 def generate(prompt: str, provider: str = "groq", options: dict | None = None) -> dict:
@@ -342,7 +376,10 @@ def generate(prompt: str, provider: str = "groq", options: dict | None = None) -
     provider - koji model koristiti: "groq", "gemini", "mistral" ili "openrouter"
     options  - dict, npr. {"temperature": 0.7}
 
-    Vraća dict: {success, raw_text, response_time_ms, tokens_used} ili {success: False, error}
+    Vraća dict: {success, raw_text, response_time_ms, tokens_used} ili {success: False, error}.
+    Za groq, gemini i openrouter rezultat (i uspeh i greška) ima još:
+    attempts (broj HTTP pokušaja, 1-3) i finish_reason (kako ga provajder
+    vraća; None ako odgovor nije stigao do tela). Mistral ih nema.
     """
     options = options or {}
     temperature = options.get("temperature", 0.7)
