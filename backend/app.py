@@ -3172,6 +3172,12 @@ def submit_exam(exam_id):
             ))
 
             conn.commit()
+        except mysql.connector.IntegrityError as e:
+            conn.rollback()
+            # UNIQUE(exam_id, student_id): istovremena druga predaja je vec upisana
+            if e.errno == 1062:
+                return jsonify({"error": "You already took this exam"}), 409
+            raise
         except Exception:
             conn.rollback()
             raise
