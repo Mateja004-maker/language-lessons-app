@@ -13,6 +13,7 @@ import {
   deleteQuestion,
   generateSimilarQuestion,
   generateExplanation,
+  getEvaluationBatches,
   MISTRAL_ENABLED
 } from '@/services/api'
 
@@ -61,6 +62,7 @@ const generateQuestion = ref(null)
 const generateProvider = ref('groq')
 const generateError = ref('')
 const generating = ref(false)
+const generateBatchId = ref(null)
 
 const showExplainModal = ref(false)
 const explainQuestion = ref(null)
@@ -69,6 +71,25 @@ const explainProvider = ref('groq')
 const explainError = ref('')
 const explaining = ref(false)
 const explainResult = ref(null)
+const explainBatchId = ref(null)
+
+// Evaluacione serije (oznaka eksperimenta). Ruta ih vraca od najnovije, pa je
+// podrazumevano izabrana poslednje napravljena; null = bez serije (razvojna proba).
+const evaluationBatches = ref([])
+const batchesLoading = ref(false)
+
+async function loadEvaluationBatches() {
+  batchesLoading.value = true
+  try {
+    const { data } = await getEvaluationBatches()
+    evaluationBatches.value = data || []
+  } catch {
+    evaluationBatches.value = []
+  } finally {
+    batchesLoading.value = false
+  }
+  return evaluationBatches.value.length ? evaluationBatches.value[0].id : null
+}
 
 async function loadSubjectName() {
   try {
@@ -290,11 +311,13 @@ async function removeQuestion(area, question) {
   }
 }
 
-function openGenerateModal(question) {
+async function openGenerateModal(question) {
   generateQuestion.value = question
   generateProvider.value = 'groq'
   generateError.value = ''
+  generateBatchId.value = null
   showGenerateModal.value = true
+  generateBatchId.value = await loadEvaluationBatches()
 }
 
 function closeGenerateModal() {
@@ -306,7 +329,7 @@ async function submitGenerate() {
   generateError.value = ''
   generating.value = true
   try {
-    const { data } = await generateSimilarQuestion(generateQuestion.value.id, generateProvider.value)
+    const { data } = await generateSimilarQuestion(generateQuestion.value.id, generateProvider.value, generateBatchId.value)
     showGenerateModal.value = false
     router.push(`/ai/predlozi/${data.artifact_id}`)
   } catch (e) {
@@ -327,13 +350,15 @@ function isMcQuestion(question) {
   return question?.answer_count > 0
 }
 
-function openExplainModal(question) {
+async function openExplainModal(question) {
   explainQuestion.value = question
   explainMode.value = 'mode_a'
   explainProvider.value = 'groq'
   explainError.value = ''
   explainResult.value = null
+  explainBatchId.value = null
   showExplainModal.value = true
+  explainBatchId.value = await loadEvaluationBatches()
 }
 
 function closeExplainModal() {
@@ -346,7 +371,7 @@ async function submitExplain() {
   explainResult.value = null
   explaining.value = true
   try {
-    const { data } = await generateExplanation(explainQuestion.value.id, explainMode.value, explainProvider.value)
+    const { data } = await generateExplanation(explainQuestion.value.id, explainMode.value, explainProvider.value, explainBatchId.value)
     explainResult.value = data
   } catch (e) {
     explainError.value = e?.response?.data?.details || e?.response?.data?.error || 'Ne mogu da pokrenem generisanje objašnjenja.'
@@ -630,11 +655,21 @@ onMounted(() => {
           </div>
         </div>
 
+        <div class="mb-3">
+          <label class="form-label" for="gen-batch">Serija (opciono)</label>
+          <select id="gen-batch" v-model="generateBatchId" class="form-select" :disabled="generating">
+            <option :value="null">Bez serije (razvojna proba)</option>
+            <option v-for="b in evaluationBatches" :key="b.id" :value="b.id">
+              #{{ b.id }} {{ b.name }}{{ b.is_final ? ' (finalna)' : '' }}
+            </option>
+          </select>
+        </div>
+
         <div class="d-flex justify-content-end gap-2">
           <button class="btn btn-secondary" :disabled="generating" @click="closeGenerateModal">
             Otkaži
           </button>
-          <button class="btn btn-primary" :disabled="generating" @click="submitGenerate">
+          <button class="btn btn-primary" :disabled="generating || batchesLoading" @click="submitGenerate">
             <span v-if="generating" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
             <i v-else class="fa-solid fa-wand-magic-sparkles me-2"></i>
             {{ generating ? 'Generišem...' : 'Generiši' }}
@@ -709,13 +744,23 @@ onMounted(() => {
               <label class="btn btn-outline-secondary" for="exp-provider-openrouter">openrouter</label>
             </div>
           </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="exp-batch">Serija (opciono)</label>
+            <select id="exp-batch" v-model="explainBatchId" class="form-select" :disabled="explaining">
+              <option :value="null">Bez serije (razvojna proba)</option>
+              <option v-for="b in evaluationBatches" :key="b.id" :value="b.id">
+                #{{ b.id }} {{ b.name }}{{ b.is_final ? ' (finalna)' : '' }}
+              </option>
+            </select>
+          </div>
         </template>
 
         <div class="d-flex justify-content-end gap-2">
           <button class="btn btn-secondary" :disabled="explaining" @click="closeExplainModal">
             {{ explainResult ? 'Zatvori' : 'Otkaži' }}
           </button>
-          <button v-if="!explainResult" class="btn btn-primary" :disabled="explaining" @click="submitExplain">
+          <button v-if="!explainResult" class="btn btn-primary" :disabled="explaining || batchesLoading" @click="submitExplain">
             <span v-if="explaining" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
             <i v-else class="fa-solid fa-lightbulb me-2"></i>
             {{ explaining ? 'Generišem...' : 'Generiši' }}
