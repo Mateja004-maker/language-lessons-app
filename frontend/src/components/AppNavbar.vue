@@ -145,6 +145,14 @@ function onLogout() {
             v-if="isLoggedIn && canManageLessons"
             class="nav-item"
           >
+            <router-link class="nav-link" to="/ai/druga-ocena">
+              Druga ocena
+            </router-link>
+          </li>
+          <li
+            v-if="isLoggedIn && canManageLessons"
+            class="nav-item"
+          >
             <router-link class="nav-link" to="/ai/objasnjenja">
               AI objašnjenja
             </router-link>

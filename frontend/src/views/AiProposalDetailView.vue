@@ -12,6 +12,8 @@ const artifact = ref(null)
 const loading = ref(false)
 const error = ref('')
 const errorStatus = ref(null)
+// 403 za odlučen predlog iz otvorene serije: ponudi drugu ocenu
+const secondRating = ref(false)
 
 const scores = reactive({})
 const comment = ref('')
@@ -91,6 +93,7 @@ async function loadArtifact() {
     }
   } catch (e) {
     errorStatus.value = e?.response?.status || null
+    secondRating.value = !!e?.response?.data?.second_rating
     error.value = e?.response?.data?.error || 'Ne mogu da učitam predlog.'
   } finally {
     loading.value = false
@@ -223,6 +226,13 @@ onMounted(loadArtifact)
     <div v-if="loading" class="d-flex align-items-center gap-2 text-muted">
       <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
       Učitavanje...
+    </div>
+
+    <div v-else-if="error && secondRating" class="alert alert-info">
+      {{ error }}
+      <div class="mt-2">
+        <router-link class="btn btn-primary btn-sm" :to="`/ai/druga-ocena/${artifactId}`">Oceni kao drugi ocenjivač</router-link>
+      </div>
     </div>
 
     <div v-else-if="error" class="alert alert-danger">

@@ -20,6 +20,8 @@ import SubjectsView from '@/views/SubjectsView.vue'
 import SubjectAreasView from '@/views/SubjectAreasView.vue'
 import AiProposalsListView from '@/views/AiProposalsListView.vue'
 import AiProposalDetailView from '@/views/AiProposalDetailView.vue'
+import AiSecondRatingListView from '@/views/AiSecondRatingListView.vue'
+import AiSecondRatingView from '@/views/AiSecondRatingView.vue'
 import AiExplanationsListView from '@/views/AiExplanationsListView.vue'
 import AiExplanationDetailView from '@/views/AiExplanationDetailView.vue'
 import MyResultDetailView from '@/views/MyResultDetailView.vue'
@@ -71,6 +73,10 @@ const routes = [
     { path: '/ai/predlozi', name: 'ai-proposals', component: AiProposalsListView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
 
     { path: '/ai/predlozi/:id', name: 'ai-proposal-detail', component: AiProposalDetailView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
+
+    { path: '/ai/druga-ocena', name: 'ai-second-rating', component: AiSecondRatingListView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
+
+    { path: '/ai/druga-ocena/:id', name: 'ai-second-rating-detail', component: AiSecondRatingView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
 
     { path: '/ai/objasnjenja', name: 'ai-explanations', component: AiExplanationsListView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
 

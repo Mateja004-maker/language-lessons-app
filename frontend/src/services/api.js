@@ -119,6 +119,16 @@ export const getAiArtifacts = (status = 'predlog') =>
 export const getAiArtifact = (id) =>
   api.get(`/ai/artifacts/${id}`)
 
+// Druga ocena (tačka E): samo rubrika i težina/Blum, bez odluke
+export const getSecondRatingList = (batchId) =>
+  api.get('/ai/artifacts/second-rating', { params: { batch_id: batchId } })
+
+export const getSecondRatingArtifact = (id) =>
+  api.get(`/ai/artifacts/${id}/second-rating`)
+
+export const submitSecondRating = (id, data) =>
+  api.post(`/ai/artifacts/${id}/evaluations`, data)
+
 export const reviewAiArtifact = (id, data) =>
   api.post(`/ai/artifacts/${id}/review`, data)
 
