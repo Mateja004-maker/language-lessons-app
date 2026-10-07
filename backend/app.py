@@ -440,6 +440,58 @@ def move_model_labels(row, parsed):
     row["labels_required"] = True
 
 
+# --- Drugi ocenjivač i slepo ocenjivanje u seriji (tačka E, db/migration_second_rater.sql) ---
+
+def batch_review_context(cursor, artifact_ids, user_id):
+    """{artifact_id: {'batch_id', 'batch_open', 'user_rated'}}.
+    Serija je otvorena dok nema closed_at (pre migracije sve serije su otvorene).
+    user_rated: trenutni korisnik je već ocenio predlog (kao onaj koji odlučuje ili kao drugi)."""
+    if not artifact_ids:
+        return {}
+    placeholders = ", ".join(["%s"] * len(artifact_ids))
+    closed = "b.closed_at" if table_columns_exist(cursor, "evaluation_batches", ("closed_at",)) else "NULL"
+    cursor.execute(f"""
+        SELECT a.id, r.evaluation_batch_id, {closed} AS closed_at
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        LEFT JOIN evaluation_batches b ON b.id = r.evaluation_batch_id
+        WHERE a.id IN ({placeholders})
+    """, tuple(artifact_ids))
+    rows = cursor.fetchall()
+    cursor.execute(f"""
+        SELECT DISTINCT artifact_id FROM ai_evaluations
+        WHERE evaluator_id = %s AND artifact_id IN ({placeholders})
+    """, (user_id, *artifact_ids))
+    rated = {row["artifact_id"] for row in cursor.fetchall()}
+    return {
+        row["id"]: {
+            "batch_id": row["evaluation_batch_id"],
+            "batch_open": row["evaluation_batch_id"] is not None and row["closed_at"] is None,
+            "user_rated": row["id"] in rated,
+        }
+        for row in rows
+    }
+
+
+def decision_hidden(row, context):
+    """Odlučen predlog iz otvorene serije koji korisnik još nije ocenio: ne sme
+    da vidi ni model ni odluku (ADMIN ?reveal=1 sme)."""
+    return (row.get("status") != ARTIFACT_STATUS_PENDING
+            and bool(context and context["batch_open"] and not context["user_rated"])
+            and not blind_review_reveal_requested())
+
+
+def hide_for_blind_review(row, context, fields):
+    """Slepo ocenjivanje predloga pitanja: polja se kriju dok je predlog 'predlog',
+    ili dok je u otvorenoj seriji, a korisnik ga još nije ocenio (ADMIN ?reveal=1 vidi)."""
+    if blind_review_reveal_requested():
+        return row
+    if row.get("status") == ARTIFACT_STATUS_PENDING or decision_hidden(row, context):
+        for field in fields:
+            row.pop(field, None)
+    return row
+
+
 def hide_while_pending(row, fields):
     if row.get("status") == ARTIFACT_STATUS_PENDING and not blind_review_reveal_requested():
         for field in fields:
@@ -2822,12 +2874,17 @@ def list_ai_artifacts():
         """, (status_filter, ARTIFACT_TYPE_QUESTION))
         rows = cursor.fetchall()
         duplicate_info = load_duplicate_info(cursor, [row["id"] for row in rows])
+        batch_context = batch_review_context(cursor, [row["id"] for row in rows], user_id)
         cursor.close()
         conn.close()
 
         if role == "TEACHER":
             allowed_subjects = set(get_user_subject_ids(int(user_id), "TEACHER"))
             rows = [row for row in rows if row["subject_id"] in allowed_subjects]
+
+        # Odlučen predlog iz otvorene serije koji korisnik nije ocenio: sam status
+        # bi otkrio odluku, pa se ne prikazuje (do zatvaranja serije ili sopstvene ocene)
+        rows = [row for row in rows if not decision_hidden(row, batch_context.get(row["id"]))]
 
         for row in rows:
             parsed = json.loads(row["original_text"]) if row["original_text"] else None
@@ -2837,7 +2894,8 @@ def list_ai_artifacts():
             row["question_type"] = prompt_templates.detect_question_type(
                 (parsed or {}).get("answers") or []
             )
-            hide_while_pending(row, BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS + BLIND_REVIEW_LABEL_FIELDS)
+            hide_for_blind_review(row, batch_context.get(row["id"]),
+                                  BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS + BLIND_REVIEW_LABEL_FIELDS)
 
         return jsonify(blind_review_order(rows, user_id)), 200
 
@@ -2886,6 +2944,17 @@ def get_ai_artifact(artifact_id):
             conn.close()
             return jsonify({"error": "Forbidden"}), 403
 
+        batch_context = batch_review_context(cursor, [artifact_id], user_id).get(artifact_id)
+        if decision_hidden(artifact, batch_context):
+            cursor.close()
+            conn.close()
+            return jsonify({
+                "error": "Predlog je deo otvorene evaluacione serije i već je pregledan - "
+                         "ocenite ga kao drugi ocenjivač (odluka i model se vide posle vaše ocene "
+                         "ili zatvaranja serije)",
+                "second_rating": True,
+            }), 403
+
         cursor.execute("""
             SELECT answer_text, is_correct
             FROM exam_answers
@@ -2915,7 +2984,8 @@ def get_ai_artifact(artifact_id):
         question_type = prompt_templates.detect_question_type((parsed_original or {}).get("answers") or [])
         artifact["question_type"] = question_type
         artifact["rubric_criteria"] = get_applicable_rubric_definitions(cursor, question_type)
-        hide_while_pending(artifact, BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS + BLIND_REVIEW_LABEL_FIELDS)
+        hide_for_blind_review(artifact, batch_context,
+                              BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS + BLIND_REVIEW_LABEL_FIELDS)
 
         cursor.close()
         conn.close()
@@ -2986,6 +3056,13 @@ def review_ai_artifact(artifact_id):
             cursor.close()
             conn.close()
             return jsonify({"error": "Predlog je već pregledan"}), 409
+
+        cursor.execute("SELECT 1 FROM ai_evaluations WHERE artifact_id = %s AND evaluator_id = %s LIMIT 1",
+                       (artifact_id, user_id))
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Već ste ocenili ovaj predlog (kao drugi ocenjivač) - odluku donosi drugi nastavnik"}), 409
 
         cursor.execute("SELECT * FROM exam_questions WHERE id = %s", (artifact["source_question_id"],))
         source_question = cursor.fetchone()
