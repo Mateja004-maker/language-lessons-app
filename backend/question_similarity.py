@@ -14,7 +14,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 
-DUPLICATE_THRESHOLD = 0.85
+DUPLICATE_THRESHOLD = 0.90
 
 # Redosled važi i kao prednost pri jednakoj oceni
 SOURCE_ORDER = ("source", "bank", "artifact")
