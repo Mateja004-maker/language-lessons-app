@@ -44,6 +44,7 @@ load_dotenv(BASE_DIR / ".env", override=True)
 import ai_provider
 import prompt_templates
 import question_validation
+import edit_distance
 import explanation_prompts
 import code_executor
 import explanation_review
@@ -248,6 +249,23 @@ QUESTION_LABEL_COLUMNS = {
                                "reviewed_difficulty", "reviewed_bloom_level"),
     "exam_questions": ("difficulty", "bloom_level"),
 }
+
+
+def table_columns_exist(cursor, table, columns):
+    """True kad tabela ima sve navedene kolone (provera pri svakom pozivu, bez keša,
+    pa posle ručno pokrenute migracije nije potreban restart)."""
+    placeholders = ", ".join(["%s"] * len(columns))
+    cursor.execute(
+        f"""SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME IN ({placeholders})""",
+        (table, *columns),
+    )
+    row = cursor.fetchone()
+    return (row["n"] if isinstance(row, dict) else row[0]) == len(columns)
+
+
+# db/migration_edit_distance.sql (tačka B)
+EDIT_DISTANCE_COLUMNS = ("edit_distance", "edit_distance_norm")
 
 
 def question_labels_enabled(cursor):
@@ -2949,6 +2967,17 @@ def review_ai_artifact(artifact_id):
                     SET reviewed_difficulty = %s, reviewed_bloom_level = %s
                     WHERE id = %s
                 """, (reviewed_labels["difficulty"], reviewed_labels["bloom_level"], artifact_id))
+
+            # Obim intervencije (tačka B), samo za izmenu i samo ako je migracija pokrenuta;
+            # stari/propušteni se dopunjuju sa tools/backfill_edit_distance.py
+            if (decision == ARTIFACT_STATUS_ACCEPTED_EDITED
+                    and table_columns_exist(cursor, "ai_generated_artifacts", EDIT_DISTANCE_COLUMNS)):
+                distance = edit_distance.edit_distance(original_parsed, edited_parsed)
+                cursor.execute("""
+                    UPDATE ai_generated_artifacts
+                    SET edit_distance = %s, edit_distance_norm = %s
+                    WHERE id = %s
+                """, (distance["total"], distance["normalized"], artifact_id))
 
             conn.commit()
         except Exception:
