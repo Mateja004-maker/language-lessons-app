@@ -179,7 +179,8 @@ onMounted(loadArtifact)
         <span class="badge bg-info text-dark">{{ isModeB ? 'Režim B' : 'Režim A' }}</span>
         <span class="badge bg-secondary">{{ STATUS_LABELS[artifact.status] || artifact.status }}</span>
         <span v-if="answers.length" class="badge bg-light text-dark border">MC</span>
-        <span class="text-muted small">{{ formatDbDate(artifact.created_at) }}</span>
+        <!-- Slepo ocenjivanje: vreme generisanja se ne prikazuje dok je predlog u statusu 'predlog' -->
+        <span v-if="artifact.status !== 'predlog' && artifact.created_at" class="text-muted small">{{ formatDbDate(artifact.created_at) }}</span>
       </div>
 
       <div class="row g-3 mb-4">

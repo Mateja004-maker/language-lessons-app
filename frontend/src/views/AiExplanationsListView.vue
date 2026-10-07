@@ -102,7 +102,8 @@ onMounted(loadArtifacts)
             >
               {{ accuracyBadge(artifact).text }}
             </span>
-            <span class="text-muted small">{{ formatDbDate(artifact.created_at) }}</span>
+            <!-- Slepo ocenjivanje: vreme generisanja se ne prikazuje dok je predlog u statusu 'predlog' -->
+            <span v-if="artifact.status !== 'predlog' && artifact.created_at" class="text-muted small">{{ formatDbDate(artifact.created_at) }}</span>
           </div>
         </div>
       </div>

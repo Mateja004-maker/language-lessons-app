@@ -186,8 +186,11 @@ onMounted(loadArtifact)
         <span class="badge bg-dark">{{ artifact.subject_name || 'Nepoznat predmet' }}</span>
         <span v-if="artifact.area_name" class="badge bg-secondary">{{ artifact.area_name }}</span>
         <span class="badge bg-info text-dark">{{ questionTypeLabel }}</span>
-        <span class="badge bg-light text-dark border">{{ artifact.provider }} / {{ artifact.model_name }}</span>
-        <span class="text-muted small">{{ artifact.created_at }}</span>
+        <!-- Slepo ocenjivanje: model i vreme generisanja se ne prikazuju dok je predlog u statusu 'predlog' -->
+        <template v-if="artifact.status !== 'predlog'">
+          <span v-if="artifact.model_name" class="badge bg-light text-dark border">{{ artifact.provider }} / {{ artifact.model_name }}</span>
+          <span v-if="artifact.created_at" class="text-muted small">{{ artifact.created_at }}</span>
+        </template>
       </div>
 
       <div class="row g-3 mb-4">
