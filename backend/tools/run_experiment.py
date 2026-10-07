@@ -9,6 +9,10 @@ POST /api/questions/<id>/generate-similar (generate_similar_for_question):
 ista validacija, isto beleženje, isto slepo ocenjivanje i isti ponovni
 pokušaji provajdera; svaki run dobija evaluation_batch_id serije.
 
+Posle lošeg formata ruta (i pokretač) pita model još jednom; izveštaj
+razdvaja: ok iz prve, ok posle ponavljanja, loš format, prazan odgovor i
+bez odgovora po vrsti (network / http_4xx / rate_limit / http_5xx).
+
 Redosled je uvek isti i naizmeničan po modelima:
     pokušaj 1: pitanje 1 -> model A, B, C; pitanje 2 -> A, B, C; ...
     pokušaj 2: ...
@@ -39,11 +43,14 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BACKEND_DIR)
 
 import ai_provider  # noqa: E402
+import generation_failures  # noqa: E402
 import prompt_templates  # noqa: E402
 from app import (  # noqa: E402
+    FAILURE_COLUMNS,
     generate_similar_for_question,
     get_db_connection,
     reference_sets_enabled,
+    table_columns_exist,
 )
 
 INFRA_STOP_AFTER = 3  # uzastopnih infrastrukturnih padova istog modela -> stani sa tim modelom
@@ -76,18 +83,36 @@ def _query(sql, params=()):
         conn.close()
 
 
+def _failure_columns_exist():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        return table_columns_exist(cursor, "ai_generation_runs", FAILURE_COLUMNS)
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def answered_counts(batch_id):
-    """{(question_id, provider): broj run-ova serije u kojima je model odgovorio}."""
-    rows = _query("""
+    """{(question_id, provider): broj run-ova serije u kojima je model odgovorio}.
+    Odgovorio = stiglo je telo odgovora, ili je (posle migracije tačke I) vrsta
+    pada 'empty' / 'invalid_json' / 'schema'."""
+    model_failure = ""
+    params = [batch_id, prompt_templates.PURPOSE_SIMILAR_QUESTION]
+    if _failure_columns_exist():
+        model_failure = f"OR r.failure_type IN ({', '.join(['%s'] * len(generation_failures.MODEL_FAILURES))})"
+        params += list(generation_failures.MODEL_FAILURES)
+    rows = _query(f"""
         SELECT r.source_question_id AS question_id, m.provider, COUNT(*) AS n
         FROM ai_generation_runs r
         JOIN ai_models m ON m.id = r.model_id
         WHERE r.evaluation_batch_id = %s
           AND r.purpose = %s
           AND (r.raw_response IS NOT NULL
-               OR JSON_VALUE(r.params_used, '$.finish_reason') IS NOT NULL)
+               OR JSON_VALUE(r.params_used, '$.finish_reason') IS NOT NULL
+               {model_failure})
         GROUP BY r.source_question_id, m.provider
-    """, (batch_id, prompt_templates.PURPOSE_SIMILAR_QUESTION))
+    """, tuple(params))
     return {(row["question_id"], row["provider"]): row["n"] for row in rows}
 
 
@@ -119,19 +144,30 @@ def pending_slots(plan, counts):
 
 # ---------- izvrsavanje ----------
 
+REPORT_KINDS = ("ok_first", "ok_retry", "format", "empty", "infra", "error")
+
+
 def _classify(status, body):
-    """'ok' | 'format' (model odgovorio, nevalidno) | 'infra' (bez odgovora modela) | 'error'."""
+    """Vrsta ishoda za izveštaj:
+    ok_first (prošlo iz prve) | ok_retry (prošlo posle ponovnog zahteva) |
+    format (loš format i posle ponavljanja) | empty (prazan odgovor) |
+    infra (model nije odgovorio; vrsta u failure_type) | error (neočekivano)."""
     if status == 201:
-        return "ok"
-    if status == 422:
-        run_id = body.get("generation_run_id")
-        row = _query("""
-            SELECT (raw_response IS NOT NULL
-                    OR JSON_VALUE(params_used, '$.finish_reason') IS NOT NULL) AS answered
-            FROM ai_generation_runs WHERE id = %s
-        """, (run_id,)) if run_id else []
-        return "format" if row and row[0]["answered"] else "infra"
+        return "ok_first" if body.get("format_retries", 0) == 0 else "ok_retry"
+    failure_type = body.get("failure_type")
+    if status == 422 and failure_type in generation_failures.FORMAT_FAILURES:
+        return "format"
+    if status == 422 and failure_type == "empty":
+        return "empty"
+    if status == 422 and failure_type in generation_failures.INFRA_FAILURES:
+        return "infra"
     return "error"
+
+
+def _raw_reason(run_id):
+    """Sirov razlog iz run-a (ruta vraća razumljivu poruku, ne sirov tekst)."""
+    row = _query("SELECT validation_errors FROM ai_generation_runs WHERE id = %s", (run_id,)) if run_id else []
+    return " ".join(((row[0]["validation_errors"] if row else None) or "").split())[:90]
 
 
 def run_experiment(batch_id, question_ids, providers, per_question, dry_run=False,
@@ -155,7 +191,8 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
     report = {
         "planned": Counter(p for _, _, p in plan),
         "done_before": Counter(p for _, _, p in plan) - Counter(p for _, _, p in pending),
-        "ok": Counter(), "format": Counter(), "infra": Counter(), "error": Counter(),
+        **{kind: Counter() for kind in REPORT_KINDS},
+        "infra_types": defaultdict(Counter),
         "stopped": {}, "reasons": defaultdict(Counter), "calls": 0,
         "run_ids": [], "artifact_ids": [], "pending": len(pending),
     }
@@ -193,17 +230,20 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
             report["artifact_ids"].append(body["artifact_id"])
 
         kind = _classify(status, body)
+        failure_type = body.get("failure_type")
         report[kind][provider] += 1
-        reason = body.get("details") or body.get("error")
-        if kind != "ok":
+        reason = None
+        if kind not in ("ok_first", "ok_retry"):
+            reason = f"{failure_type or status}: {_raw_reason(body.get('generation_run_id')) or body.get('error')}"
             report["reasons"][provider][reason] += 1
-        out(f"  pokušaj {attempt}  pitanje {question_id}  {provider:10}  {kind}"
-            + (f"  ({reason})" if kind != "ok" else ""))
+        if kind == "infra":
+            report["infra_types"][provider][failure_type] += 1
+        out(f"  pokušaj {attempt}  pitanje {question_id}  {provider:10}  {kind}" + (f"  ({reason})" if reason else ""))
 
         if kind == "infra":
             infra_streak[provider] += 1
-            if " 429 " in f" {reason} ":
-                report["stopped"][provider] = "429 - verovatno dnevni limit"
+            if failure_type == "rate_limit":
+                report["stopped"][provider] = "rate_limit (429) - verovatno dnevni limit"
             elif infra_streak[provider] >= INFRA_STOP_AFTER:
                 report["stopped"][provider] = f"{INFRA_STOP_AFTER} uzastopna pada bez odgovora modela"
             if provider in report["stopped"]:
@@ -220,10 +260,15 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
 
 def print_report(report, providers, out=print):
     out("\nIzveštaj (ovo pokretanje):")
-    out(f"  {'model':12} {'plan':>5} {'ranije':>7} {'ok':>4} {'format':>7} {'bez odg.':>9} {'greška':>7}")
+    out(f"  {'model':12} {'plan':>5} {'ranije':>7} {'ok iz prve':>11} {'ok posle pon.':>14} "
+        f"{'loš format':>11} {'prazan':>7} {'bez odg.':>9} {'greška':>7}")
     for p in providers:
-        out(f"  {p:12} {report['planned'][p]:>5} {report['done_before'][p]:>7} {report['ok'][p]:>4} "
-            f"{report['format'][p]:>7} {report['infra'][p]:>9} {report['error'][p]:>7}")
+        out(f"  {p:12} {report['planned'][p]:>5} {report['done_before'][p]:>7} {report['ok_first'][p]:>11} "
+            f"{report['ok_retry'][p]:>14} {report['format'][p]:>11} {report['empty'][p]:>7} "
+            f"{report['infra'][p]:>9} {report['error'][p]:>7}")
+    for p in providers:
+        if report["infra_types"][p]:
+            out(f"  {p}: bez odgovora po vrsti: {dict(report['infra_types'][p])}")
     for p in providers:
         for reason, n in report["reasons"][p].most_common():
             out(f"  {p}: {n} x {reason}")

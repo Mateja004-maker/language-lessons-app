@@ -130,6 +130,7 @@ class FakeProvider:
     def __init__(self):
         self.behavior = {}
         self.calls = []
+        self._toggle = {}
 
     def __call__(self, url, **kwargs):
         provider = ("gemini" if "googleapis" in url else "openrouter" if "openrouter" in url else
@@ -140,6 +141,9 @@ class FakeProvider:
         self.calls.append(provider)
 
         mode = self.behavior.get(provider)
+        if mode == "bad_then_good":  # naizmenicno: los format, pa ispravan odgovor
+            self._toggle[provider] = not self._toggle.get(provider, False)
+            mode = "bad_format" if self._toggle[provider] else None
         if mode == "http429":
             return FakeResponse(429, "rate limit")
         match = re.search(r"Generiši tačno (\d+) ponuđenih", prompt)
@@ -233,8 +237,10 @@ def run(fake):
     rep = rx.run_experiment(batch2, questions, PROVIDERS, 1, out=quiet)
     gemini_http = fake.calls[calls_before:].count("gemini")
     record("429 zaustavlja samo taj model", "gemini zaustavljen posle 1 mesta (3 HTTP pokusaja), ostali nastavljaju",
-           f"gemini stopped={'gemini' in rep['stopped']}, gemini HTTP poziva={gemini_http}, groq ok={rep['ok']['groq']}",
-           "gemini" in rep["stopped"] and gemini_http == 3 and rep["ok"]["groq"] == len(questions))
+           f"gemini stopped={'gemini' in rep['stopped']}, gemini HTTP poziva={gemini_http}, groq ok={rep['ok_first']['groq']}, "
+           f"vrste={dict(rep['infra_types']['gemini'])}",
+           "gemini" in rep["stopped"] and gemini_http == 3 and rep["ok_first"]["groq"] == len(questions)
+           and rep["infra_types"]["gemini"] == {"rate_limit": 1})
     record("los format se racuna kao odgovor", f"openrouter format={len(questions)}",
            f"format={rep['format']['openrouter']}, razlozi={dict(rep['reasons']['openrouter'])}",
            rep["format"]["openrouter"] == len(questions))
@@ -246,6 +252,18 @@ def run(fake):
     record("nastavak posle limita", f"pozivi samo za gemini ({len(questions)}), openrouter se ne ponavlja",
            f"poziva={rep['calls']}, odgovorenih po modelu={dict(answered)}, infra run-ova sacuvano={sum(1 for r in runs2 if not r['answered'])}",
            rep["calls"] == len(questions) and answered == Counter({p: len(questions) for p in PROVIDERS}))
+
+    # --- ponovni zahtev posle loseg formata ---
+    batch5 = new_batch("retry")
+    fake.behavior = {"groq": "bad_then_good"}
+    calls_before = len(fake.calls)
+    rep = rx.run_experiment(batch5, questions, PROVIDERS, 1, out=quiet)
+    groq_http = fake.calls[calls_before:].count("groq")
+    record("los pa dobar odgovor = ok posle ponavljanja", f"groq ok_retry={len(questions)}, 2 HTTP poziva po mestu, ostali ok iz prve",
+           f"ok_retry={rep['ok_retry']['groq']}, groq HTTP={groq_http}, ok_first gemini/openrouter={rep['ok_first']['gemini']}/{rep['ok_first']['openrouter']}",
+           rep["ok_retry"]["groq"] == len(questions) and groq_http == 2 * len(questions)
+           and rep["ok_first"]["gemini"] == len(questions) and rep["ok_first"]["openrouter"] == len(questions))
+    fake.behavior = {}
 
     # --- zastita protokola i ulaz ---
     batch3 = new_batch("protokol")
