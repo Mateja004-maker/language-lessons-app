@@ -212,6 +212,22 @@ ARTIFACT_DECISIONS = {
     ARTIFACT_STATUS_REJECTED,
 }
 
+# Slepo ocenjivanje: dok je predlog u statusu 'predlog', ocenjivac ne sme da
+# vidi koji ga je model generisao. Podaci ostaju u bazi, krije se samo odgovor.
+BLIND_REVIEW_MODEL_FIELDS = ("provider", "model_name")
+
+
+def blind_review_reveal_requested():
+    """ADMIN moze da trazi ?reveal=1 da vidi skrivena polja; TEACHER ne."""
+    return get_jwt().get("role") == "ADMIN" and request.args.get("reveal") == "1"
+
+
+def hide_while_pending(row, fields):
+    if row.get("status") == ARTIFACT_STATUS_PENDING and not blind_review_reveal_requested():
+        for field in fields:
+            row.pop(field, None)
+    return row
+
 RUBRIC_APPLIES_TO_ALL = "question"
 RUBRIC_APPLIES_TO_MC = "question_mc"
 
@@ -2564,6 +2580,7 @@ def list_ai_artifacts():
             row["question_type"] = prompt_templates.detect_question_type(
                 (parsed or {}).get("answers") or []
             )
+            hide_while_pending(row, BLIND_REVIEW_MODEL_FIELDS)
 
         return jsonify(rows), 200
 
@@ -2627,6 +2644,7 @@ def get_ai_artifact(artifact_id):
         question_type = prompt_templates.detect_question_type((parsed_original or {}).get("answers") or [])
         artifact["question_type"] = question_type
         artifact["rubric_criteria"] = get_applicable_rubric_definitions(cursor, question_type)
+        hide_while_pending(artifact, BLIND_REVIEW_MODEL_FIELDS)
 
         cursor.close()
         conn.close()
