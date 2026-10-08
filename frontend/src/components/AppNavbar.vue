@@ -39,8 +39,8 @@ function onLogout() {
 </script>
 
 <template>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
-    <div class="container">
+  <nav class="navbar navbar-expand-xl navbar-dark bg-dark shadow-sm">
+    <div class="container nav-container">
 
       <router-link class="navbar-brand" to="/">
         Language Lessons
@@ -254,9 +254,10 @@ function onLogout() {
 </template>
 
 <style scoped>
-.custom-navbar {
-  background: linear-gradient(90deg, #111827 0%, #1f2937 100%);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+/* Globalni .container u main.css je 1100px - za navbar je preusko (stavke su
+   se lomile u dva reda i izlazile van trake). Važi samo za navbar. */
+.nav-container {
+  max-width: 1320px;
 }
 
 .navbar-brand {
@@ -270,12 +271,6 @@ function onLogout() {
 
 .nav-link.router-link-active {
   color: #ffffff !important;
-}
-
-.role-pill {
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-weight: 700;
 }
 
 .user-box {
