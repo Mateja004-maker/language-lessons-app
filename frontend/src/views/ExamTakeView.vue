@@ -120,7 +120,7 @@ export default {
         error.value =
           err.response?.data?.error ||
           err.response?.data?.message ||
-          'Error submitting exam'
+          'Predaja testa nije uspela.'
       }
     }
 
@@ -161,7 +161,7 @@ export default {
 
         startTimer()
       } catch (err) {
-        error.value = err.response?.data?.error || 'You cannot take this exam'
+        error.value = err.response?.data?.error || 'Ovaj test ne možeš da radiš.'
       }
     }
 
@@ -206,7 +206,7 @@ export default {
 
     <div v-else-if="!exam" class="card">
       <div class="card-body">
-        Loading...
+        Učitavanje...
       </div>
     </div>
 
@@ -216,12 +216,12 @@ export default {
         class="alert alert-danger d-flex justify-content-between align-items-center"
       >
         <div>
-          <strong>Exam mode is active.</strong>
-          Please enter fullscreen mode to continue.
+          <strong>Ispitni režim je uključen.</strong>
+          Za nastavak uključi prikaz preko celog ekrana.
         </div>
 
         <button class="btn btn-primary" @click="requestFullscreen">
-          Enter Fullscreen
+          Ceo ekran
         </button>
       </div>
 
@@ -234,28 +234,28 @@ export default {
         <div class="modal-dialog modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header bg-warning">
-              <h5 class="modal-title">Warning detected</h5>
+              <h5 class="modal-title">Upozorenje</h5>
             </div>
 
             <div class="modal-body">
               <p>
-                The system detected that you changed the browser tab, left the exam window,
-                or exited fullscreen mode.
+                Sistem je primetio da je promenjen tab u pregledaču, da je napušten prozor testa
+                ili da je isključen prikaz preko celog ekrana.
               </p>
 
               <p>
-                After 3 warnings, the exam will be automatically submitted.
+                Posle 3 upozorenja test se automatski predaje.
               </p>
 
               <p class="mb-0">
-                Total warnings:
+                Ukupno upozorenja:
                 <strong>{{ tabWarnings }}</strong>
               </p>
             </div>
 
             <div class="modal-footer">
               <button class="btn btn-primary" @click="closeWarningModal">
-                I understand
+                Razumem
               </button>
             </div>
           </div>
@@ -269,32 +269,32 @@ export default {
               <h2 class="h4 mb-1">{{ exam.title }}</h2>
 
               <div class="text-muted small">
-                Duration: {{ exam.duration_minutes }} min
+                Trajanje: {{ exam.duration_minutes }} min
                 <span class="mx-2">|</span>
-                Questions: {{ totalQuestions }}
+                Pitanja: {{ totalQuestions }}
                 <span v-if="exam.exam_mode" class="badge bg-dark ms-2">
-                  Exam mode
+                  Ispitni režim
                 </span>
               </div>
             </div>
 
             <div class="d-flex gap-2 flex-wrap">
               <div v-if="!result" class="badge bg-warning text-dark fs-6 p-2">
-                Time left: {{ formattedTime }}
+                Preostalo vreme: {{ formattedTime }}
               </div>
 
               <div
                 v-if="!result"
                 class="badge bg-primary fs-6 p-2"
               >
-                Answered: {{ answeredCount }} / {{ totalQuestions }}
+                Odgovoreno: {{ answeredCount }} / {{ totalQuestions }}
               </div>
 
               <div
                 v-if="!result && tabWarnings > 0"
                 class="badge bg-danger fs-6 p-2"
               >
-                Warnings: {{ tabWarnings }}
+                Upozorenja: {{ tabWarnings }}
               </div>
             </div>
           </div>
@@ -302,9 +302,9 @@ export default {
       </div>
 
       <div v-if="result" class="alert alert-info">
-        <h5 class="mb-2">Exam submitted</h5>
-        <div>Score: {{ result.score }} / {{ result.total }}</div>
-        <div>Warnings: {{ tabWarnings }}</div>
+        <h5 class="mb-2">Test je predat</h5>
+        <div>Poeni: {{ result.score }} / {{ result.total }}</div>
+        <div>Upozorenja: {{ tabWarnings }}</div>
       </div>
 
       <div v-if="!result">
@@ -316,14 +316,14 @@ export default {
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-start mb-3">
               <h5 class="mb-0">
-                Question {{ index + 1 }}
+                Pitanje {{ index + 1 }}
               </h5>
 
               <span
                 class="badge"
                 :class="answers[question.id] ? 'bg-success' : 'bg-secondary'"
               >
-                {{ answers[question.id] ? 'Answered' : 'Not answered' }}
+                {{ answers[question.id] ? 'Odgovoreno' : 'Bez odgovora' }}
               </span>
             </div>
 
@@ -355,9 +355,9 @@ export default {
         <div class="card border-0 shadow-sm mt-4">
           <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
             <div>
-              <h5 class="mb-1">Ready to submit?</h5>
+              <h5 class="mb-1">Predaja testa</h5>
               <p class="text-muted mb-0">
-                You answered {{ answeredCount }} of {{ totalQuestions }} questions.
+                Odgovoreno je na {{ answeredCount }} od {{ totalQuestions }} pitanja.
               </p>
             </div>
 
@@ -366,7 +366,7 @@ export default {
               @click="submit"
               :disabled="isSubmitting"
             >
-              {{ isSubmitting ? 'Submitting...' : 'Submit Exam' }}
+              {{ isSubmitting ? 'Predaja u toku...' : 'Predaj test' }}
             </button>
           </div>
         </div>
