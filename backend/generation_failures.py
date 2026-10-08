@@ -87,6 +87,22 @@ def evaluate_similar_question(result, question_type, expected_answer_count, prom
     return parsed, None, None
 
 
+def evaluate_similar_set(result, k, prompt_version):
+    """Odgovor modela za SKUP (tačka J) -> (parsed | None, SetValidationResult | None,
+    validation_errors | None, failure_type | None). Uspeh = bar jedna ispravna stavka."""
+    if not result.get("success"):
+        error = result.get("error", "Nepoznata greška pri pozivu AI modela")
+        return None, None, error, classify_provider_error(error)
+    try:
+        parsed = json.loads(result["raw_text"])
+    except (ValueError, TypeError):
+        return None, None, INVALID_JSON_ERROR, "invalid_json"
+    validation = question_validation.validate_set(parsed, k, prompt_version)
+    if not validation.passed:
+        return parsed, validation, "; ".join(validation.errors), "schema"
+    return parsed, validation, None, None
+
+
 def classify_stored_run(validation_passed, raw_response, validation_errors):
     """Vrsta pada za STARI run (pre ove tačke) iz sačuvanih kolona - za jednokratnu dopunu."""
     if validation_passed:

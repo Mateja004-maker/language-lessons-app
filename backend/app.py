@@ -308,7 +308,7 @@ def compute_artifact_similarity(cursor, artifact_id):
     predmeta - pa ponovni izračun daje isto što i izračun pri generisanju.
     Vraća {'score', 'source', 'id'} ili None."""
     cursor.execute("""
-        SELECT a.original_text, r.source_question_id, sq.subject_id
+        SELECT a.original_text, a.generation_run_id, r.source_question_id, r.params_used, sq.subject_id
         FROM ai_generated_artifacts a
         JOIN ai_generation_runs r ON r.id = a.generation_run_id
         LEFT JOIN exam_questions sq ON sq.id = r.source_question_id
@@ -318,7 +318,10 @@ def compute_artifact_similarity(cursor, artifact_id):
     if not artifact or not artifact["original_text"]:
         return None
     candidate = json.loads(artifact["original_text"])
-    source_id, subject_id = artifact["source_question_id"], artifact["subject_id"]
+    subject_id = artifact["subject_id"]
+    # Izvorna pitanja: jedno pitanje, ili ceo ulazni skup kod generisanja iz skupa (tačka J)
+    source_ids = input_question_ids_of_run(artifact["params_used"]) or (
+        [artifact["source_question_id"]] if artifact["source_question_id"] else [])
 
     bank_ids = []
     earlier = []
@@ -330,21 +333,49 @@ def compute_artifact_similarity(cursor, artifact_id):
                   SELECT a.created_question_id FROM ai_generated_artifacts a
                   WHERE a.id >= %s AND a.created_question_id IS NOT NULL)
         """, (subject_id, artifact_id))
-        bank_ids = [row["id"] for row in cursor.fetchall() if row["id"] != source_id]
+        bank_ids = [row["id"] for row in cursor.fetchall() if row["id"] not in source_ids]
+        # raniji predlozi istog predmeta + ostali predlozi istog run-a (skup daje više predloga)
         cursor.execute("""
             SELECT a.id, a.original_text
             FROM ai_generated_artifacts a
             JOIN ai_generation_runs r ON r.id = a.generation_run_id
             JOIN exam_questions sq ON sq.id = r.source_question_id
-            WHERE a.artifact_type = %s AND a.id < %s AND sq.subject_id = %s AND a.original_text IS NOT NULL
-        """, (ARTIFACT_TYPE_QUESTION, artifact_id, subject_id))
+            WHERE a.artifact_type = %s AND a.id <> %s AND (a.id < %s OR a.generation_run_id = %s)
+              AND sq.subject_id = %s AND a.original_text IS NOT NULL
+        """, (ARTIFACT_TYPE_QUESTION, artifact_id, artifact_id, artifact["generation_run_id"], subject_id))
         earlier = [("artifact", row["id"], json.loads(row["original_text"])) for row in cursor.fetchall()]
 
-    payloads = _question_payloads(cursor, ([source_id] if source_id else []) + bank_ids)
-    pool = ([("source", source_id, payloads[source_id])] if source_id in payloads else [])
+    payloads = _question_payloads(cursor, source_ids + bank_ids)
+    pool = [("source", qid, payloads[qid]) for qid in source_ids if qid in payloads]
     pool += [("bank", qid, payloads[qid]) for qid in bank_ids if qid in payloads]
     pool += earlier
     return question_similarity.find_most_similar(candidate, pool)
+
+
+def input_question_ids_of_run(params_used):
+    """Ulazni skup pitanja iz params_used run-a generisanja iz skupa; [] za jedno pitanje."""
+    try:
+        params = json.loads(params_used) if isinstance(params_used, str) else (params_used or {})
+    except ValueError:
+        return []
+    ids = params.get("input_question_ids") if isinstance(params, dict) else None
+    return [int(i) for i in ids] if isinstance(ids, list) else []
+
+
+def load_input_questions(cursor, artifact_id):
+    """[{id, question_text}] ulaznog skupa za predlog iz skupa; [] za jedno pitanje."""
+    cursor.execute("""
+        SELECT r.params_used FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id WHERE a.id = %s
+    """, (artifact_id,))
+    row = cursor.fetchone()
+    ids = input_question_ids_of_run(row["params_used"]) if row else []
+    if not ids:
+        return []
+    placeholders = ", ".join(["%s"] * len(ids))
+    cursor.execute(f"SELECT id, question_text FROM exam_questions WHERE id IN ({placeholders})", tuple(ids))
+    texts = {r["id"]: r["question_text"] for r in cursor.fetchall()}
+    return [{"id": qid, "question_text": texts.get(qid)} for qid in ids]
 
 
 def store_artifact_similarity(cursor, artifact_id):
@@ -2971,6 +3002,11 @@ def get_ai_artifact(artifact_id):
         # Mogući duplikat (tačka C): ocena, sličan tekst i nastavnikova potvrda
         attach_duplicate_info(artifact, load_duplicate_info(cursor, [artifact_id], with_text=True).get(artifact_id))
 
+        # Predlog iz skupa (tačka J): sva ulazna pitanja (izvorno pitanje je prvo iz skupa)
+        input_questions = load_input_questions(cursor, artifact_id)
+        if input_questions:
+            artifact["input_questions"] = input_questions
+
         # Nastavnikove oznake (posle odluke); samo ako je migracija pokrenuta i ako postoje
         if question_labels_enabled(cursor):
             cursor.execute("""
@@ -4842,6 +4878,9 @@ def get_second_rating(artifact_id):
         view["source_question_text"] = artifact["source_question_text"]
         view["source_answers"] = cursor.fetchall()
         view["rubric_criteria"] = get_applicable_rubric_definitions(cursor, view["question_type"])
+        input_questions = load_input_questions(cursor, artifact_id)
+        if input_questions:
+            view["input_questions"] = input_questions
         similarity = load_duplicate_info(cursor, [artifact_id], with_text=True).get(artifact_id) or {}
         similarity.pop("reviewed_duplicate", None)  # odluka prvog ocenjivača
         attach_duplicate_info(view, similarity)
@@ -4939,6 +4978,214 @@ def close_evaluation_batch(batch_id):
     finally:
         cursor.close()
         conn.close()
+
+
+# =====================================================================
+# Generisanje iz SKUPA pitanja (tačka J): jedan poziv modela -> do K predloga.
+# Dodatni način rada uz generisanje iz jednog pitanja; ista validacija po
+# stavci, isti ponovni zahtev posle lošeg formata, isto beleženje, slepo
+# ocenjivanje, druga ocena, duplikati i razdaljina izmene (po predlogu).
+# Bez nove šeme: purpose = 'similar_question_set', source_question_id = prvo
+# pitanje skupa (predmet, oblast, poeni, dozvole), a ulaz i ishod po stavkama
+# su u params_used (input_question_ids, k, input, set_items).
+# =====================================================================
+
+SET_MAX_INPUT_QUESTIONS = 20
+SET_MAX_K = 10
+
+
+def generate_similar_set(question_ids, provider, k, evaluation_batch_id=None, input_source=None):
+    """Vraća (telo_odgovora, http_status); izuzetke prepušta pozivaocu."""
+    if provider not in ai_provider.DEFAULT_MODELS:
+        return {"error": f"Nepoznat provider: {provider}"}, 400
+    if isinstance(k, bool) or not isinstance(k, int) or not 1 <= k <= SET_MAX_K:
+        return {"error": f"k mora biti ceo broj od 1 do {SET_MAX_K}"}, 400
+    question_ids = [int(q) for q in question_ids]
+    if not question_ids:
+        return {"error": "Skup nema pitanja"}, 400
+    if len(question_ids) > SET_MAX_INPUT_QUESTIONS:
+        return {"error": f"Skup ima {len(question_ids)} pitanja; najviše {SET_MAX_INPUT_QUESTIONS} po pozivu"}, 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if evaluation_batch_id is not None:
+            cursor.execute("SELECT id FROM evaluation_batches WHERE id = %s", (evaluation_batch_id,))
+            if not cursor.fetchone():
+                return {"error": f"evaluation_batch_id {evaluation_batch_id} ne postoji"}, 400
+
+        placeholders = ", ".join(["%s"] * len(question_ids))
+        cursor.execute(f"SELECT id, subject_id FROM exam_questions WHERE id IN ({placeholders})", tuple(question_ids))
+        subjects = {row["id"]: row["subject_id"] for row in cursor.fetchall()}
+        missing = [q for q in question_ids if q not in subjects]
+        if missing:
+            return {"error": f"Pitanja ne postoje: {missing}"}, 404
+        subject_ids = set(subjects.values())
+        if len(subject_ids) != 1 or None in subject_ids:
+            return {"error": "Sva pitanja skupa moraju biti iz istog predmeta"}, 400
+        cursor.execute("SELECT name FROM subjects WHERE id = %s", (subject_ids.pop(),))
+        subject_row = cursor.fetchone()
+        subject_name = subject_row["name"] if subject_row else "Nepoznat predmet"
+
+        payloads = _question_payloads(cursor, question_ids)
+        prompt_id, template_text, prompt_version = prompt_templates.ensure_set_prompt_synced(conn)
+        prompt_text = prompt_templates.build_set_prompt(
+            template_text, [payloads[q] for q in question_ids], k, subject_name)
+
+        model_name = ai_provider.DEFAULT_MODELS[provider]
+        model_id = ensure_ai_model(conn, provider=provider, model_name=model_name)
+        options = {"temperature": 0.7}
+
+        def ask_model():
+            answer = ai_provider.generate(prompt_text, provider=provider, options=options)
+            return (answer, *generation_failures.evaluate_similar_set(answer, k, prompt_version))
+
+        result, parsed, validation, validation_errors, failure_type = ask_model()
+        first_attempt_passed = failure_type is None
+        total_time_ms = result.get("response_time_ms")
+        total_tokens = result.get("tokens_used")
+
+        # Ponovni zahtev samo kad je CEO odgovor neupotrebljiv (isto pravilo kao za jedno pitanje)
+        format_retries = 0
+        first_attempt = None
+        while failure_type in generation_failures.FORMAT_FAILURES and format_retries < generation_failures.MAX_FORMAT_RETRIES:
+            first_attempt = {
+                "raw_response": result.get("raw_text"), "validation_errors": validation_errors,
+                "failure_type": failure_type, "attempts": result.get("attempts"),
+                "finish_reason": result.get("finish_reason"),
+                "response_time_ms": result.get("response_time_ms"), "tokens_used": result.get("tokens_used"),
+            }
+            format_retries += 1
+            result, parsed, validation, validation_errors, failure_type = ask_model()
+            times = [t for t in (total_time_ms, result.get("response_time_ms")) if t is not None]
+            tokens = [t for t in (total_tokens, result.get("tokens_used")) if t is not None]
+            total_time_ms = sum(times) if times else None
+            total_tokens = sum(tokens) if tokens else None
+
+        validation_passed = failure_type is None
+        set_items = None
+        if validation is not None and validation.items:
+            set_items = {
+                "requested": k,
+                "returned": len(validation.items),
+                "accepted": len(validation.accepted),
+                "rejected": [{"index": r.index, "failure_type": "schema", "errors": r.errors} for r in validation.rejected],
+            }
+
+        cursor.execute("""
+            INSERT INTO ai_generation_runs
+            (model_id, prompt_id, purpose, mode, source_question_id, params_used,
+             raw_response, parsed_result, validation_passed, validation_errors,
+             response_time_ms, tokens_used, retry_count, evaluation_batch_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
+        """, (
+            model_id, prompt_id, prompt_templates.PURPOSE_SIMILAR_QUESTION_SET, None, question_ids[0],
+            json.dumps({
+                **options,
+                "attempts": result.get("attempts"),
+                "finish_reason": result.get("finish_reason"),
+                "input_question_ids": question_ids,
+                "k": k,
+                **({"input": input_source} if input_source else {}),
+                **({"set_items": set_items} if set_items else {}),
+                **({"first_attempt": first_attempt} if first_attempt else {}),
+            }),
+            result.get("raw_text"),
+            json.dumps(parsed) if parsed is not None else None,
+            1 if validation_passed else 0,
+            validation_errors,
+            total_time_ms,
+            total_tokens,
+            evaluation_batch_id,
+        ))
+        generation_run_id = cursor.lastrowid
+        if table_columns_exist(cursor, "ai_generation_runs", FAILURE_COLUMNS):
+            cursor.execute("""
+                UPDATE ai_generation_runs SET failure_type = %s, first_attempt_passed = %s, format_retries = %s
+                WHERE id = %s
+            """, (failure_type, 1 if first_attempt_passed else 0, format_retries, generation_run_id))
+        conn.commit()
+
+        if not validation_passed:
+            return {
+                "error": "AI generisanje nije dalo iskoristiv predlog",
+                "details": generation_failures.user_message(failure_type),
+                "failure_type": failure_type,
+                "first_attempt_passed": first_attempt_passed,
+                "format_retries": format_retries,
+                "generation_run_id": generation_run_id,
+            }, 422
+
+        labels_on = question_labels_enabled(cursor)
+        artifact_ids = []
+        for item in validation.accepted:
+            cursor.execute("""
+                INSERT INTO ai_generated_artifacts (generation_run_id, artifact_type, status, original_text)
+                VALUES (%s, %s, %s, %s)
+            """, (generation_run_id, ARTIFACT_TYPE_QUESTION, ARTIFACT_STATUS_PENDING, json.dumps(item.item)))
+            artifact_id = cursor.lastrowid
+            artifact_ids.append(artifact_id)
+            if labels_on:
+                cursor.execute("""
+                    UPDATE ai_generated_artifacts SET model_difficulty = %s, model_bloom_level = %s WHERE id = %s
+                """, (item.item["difficulty"], item.item["bloom_level"], artifact_id))
+        # Duplikati tek kad su svi predlozi run-a upisani (porede se i međusobno)
+        if duplicate_check_enabled(cursor):
+            for artifact_id in artifact_ids:
+                store_artifact_similarity(cursor, artifact_id)
+        conn.commit()
+
+        return {
+            "message": "Predlozi pitanja generisani",
+            "generation_run_id": generation_run_id,
+            "artifact_ids": artifact_ids,
+            "requested": k,
+            "accepted": len(artifact_ids),
+            "rejected": len(validation.rejected),
+            "first_attempt_passed": first_attempt_passed,
+            "format_retries": format_retries,
+        }, 201
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.post("/api/exams/<int:exam_id>/generate-similar")  # AI: K novih pitanja na osnovu pitanja iz testa
+@role_required(["TEACHER", "ADMIN"])
+def generate_similar_from_exam(exam_id):
+    try:
+        user_id = get_jwt_identity()
+        role = get_jwt().get("role")
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute("SELECT id, subject_id FROM exams WHERE id = %s", (exam_id,))
+            exam = cursor.fetchone()
+            if not exam:
+                return jsonify({"error": "Exam not found"}), 404
+            if role == "TEACHER" and not user_has_subject(int(user_id), exam["subject_id"], "TEACHER"):
+                return jsonify({"error": "Forbidden"}), 403
+            cursor.execute("""
+                SELECT question_id FROM exam_test_questions WHERE exam_id = %s ORDER BY order_no ASC, question_id ASC
+            """, (exam_id,))
+            question_ids = [row["question_id"] for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+            conn.close()
+        if not question_ids:
+            return jsonify({"error": "Test nema pitanja"}), 400
+
+        k = request.args.get("k", 3, type=int)
+        body, status = generate_similar_set(
+            question_ids,
+            request.args.get("provider", "groq"),
+            k,
+            request.args.get("evaluation_batch_id", type=int),
+            input_source={"type": "exam", "id": exam_id},
+        )
+        return jsonify(body), status
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
