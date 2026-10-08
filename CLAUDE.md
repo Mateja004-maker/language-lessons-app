@@ -70,6 +70,8 @@ u `README.md`, ponavljanje eksperimenta u `docs/PONAVLJANJE_EKSPERIMENTA.md`.
 - `tests/test_*.py`: unit testovi, bez baze i mreže.
 - `tests/verify_*.py`: integracioni testovi nad bazom iz `.env`, sa lažnim AI provajderom.
   Brišu privremene podatke i porede broj redova pre i posle.
+- `tools/test_clean_db.py`: svi testovi na praznoj probnoj bazi (`*_test`, iz `schema.sql` + seed), koja se na kraju briše.
+  Testovi ne smeju da pokreću nov Python proces koji importuje `app` (ponovo bi učitao `.env`, tj. pravu bazu).
 - Pravi modeli se nikad ne pozivaju iz testova. Pravi pozivi idu samo uz izričitu potvrdu korisnika
   (npr. `tools/probe_v3.py --confirm`, `run_experiment.py` bez `--dry-run`).
 

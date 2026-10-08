@@ -61,7 +61,7 @@ pokretanje ako bi bila narušena):
 1. Baza po [README.md](../README.md) (`db/schema.sql`, `db/reference_data.sql`), sa API ključevima u `backend/.env`.
 2. Pre eksperimenta napravite backup baze van repozitorijuma:
    `mysqldump -u root language_learning > ../backup_pre_eksperimenta.sql`
-3. Proverite da svi testovi prolaze (README, odeljak 4). Testovi ne pozivaju prave modele.
+3. Proverite da svi testovi prolaze: `python tools/test_clean_db.py` (README, odeljak 4). Testovi ne pozivaju prave modele.
 
 ### 1. Referentni skup pitanja
 
@@ -136,7 +136,22 @@ Kada je ocenjivanje gotovo, ADMIN zatvara seriju. Tek tada model i odluke postaj
 curl -X POST http://127.0.0.1:5000/api/evaluation-batches/1/close -H "Authorization: Bearer <ADMIN token>"
 ```
 
-### 5. Izvoz CSV (samo ADMIN)
+### 5. Mehanička validacija serije: `tools/validate_batch.py`
+
+```bash
+python tools/validate_batch.py --batch 1
+```
+
+Alat ponovo pušta isti validator kao pri generisanju nad svim sačuvanim predlozima serije:
+
+- za jedno pitanje `validate`, sa tipom iz verzije prompta i brojem odgovora izvornog pitanja;
+- za skup `validate_set_item` po predlogu i `validate_set` nad celim odgovorom run-a.
+
+Ispisuje PASS/FAIL po predlogu, proverava doslednost run-ova i daje rezime. Izlazni kod je
+0 samo ako sve prolazi (1 = bar jedan FAIL, 2 = serija ne postoji, 3 = serija nema predloga).
+Alat samo čita bazu i ne ispisuje model.
+
+### 6. Izvoz CSV (samo ADMIN)
 
 ```bash
 curl -o serija_1_artifacts.csv   -H "Authorization: Bearer <ADMIN token>" "http://127.0.0.1:5000/api/evaluation-batches/1/export.csv?kind=artifacts"
@@ -161,7 +176,7 @@ Isti pokazatelji se mogu dobiti i direktno u phpMyAdmin-u, upitima iz
 `db/queries/eksperiment_po_modelu.sql` (tri upita: pozivi, predlozi, raspodela ocena). U svakom upitu red sa `-- FILTER_SERIJA` zamenite sa
 `AND r.evaluation_batch_id = <id>`.
 
-### 6. Analiza: `tools/analyze_experiment.py`
+### 7. Analiza: `tools/analyze_experiment.py`
 
 ```bash
 python tools/analyze_experiment.py --artifacts serija_1_artifacts.csv --runs serija_1_runs.csv --evaluations serija_1_evaluations.csv --out analiza_serija_1
@@ -194,5 +209,6 @@ dodatne biblioteke (samo standardni Python).
 - [ ] Generisanje završeno: izveštaj pokretača nema preostalih mesta.
 - [ ] Sve odluke donete; druga ocena na uzorku urađena.
 - [ ] Serija zatvorena.
+- [ ] `validate_batch.py` za svaku seriju završava sa `UKUPNO: PASS`.
 - [ ] Sva tri CSV izvoza sačuvana uz rad, zajedno sa verzijom koda (git commit hash).
 - [ ] `analyze_experiment.py` pokrenut; tabele i grafikoni preuzeti iz `--out` foldera.

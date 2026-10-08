@@ -46,8 +46,30 @@ mysql -u root language_learning < db/seed.sql
 
 - `schema.sql` već sadrži sve migracije. Redosled migracija za staru bazu je u
   [db/MIGRATIONS.md](db/MIGRATIONS.md).
-- Predmete (`subjects`) unesite ručno (phpMyAdmin). Dodelu predmeta korisnicima radi
-  admin u aplikaciji.
+### Prvi administrator
+
+Nova baza nema nijednog korisnika (`seed.sql` dodaje probne naloge, ali samo za lokalni razvoj).
+
+1. Registrujte se u aplikaciji (ili `POST /api/auth/register` sa `"role": "ADMIN"`).
+   Registracija pravi **neaktivan** nalog koji čeka odobrenje.
+2. Prvi nalog nema ko da odobri, pa ga aktivirajte ručno:
+   ```sql
+   UPDATE users SET is_active = 1 WHERE email = 'vas@email';
+   ```
+3. Ostale naloge admin odobrava ili pravi u aplikaciji: **Users** (`/admin/users`, samo ADMIN).
+
+### Predmeti
+
+Aplikacija nema ekran ni API za pravljenje predmeta, pa se predmeti unose SQL-om
+(phpMyAdmin ili `mysql`). `code` ima najviše 10 znakova, `name` najviše 80:
+
+```sql
+INSERT INTO subjects (code, name) VALUES ('OP', 'Osnove programiranja'), ('MAT', 'Matematika');
+```
+
+Predmete nastavnicima i studentima dodeljuje admin na stranici **Users**
+(`/admin/users`): pri pravljenju korisnika ili kasnijom izmenom (`PUT /api/users/<id>/subjects`).
+Oblasti unutar predmeta i banku pitanja nastavnik pravi u aplikaciji.
 
 ## 2. Backend
 
@@ -94,6 +116,29 @@ npm run build                    # produkcijski build u frontend/dist
 ## 4. Testovi
 
 Komande se pokreću iz `backend/`. Na Windows konzoli prvo postavite `set PYTHONIOENCODING=utf-8`.
+AI provajder je u testovima lažan, pa se pravi modeli nikad ne pozivaju.
+
+### Na čistoj bazi (preporučeno; ne dira pravu bazu)
+
+```bash
+python tools/test_clean_db.py
+```
+
+Alat radi sledeće:
+
+1. pravi praznu probnu bazu `language_learning_test` (ime mora da se završava na `_test`
+   i ne sme već da postoji);
+2. učitava `db/schema.sql` i `db/reference_data.sql`;
+3. upisuje izmišljene podatke (`tools/seed_test_data.py`): ADMIN, nastavnika i studenta bez
+   lozinke, dva predmeta, nekoliko pitanja, modele, promptove i par AI predloga;
+4. pokreće sve `test_*` i `verify_*` testove nad probnom bazom;
+5. na kraju briše probnu bazu.
+
+`--keep` ostavlja probnu bazu radi pregleda. `--only verify_set_generation` pokreće samo
+navedene testove, a `--verbose` ispisuje ceo izlaz testova koji su pali. Alat odbija
+da radi nad bazom iz `.env`.
+
+### Pojedinačno, nad bazom iz `.env`
 
 **Unit testovi** ne traže bazu ni mrežu:
 
@@ -106,11 +151,14 @@ python tests/test_agreement.py
 python tests/test_analyze_experiment.py
 ```
 
-**Integracioni testovi** (`verify_*`):
+**Integracioni testovi** (`verify_*`) rade nad bazom iz `.env` (osim `verify_ai_provider_retry`,
+koji ne koristi bazu). Prave privremene podatke, na kraju ih brišu i proveravaju da je
+broj redova isti kao pre.
 
-- traže bazu iz `.env`, sa svim migracijama (osim `verify_ai_provider_retry`, koji ne koristi bazu);
-- prave privremene podatke, na kraju ih brišu i proveravaju da je broj redova isti kao pre;
-- AI provajder je lažan, pa se pravi modeli nikad ne pozivaju.
+Baza mora da ima sve migracije **i** osnovne podatke: bar jednog ADMIN-a, predmet
+„Osnove programiranja“ sa nekoliko MC pitanja i jednim otvorenim pitanjem, pitanje iz
+drugog predmeta, modele i promptove (uključujući arhivirane `mc-v2` / `open-v2`). Na
+praznoj bazi zato koristite `tools/test_clean_db.py`.
 
 ```bash
 python tests/verify_exam_security.py
@@ -122,6 +170,7 @@ python tests/verify_edit_distance_duplicates.py
 python tests/verify_generation_failures.py
 python tests/verify_set_generation.py
 python tests/verify_experiment_export.py
+python tests/verify_validate_batch.py
 ```
 
 Svaki skript na kraju ispisuje zbir (`Ukupno: N, palo: 0` ili `N/N OK`). Ako nešto
