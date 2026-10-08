@@ -276,9 +276,4 @@ onMounted(async () => {
   font-size: 0.95rem;
 }
 
-.badge {
-  font-size: 0.78rem;
-  padding: 6px 10px;
-}
-
 </style>

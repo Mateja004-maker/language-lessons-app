@@ -200,8 +200,4 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page-title {
-  font-size: 2rem;
-  font-weight: 800;
-}
 </style>

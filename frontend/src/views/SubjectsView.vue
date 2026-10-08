@@ -53,11 +53,6 @@ onMounted(load)
 </template>
 
 <style scoped>
-.page-title {
-  font-size: 2rem;
-  font-weight: 800;
-}
-
 .subject-card {
   cursor: pointer;
   transition: transform 0.1s ease, box-shadow 0.1s ease;

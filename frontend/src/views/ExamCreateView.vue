@@ -219,16 +219,4 @@ export default {
 </template>
 
 <style scoped>
-.page-title {
-  font-size: 2rem;
-  font-weight: 800;
-  color: var(--app-text);
-  border-bottom: 2px solid var(--app-border);
-  padding-bottom: 0.75rem;
-}
-
-.section-title {
-  font-weight: 700;
-  color: var(--app-text);
-}
 </style>

@@ -190,16 +190,6 @@ async function register() {
   color: var(--app-icon);
 }
 
-.auth-card .form-control,
-.auth-card .form-select {
-  padding: 12px 14px;
-}
-
-.auth-btn {
-  padding: 12px;
-  font-weight: 700;
-}
-
 .register-hero-title {
   font-size: 3rem;
   line-height: 1.1;

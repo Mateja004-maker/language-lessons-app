@@ -720,13 +720,6 @@ a:hover > .stat-card {
   color: var(--app-text-muted);
 }
 
-.section-title {
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: var(--app-text);
-  font-family: var(--app-font-heading);
-}
-
 .action-card {
   display: block;
   background: var(--app-bg);

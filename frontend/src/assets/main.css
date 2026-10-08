@@ -39,23 +39,8 @@ body {
   border-radius: var(--app-radius);
 }
 
-.page-header {
-  margin-bottom: 20px;
-}
 
-/* ranije definisano dva puta - ovde je spojeno (važile su vrednosti iz drugog pravila) */
-.page-title {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--app-text);
-  border-bottom: 2px solid var(--app-border);
-  padding-bottom: 0.75rem;
-}
 
-.page-subtitle {
-  color: var(--app-text-muted);
-  font-size: 0.95rem;
-}
 
 .section-card {
   border: none;
@@ -78,4 +63,124 @@ body {
 
 .container {
   max-width: 1100px;
+}
+
+/* =====================================================================
+   ŠABLON STRANICE - isti tip elementa izgleda isto na svim ekranima.
+   Boje i oblik iz theme.css. Lokalni (scoped) stilovi ovo ne prepisuju.
+   ===================================================================== */
+
+/* Zaglavlje: naslov + podnaslov levo, akcije desno, tanka linija ispod */
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.page-title {
+  font-family: var(--app-font-heading);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--app-text);
+  margin: 0 !important;
+  padding: 0;
+  border: 0;
+}
+
+.page-subtitle {
+  color: var(--app-text-muted);
+  font-size: 0.95rem;
+  margin: 0.25rem 0 0;
+}
+
+/* Naslov sekcije unutar stranice ili kartice */
+.section-title {
+  font-family: var(--app-font-heading);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--app-text);
+  margin: 0 0 0.75rem;
+}
+
+/* Tabele: ista zaglavlja i razmaci svuda; omotač kao kartica */
+.table {
+  --bs-table-bg: transparent;
+  margin-bottom: 0;
+}
+
+.table > thead th {
+  background-color: var(--app-neutral-soft);
+  color: var(--app-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--app-border);
+  padding: 0.75rem;
+  white-space: nowrap;
+}
+
+.table > tbody td {
+  padding: 0.75rem;
+  vertical-align: middle;
+  border-color: var(--app-border);
+}
+
+.table-container {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  box-shadow: var(--app-shadow);
+  overflow: hidden;
+}
+
+/* Prazno stanje: ilustracija, naslov, kratak tekst, centrirano */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  color: var(--app-text-muted);
+}
+
+.empty-state h5 {
+  color: var(--app-text);
+  font-weight: 700;
+}
+
+/* Oznake: jedan oblik. Statusi (zelena/crvena/jantarna) zadržavaju boju;
+   sve ostale (predmet, oblast, tip, nivo...) su ista svetloplava oznaka. */
+.badge {
+  font-weight: 600;
+  font-size: 0.78rem;
+  border-radius: 999px;
+  padding: 0.35em 0.75em;
+}
+
+.badge:is(.bg-dark, .bg-secondary, .bg-info, .bg-light, .bg-primary,
+          .text-bg-dark, .text-bg-secondary, .text-bg-info, .text-bg-light, .text-bg-primary) {
+  background-color: var(--app-primary-soft) !important;
+  color: var(--app-navbar) !important;
+  border: 1px solid var(--app-border);
+}
+
+.status-badge {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 96px;
+}
+
+/* Polja forme */
+.form-label {
+  font-weight: 600;
+  color: var(--app-text);
+}
+
+.form-control,
+.form-select {
+  padding: 0.55rem 0.8rem;
 }

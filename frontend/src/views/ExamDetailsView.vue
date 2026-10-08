@@ -472,17 +472,4 @@ export default {
 </template>
 
 <style scoped>
-.page-title {
-  font-size: 2.4rem;
-  font-weight: 800;
-}
-
-.status-badge {
-  width: 120px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-}
 </style>

@@ -88,11 +88,6 @@ onMounted(loadArtifacts)
 </template>
 
 <style scoped>
-.page-title {
-  font-size: 2rem;
-  font-weight: 800;
-}
-
 .artifact-card {
   cursor: pointer;
   transition: box-shadow 0.15s ease, transform 0.15s ease;
@@ -103,8 +98,4 @@ onMounted(loadArtifacts)
   transform: translateY(-1px);
 }
 
-.empty-state {
-  border: 1px dashed var(--app-border);
-  border-radius: 0.75rem;
-}
 </style>

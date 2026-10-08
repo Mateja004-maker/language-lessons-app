@@ -336,30 +336,4 @@ export default {
 </script>
 
 <style scoped>
-.page-title {
-  font-size: 2rem;
-  font-weight: 800;
-  color: var(--app-text);
-  border-bottom: 2px solid var(--app-border);
-  padding-bottom: 0.75rem;
-}
-
-.section-title {
-  font-size: 1.45rem;
-  font-weight: 750;
-  color: var(--app-text);
-  margin-top: 1.5rem;
-}
-
-.status-badge {
-  width: 95px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  padding: 0;
-}
 </style>
