@@ -152,6 +152,6 @@ async function onSubmit() {
 <style scoped>
 .icon-card {
   font-size: 2.5rem;
-  color: var(--app-primary);
+  color: var(--app-icon);
 }
 </style>

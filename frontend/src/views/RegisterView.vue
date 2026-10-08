@@ -187,6 +187,7 @@ async function register() {
 
 .auth-icon {
   font-size: 2.5rem;
+  color: var(--app-icon);
 }
 
 .auth-card .form-control,
