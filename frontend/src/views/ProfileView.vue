@@ -14,14 +14,14 @@ const languageLabel = computed(() => {
   if (!profile.value) return ''
 
   if (profile.value.role === 'TEACHER') {
-    return 'Subjects I Teach'
+    return 'Predmeti koje predaješ'
   }
 
   if (profile.value.role === 'STUDENT') {
-    return 'Subjects I Learn'
+    return 'Predmeti koje pratiš'
   }
 
-  return 'Subjects'
+  return 'Predmeti'
 })
 
 const subjectNames = computed(() => {
@@ -50,7 +50,7 @@ async function loadProfile() {
     display_name.value = profileRes.data.display_name || ''
     subjects.value = subjectsRes.data
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to load profile.'
+    error.value = e?.response?.data?.error || 'Učitavanje profila nije uspelo.'
   } finally {
     loading.value = false
   }
@@ -65,12 +65,12 @@ async function saveProfile() {
       display_name: display_name.value,
       learning_language_id: profile.value.learning_language_id || null
     })
-    msg.value = 'Profile saved successfully.'
+    msg.value = 'Profil je sačuvan.'
     await loadProfile()
     window.location.reload()
     
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to save profile.'
+    error.value = e?.response?.data?.error || 'Čuvanje profila nije uspelo.'
   }
 }
 function onImageChange(event) {
@@ -87,7 +87,7 @@ async function uploadProfileImage() {
   msg.value = ''
 
   if (!selectedImage.value) {
-    error.value = 'Choose the picture first.'
+    error.value = 'Prvo izaberi sliku.'
     return
   }
 
@@ -101,11 +101,11 @@ async function uploadProfileImage() {
       }
     })
 
-    msg.value = 'Profile image saved successfully.'
+    msg.value = 'Profilna slika je sačuvana.'
     await loadProfile()
     window.location.reload()
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to save profile image.'
+    error.value = e?.response?.data?.error || 'Čuvanje profilne slike nije uspelo.'
   }
 }
 
@@ -115,18 +115,18 @@ onMounted(loadProfile)
 <template>
   <div class="container py-4">
 
-    <PageHeader title="My Profile" />
+    <PageHeader title="Moj profil" />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>
 
-    <div v-if="loading" class="text-muted">Loading...</div>
+    <div v-if="loading" class="text-muted">Učitavanje...</div>
 
     <div v-if="profile" class="section-card section-padding">
       <div class="text-center mb-4">
         <img
           :src="previewImage || (profile.profile_image ? `http://127.0.0.1:5000${profile.profile_image}` : 'https://via.placeholder.com/120')"
-          alt="Profile image"
+          alt="Profilna slika"
           class="profile-image"
         />
 
@@ -144,7 +144,7 @@ onMounted(loadProfile)
           type="button"
           @click="uploadProfileImage"
         >
-          Save Profile Image
+          Sačuvaj profilnu sliku
         </button>
       </div>
 
@@ -156,17 +156,17 @@ onMounted(loadProfile)
         </div>
 
         <div class="col-md-6">
-          <label class="form-label">Role</label>
+          <label class="form-label">Uloga</label>
 
           <div>
-            <span v-if="profile.role === 'ADMIN'" class="badge badge-soft fs-6">ADMIN</span>
-            <span v-else-if="profile.role === 'TEACHER'" class="badge badge-soft fs-6">TEACHER</span>
-            <span v-else class="badge badge-soft fs-6">STUDENT</span>
+            <span v-if="profile.role === 'ADMIN'" class="badge badge-soft fs-6">Administrator</span>
+            <span v-else-if="profile.role === 'TEACHER'" class="badge badge-soft fs-6">Nastavnik</span>
+            <span v-else class="badge badge-soft fs-6">Student</span>
           </div>
         </div>
 
         <div class="col-md-6">
-          <label class="form-label">Display name</label>
+          <label class="form-label">Ime i prezime</label>
           <input v-model="display_name" class="form-control" />
         </div>
 
@@ -178,7 +178,7 @@ onMounted(loadProfile)
             disabled
           />
           <small class="text-muted">
-            Predmete dodeljuje admin (ili se biraju pri prvom logovanju).
+            Predmete dodeljuje administrator (ili ih biraš pri prvoj prijavi).
           </small>
         </div>
 
@@ -186,7 +186,7 @@ onMounted(loadProfile)
 
       <div class="mt-4 text-end">
         <button class="btn btn-primary px-4" @click="saveProfile">
-          Save Changes
+          Sačuvaj izmene
         </button>
       </div>
 
