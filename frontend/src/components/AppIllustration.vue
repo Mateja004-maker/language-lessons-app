@@ -27,7 +27,7 @@ defineProps({
       <rect class="accent" x="66" y="16" width="28" height="12" rx="4" />
       <rect class="border" x="60" y="42" width="40" height="5" rx="2.5" />
       <rect class="border" x="60" y="54" width="30" height="5" rx="2.5" />
-      <circle class="success" cx="96" cy="84" r="16" />
+      <circle class="primary" cx="96" cy="84" r="16" />
       <path class="tick" d="M88 84 l6 6 l10 -12" />
     </g>
 
@@ -77,7 +77,7 @@ defineProps({
       <rect class="surface line" x="40" y="26" width="80" height="66" rx="8" />
       <rect class="primary" x="54" y="60" width="12" height="22" rx="2" />
       <rect class="accent" x="74" y="48" width="12" height="34" rx="2" />
-      <rect class="success" x="94" y="38" width="12" height="44" rx="2" />
+      <rect class="gray" x="94" y="38" width="12" height="44" rx="2" />
     </g>
 
     <!-- nema testova: prazan list sa isprekidanim redovima -->
@@ -98,9 +98,10 @@ defineProps({
 
 .soft { fill: var(--app-primary-soft); }
 .surface { fill: var(--app-surface); }
+/* samo plave i sive nijanse iz teme */
 .primary { fill: var(--app-primary); }
 .accent { fill: var(--app-navbar); }
-.success { fill: var(--app-success); }
+.gray { fill: var(--app-neutral); }
 .border { fill: var(--app-border); }
 
 .line {

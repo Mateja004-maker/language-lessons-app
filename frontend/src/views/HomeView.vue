@@ -672,20 +672,12 @@ a:hover > .stat-card {
   box-shadow: var(--app-shadow-hover);
 }
 
-.stat-blue {
-  --stat-color: var(--app-primary);
-}
-
-.stat-purple {
-  --stat-color: var(--app-navbar);
-}
-
-.stat-orange {
-  --stat-color: var(--app-primary);
-}
-
+/* sve ikonice u karticama u jednoj plavoj (klase stat-* ostaju samo kao oznake) */
+.stat-blue,
+.stat-purple,
+.stat-orange,
 .stat-green {
-  --stat-color: var(--app-success);
+  --stat-color: var(--app-primary);
 }
 
 .stat-icon {
