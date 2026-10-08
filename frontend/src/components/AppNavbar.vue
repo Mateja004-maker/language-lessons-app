@@ -52,7 +52,7 @@ function onLogout() {
     <div class="container nav-container">
 
       <router-link class="navbar-brand" to="/">
-        Language Lessons
+        Onlajn testiranje
       </router-link>
 
       <button

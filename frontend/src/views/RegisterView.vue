@@ -168,7 +168,7 @@ async function register() {
             </div>
 
             <div class="text-center text-muted small mt-4">
-              © {{ new Date().getFullYear() }} Language Lessons
+              © {{ new Date().getFullYear() }} Onlajn testiranje
             </div>
           </div>
 
