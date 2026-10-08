@@ -222,7 +222,7 @@ async function loadAiCounts() {
 
 const aiCards = computed(() => [
   aiPendingCount.value !== null && {
-    key: 'pending', to: '/ai/predlozi', cls: 'stat-orange', icon: 'fa-solid fa-wand-magic-sparkles',
+    key: 'pending', to: '/ai/predlozi', cls: 'stat-highlight', icon: 'fa-solid fa-wand-magic-sparkles',
     title: 'AI predlozi na čekanju', value: aiPendingCount.value, text: 'Predlozi pitanja koji čekaju odluku'
   },
   mySecondRatingCount.value !== null && {
@@ -672,18 +672,34 @@ a:hover > .stat-card {
   box-shadow: var(--app-shadow-hover);
 }
 
-/* sve ikonice u karticama u jednoj plavoj (klase stat-* ostaju samo kao oznake) */
+/* ikonice u karticama: neutralne slate-sive; zvezdica omiljenih jantarna (ukras);
+   jedina istaknuta kartica (AI predlozi na čekanju): ikonica i brojač u akcentu (5,1:1) */
 .stat-blue,
 .stat-purple,
-.stat-orange,
 .stat-green {
-  --stat-color: var(--app-primary);
+  --stat-color: var(--app-icon);
+}
+
+.stat-orange {
+  --stat-color: var(--app-amber);
+}
+
+.stat-highlight {
+  --stat-color: var(--app-accent);
+}
+
+.stat-highlight .stat-number {
+  color: var(--app-accent);
 }
 
 .stat-icon {
   font-size: 2rem;
   margin-bottom: 12px;
-  color: var(--stat-color, var(--app-primary));
+  color: var(--stat-color, var(--app-icon));
+}
+
+.action-card .stat-icon {
+  color: var(--app-amber);
 }
 
 .stat-title {
@@ -710,7 +726,7 @@ a:hover > .stat-card {
 .section-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: var(--app-text);
+  color: var(--app-secondary);
   font-family: var(--app-font-heading);
 }
 
@@ -733,7 +749,7 @@ a:hover > .stat-card {
 .action-icon {
   font-size: 1.7rem;
   margin-bottom: 10px;
-  color: var(--app-primary);
+  color: var(--app-icon);
 }
 
 .action-title {
@@ -772,7 +788,7 @@ a:hover > .stat-card {
 .modal-icon {
   font-size: 3rem;
   margin-bottom: 12px;
-  color: var(--app-primary);
+  color: var(--app-icon);
 }
 
 .hero-language {
@@ -790,7 +806,7 @@ a:hover > .stat-card {
 
 .progress-custom .progress-bar {
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--app-primary), var(--app-success));
+  background: linear-gradient(135deg, var(--app-primary), var(--app-bright));
 }
 
 .progress-percent {

@@ -149,6 +149,11 @@ onMounted(loadFavorites)
   font-weight: 800;
 }
 
+/* zvezdica omiljenih u jantarnoj (ukras) */
+.stat-icon {
+  color: var(--app-amber);
+}
+
 .favorite-icon {
   width: 38px;
   height: 38px;
