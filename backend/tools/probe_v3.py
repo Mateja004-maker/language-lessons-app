@@ -3,6 +3,12 @@
     python tools/probe_v3.py                 # samo plan, bez poziva modela
     python tools/probe_v3.py --confirm       # stvarni pozivi (troši besplatne limite)
     [--models groq,gemini,openrouter] [--mc-question ID] [--open-question ID] [--ids-file PUTANJA]
+    [--mode single|set] [--set-questions 94,95,96,97] [--k 3]
+
+--mode set (tačka J) proba prompt set-v1: jedna grupa pitanja (podrazumevano
+prva 4 pitanja predmeta) x svaki model, jedan poziv daje do K pitanja
+(generate_similar_set); za svako vraćeno pitanje ispisuje oznake, dijakritike
+i višak polja, i da li je prihvaćeno.
 
 (iz foldera backend/). Za po jedno MC i jedno otvoreno pitanje iz predmeta
 "Osnove programiranja" poziva svaki model kroz generate_similar_for_question -
@@ -31,7 +37,7 @@ sys.path.insert(0, BACKEND_DIR)
 
 # app MORA da se učita pre ai_provider-a: app.py učitava backend/.env, a
 # ai_provider čita API ključeve iz okruženja u trenutku učitavanja (inače 401).
-from app import generate_similar_for_question, get_db_connection  # noqa: E402
+from app import generate_similar_for_question, generate_similar_set, get_db_connection  # noqa: E402
 import ai_provider  # noqa: E402
 import prompt_templates  # noqa: E402
 import question_validation  # noqa: E402
@@ -99,6 +105,91 @@ def inspect_raw(raw_text, question_type):
     return info
 
 
+def pick_set_questions(ids=None):
+    """Grupa pitanja za --mode set: zadati id-jevi ili prva 4 pitanja predmeta."""
+    subject = _query("SELECT id FROM subjects WHERE name = %s", (SUBJECT_NAME,))
+    if not subject:
+        raise SystemExit(f"Predmet '{SUBJECT_NAME}' ne postoji")
+    rows = _query("SELECT id, question_text FROM exam_questions WHERE subject_id = %s ORDER BY id", (subject[0]["id"],))
+    by_id = {row["id"]: row for row in rows}
+    if ids:
+        missing = [q for q in ids if q not in by_id]
+        if missing:
+            raise SystemExit(f"Pitanja {missing} nisu iz predmeta '{SUBJECT_NAME}'")
+        return [by_id[q] for q in ids]
+    return rows[:4]
+
+
+def inspect_set_raw(raw_text):
+    """Analiza sirovog odgovora za skup: (top-level višak polja, [(tip, analiza stavke)]) ili None."""
+    try:
+        data = json.loads(raw_text) if raw_text is not None else None
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("questions"), list):
+        return None
+    extra_top = sorted(set(data) - question_validation.ALLOWED_SET_FIELDS)
+    version = prompt_templates.template_version(prompt_templates.SET_TEMPLATE_FILE.read_text(encoding="utf-8"))
+    items = []
+    for item in data["questions"]:
+        qtype = "mc" if isinstance(item, dict) and "answers" in item else "open"
+        info = inspect_raw(json.dumps(item), qtype)
+        check = question_validation.validate_set_item(item, version)
+        info["accepted"], info["error"] = check.passed, (check.errors[0] if check.errors else None)
+        items.append((qtype, info))
+    return extra_top, items
+
+
+def run_set_mode(args, providers):
+    group = pick_set_questions([int(x) for x in args.set_questions.split(",")] if args.set_questions else None)
+    group_ids = [q["id"] for q in group]
+    version = prompt_templates.template_version(prompt_templates.SET_TEMPLATE_FILE.read_text(encoding="utf-8"))
+    print(f"Probni krug skupa (bez serije), prompt {version}, K={args.k}")
+    for q in group:
+        print(f"  #{q['id']}: {q['question_text'][:70]}")
+    for p in providers:
+        key_ok = bool(getattr(ai_provider, KEY_NAMES[p], ""))
+        print(f"  {p:11} {ai_provider.DEFAULT_MODELS[p]:42} ključ: {'podešen' if key_ok else 'NEDOSTAJE'}")
+    print(f"Plan: {len(providers)} generisanja (1 grupa od {len(group_ids)} pitanja x {len(providers)} modela), do "
+          f"{args.k} pitanja po pozivu; najviše {2 * len(providers)} odgovora modela i do 3 HTTP pokušaja po zahtevu.")
+    print(f"Run-ovi i predlozi se beleže u {args.ids_file}.")
+    missing = [p for p in providers if not getattr(ai_provider, KEY_NAMES[p], "")]
+    if missing:
+        print(f"\nGREŠKA: nedostaje API ključ za {missing} - proveri backend/.env. Proba se ne pokreće.")
+        return 2
+    if not args.confirm:
+        print("\nOvo je samo plan - nijedan model nije pozvan. Za stvarno pokretanje dodaj --confirm.")
+        return 0
+
+    record = {"started_at": datetime.now().isoformat(timespec="seconds"), "mode": "set", "runs": [], "artifacts": []}
+    _save_ids(args.ids_file, record)
+    for provider in providers:
+        body, status = generate_similar_set(group_ids, provider, args.k, None, input_source={"type": "probe"})
+        if body.get("generation_run_id"):
+            record["runs"].append(body["generation_run_id"])
+        record["artifacts"].extend(body.get("artifact_ids") or [])
+        _save_ids(args.ids_file, record)
+        run = (_query("SELECT raw_response, validation_errors, response_time_ms FROM ai_generation_runs WHERE id = %s",
+                      (body.get("generation_run_id"),)) or [{}])[0] if body.get("generation_run_id") else {}
+        print(f"\n{provider}: status {status}, {body.get('failure_type') or 'ok'}, prihvaćeno {body.get('accepted', 0)}"
+              f"/{args.k}, odbijeno {body.get('rejected', 0)}, ponovni zahtev {body.get('format_retries', '-')}, "
+              f"{run.get('response_time_ms') if run.get('response_time_ms') is not None else '-'} ms")
+        analysis = inspect_set_raw(run.get("raw_response"))
+        if analysis is None:
+            print(f"  sirov odgovor nije {{\"questions\": [...]}}; razlog: {' '.join((run.get('validation_errors') or '').split())[:120]}")
+            continue
+        extra_top, items = analysis
+        if extra_top:
+            print(f"  višak polja na vrhu: {', '.join(extra_top)}")
+        for i, (qtype, info) in enumerate(items, start=1):
+            print(f"  {i}. {qtype:4} {'prihvaćeno' if info['accepted'] else 'ODBIJENO  '} {str(info['difficulty']):8} "
+                  f"{str(info['bloom_level']):12} oznake ok={'DA' if info['labels_ok'] else 'NE'} "
+                  f"dijakritici={'DA' if info['diacritics'] else 'ne'} višak={', '.join(info['extra_fields']) or '-'}"
+                  + (f"  ({info['error']})" if info["error"] else ""))
+    print(f"\nNapravljeno: run-ova {len(record['runs'])}, predloga {len(record['artifacts'])} -> {args.ids_file}")
+    return 0
+
+
 def _save_ids(path, record):
     data = []
     if os.path.exists(path):
@@ -121,6 +212,9 @@ def main(argv=None):
     parser.add_argument("--mc-question", type=int)
     parser.add_argument("--open-question", type=int)
     parser.add_argument("--ids-file", default=DEFAULT_IDS_FILE)
+    parser.add_argument("--mode", choices=("single", "set"), default="single")
+    parser.add_argument("--set-questions", help="režim set: id-jevi pitanja grupe, npr. 94,95,96,97")
+    parser.add_argument("--k", type=int, default=3, help="režim set: broj novih pitanja po pozivu")
     args = parser.parse_args(argv)
 
     providers = [p.strip() for p in args.models.split(",") if p.strip()]
@@ -128,6 +222,8 @@ def main(argv=None):
     if unknown:
         print(f"GREŠKA: nepoznati modeli {unknown}")
         return 2
+    if args.mode == "set":
+        return run_set_mode(args, providers)
     mc, open_q = pick_questions(args.mc_question, args.open_question)
     versions = {t: prompt_templates._read_template_file(t)[0] for t in ("mc", "open")}
 
