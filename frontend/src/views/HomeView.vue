@@ -349,7 +349,7 @@ onMounted(loadAiCounts)
       <template v-if="role === 'ADMIN'">
         <div class="row g-4 mb-4">
           <div class="col-12 col-md-4">
-            <div class="dashboard-card stat-card stat-tinted stat-blue h-100">
+            <div class="dashboard-card stat-card stat-solid stat-solid-1 h-100">
               <div class="stat-icon"><i class="fa-solid fa-globe"></i></div>
               <div class="stat-title">Jezici</div>
               <div class="stat-number">{{ languages.length }}</div>
@@ -358,7 +358,7 @@ onMounted(loadAiCounts)
           </div>
 
           <div class="col-12 col-md-4">
-            <div class="dashboard-card stat-card stat-tinted stat-purple h-100">
+            <div class="dashboard-card stat-card stat-solid stat-solid-2 h-100">
               <div class="stat-icon"><i class="fa-solid fa-book-open"></i></div>
               <div class="stat-title">Lekcije</div>
               <div class="stat-number">{{ lessons.length }}</div>
@@ -367,7 +367,7 @@ onMounted(loadAiCounts)
           </div>
 
           <div class="col-12 col-md-4">
-            <div class="dashboard-card stat-card stat-tinted stat-green h-100">
+            <div class="dashboard-card stat-card stat-solid stat-solid-3 h-100">
               <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
               <div class="stat-title">Korisnici</div>
               <div class="stat-number">{{ users.length }}</div>
@@ -413,7 +413,7 @@ onMounted(loadAiCounts)
       <template v-else-if="role === 'TEACHER'">
         <div class="row g-4 mb-4">
           <div class="col-12 col-md-6">
-            <div class="dashboard-card stat-card stat-purple h-100">
+            <div class="dashboard-card stat-card stat-solid stat-solid-2 h-100">
               <div class="action-icon"><i class="fa-solid fa-book-open me-2"></i></div>
               <div class="stat-title">Lekcije</div>
               <div class="stat-number">{{ lessons.length }}</div>
@@ -422,7 +422,7 @@ onMounted(loadAiCounts)
           </div>
 
           <div class="col-12 col-md-6">
-            <div class="dashboard-card stat-card stat-green h-100">
+            <div class="dashboard-card stat-card stat-solid stat-solid-3 h-100">
               <div class="stat-icon"><i class="fa-solid fa-chalkboard-user"></i></div>
               <div class="stat-title">Uloga</div>
               <div class="stat-number">Nastavnik</div>
@@ -462,7 +462,7 @@ onMounted(loadAiCounts)
       <template v-else>
         <div class="row g-4 mb-4">
           <div class="col-12 col-md-4">
-            <div class="dashboard-card stat-card stat-blue h-100">
+            <div class="dashboard-card stat-card stat-solid stat-solid-1 h-100">
               <div class="stat-icon"><i class="fa-solid fa-globe"></i></div>
               <div class="stat-title">{{ mySubjectsTitle }}</div>
               <div class="stat-number small-number">
@@ -473,7 +473,7 @@ onMounted(loadAiCounts)
           </div>
 
           <div class="col-12 col-md-4">
-            <div class="dashboard-card stat-card stat-green h-100">
+            <div class="dashboard-card stat-card stat-solid stat-solid-2 h-100">
               <div class="stat-icon"><i class="fa-solid fa-book"></i></div>
               <div class="stat-title">Lekcije</div>
               <div class="stat-number">{{ lessons.length }}</div>
@@ -481,7 +481,7 @@ onMounted(loadAiCounts)
             </div>
           </div>
           <div class="col-12 col-md-4">
-            <div class="dashboard-card stat-card stat-orange h-100">
+            <div class="dashboard-card stat-card stat-solid stat-solid-3 h-100">
               <div class="stat-icon"><i class="fa-solid fa-star"></i></div>
               <div class="stat-title">Omiljene lekcije</div>
               <div class="stat-number">
@@ -685,9 +685,25 @@ a:hover > .stat-card {
   --stat-color: var(--app-amber);
 }
 
-/* statističke kartice ADMIN-a (Jezici, Lekcije, Korisnici): vrlo svetla šljiva */
-.stat-tinted {
-  background: var(--app-plum-soft);
+/* statističke kartice (Jezici/predmeti, Lekcije, Korisnici/uloga/omiljene): tamne zasićene
+   pozadine iz teme (--card-stat-1/2/3), beli tekst i ikonice; opis 90% beo (min. 4,97:1) */
+.stat-solid {
+  color: #FFFFFF;
+  border-color: transparent;
+}
+
+.stat-solid-1 { background: var(--card-stat-1); }
+.stat-solid-2 { background: var(--card-stat-2); }
+.stat-solid-3 { background: var(--card-stat-3); }
+
+.stat-solid .stat-icon,
+.stat-solid .stat-title,
+.stat-solid .stat-number {
+  color: #FFFFFF;
+}
+
+.stat-solid .stat-text {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .stat-icon {

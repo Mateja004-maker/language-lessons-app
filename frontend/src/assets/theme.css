@@ -33,7 +33,11 @@
   --app-amber: #FFBC42;
   --app-amber-soft: #FFF4DE;
   --app-bright: #0496FF;           /* samo ukrasi, ilustracije, grafikoni */
-  --app-plum-soft: #F6EDF2;        /* vrlo svetla šljiva (iz #8F2D56) za statističke kartice; tamni tekst 13,8:1, sporedni 5,5:1 */
+
+  /* statističke kartice na dashboardu: beli tekst 5,75 / 7,84 / 10,35:1; 90% beli 4,97 / 6,67 / 8,76:1 */
+  --card-stat-1: #006BA6;          /* Jezici / Moji predmeti */
+  --card-stat-2: #8F2D56;          /* Lekcije */
+  --card-stat-3: #334155;          /* Korisnici / Uloga / Omiljene */
 
   /* neutralno (bez plavog tona) */
   --app-bg: #F7F7F8;
