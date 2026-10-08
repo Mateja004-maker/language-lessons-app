@@ -2,50 +2,65 @@
  * Tema aplikacije "Onlajn testiranje" - SVE boje, fontovi, zaobljenja i senke
  * su ovde. Za promenu izgleda menja se samo ovaj fajl.
  *
- * Paleta: jedna osnovna boja (tamnoplava, navbar) i jedan svetliji plavi akcenat.
- * Zelena i crvena samo za statuse uspeha i greške. Bez žute/zlatne.
- * Kontrast (WCAG, min. 4,5:1 za tekst):
- *   beli tekst / akcenat (dugme) 5,2:1    akcenat kao tekst na beloj 5,2:1, na pozadini 4,8:1
- *   beli tekst / navbar 12,2:1            tekst / bela 14,8:1    sporedni tekst / pozadina 6,0:1
- *   tamnoplavi tekst na svetloplavoj oznaci 10,7:1
+ * Paleta 1: #006BA6, #0496FF, #FFBC42, #D81159, #8F2D56. Uloge:
+ *   glavna #006BA6      dugmad, linkovi (beli tekst 5,8:1; kao tekst na beloj 5,8:1)
+ *   navbar #004E7A      tamnija nijansa glavne (beli tekst 8,9:1)
+ *   akcent #D81159      SAMO sitno: značke, brojači, jedna istaknuta ikonica, fokus/hover detalji
+ *                       (beli tekst na njemu 5,1:1; kao tekst na beloj 5,1:1). Na navbaru je
+ *                       1,75:1, pa je podvlaka aktivne stavke BELA (8,9:1).
+ *   sekundarna #8F2D56  sekundarni naslovi, u maloj meri (7,8:1 na beloj)
+ *   jantarna #FFBC42    zvezdica omiljenih, upozorenja, mali ukrasi; tekst na njoj TAMAN (9,4:1)
+ *   jarka plava #0496FF samo ukrasi, ilustracije, grafikoni - nikad tekst ni dugmad (3,1:1)
+ *   uspeh / greška      čitljiva zelena i crvena (ne #D81159), samo za statuse
+ *   neutralno           pozadina bez plavog tona, bele kartice, tanka svetlosiva ivica
  *
  * Boje Bootstrap-a (--bs-*) se pune iz ovih promenljivih, pa i ekrani bez
- * sopstvenih stilova dobijaju istu temu (uključujući warning/info: svetle
- * plavo-sive nijanse sa tamnim tekstom umesto žute i tirkizne).
+ * sopstvenih stilova dobijaju istu temu.
  */
 :root {
-  /* osnovne boje */
-  --app-navbar: #16365F;            /* osnovna tamnoplava */
-  --app-navbar-rgb: 22, 54, 95;
-  --app-primary: #2563EB;           /* svetliji plavi akcenat: dugmad, linkovi, ikonice */
-  --app-primary-rgb: 37, 99, 235;
-  --app-primary-hover: #1D4ED8;
-  --app-primary-soft: #EAF1FE;
+  /* glavna */
+  --app-primary: #006BA6;
+  --app-primary-rgb: 0, 107, 166;
+  --app-primary-hover: #005A8C;
+  --app-primary-soft: #E6F0F7;
+  --app-navbar: #004E7A;
+  --app-navbar-rgb: 0, 78, 122;
 
-  --app-bg: #F5F7FA;
+  /* akcenti (sitno, u maloj meri) */
+  --app-accent: #D81159;
+  --app-accent-rgb: 216, 17, 89;
+  --app-secondary: #8F2D56;
+  --app-amber: #FFBC42;
+  --app-amber-soft: #FFF4DE;
+  --app-bright: #0496FF;           /* samo ukrasi, ilustracije, grafikoni */
+
+  /* neutralno (bez plavog tona) */
+  --app-bg: #F7F7F8;
   --app-surface: #FFFFFF;
-  --app-border: #E5E9F0;
-  --app-neutral: #94A3B8;           /* siva samo za ukrase (ilustracije, grafikon) */
-  --app-neutral-soft: #EEF2F7;
+  --app-border: #E4E4E7;
+  --app-icon: #64748B;             /* slate-siva za ikonice (ne-tekst, 4,8:1 na beloj) */
+  --app-neutral: #9CA3AF;          /* siva za ukrase i grafikon */
+  --app-neutral-soft: #F1F1F3;
 
-  --app-text: #1F2933;
-  --app-text-rgb: 31, 41, 51;
-  --app-text-muted: #52606D;
+  --app-text: #1F2328;
+  --app-text-rgb: 31, 35, 40;
+  --app-text-muted: #5B6068;
 
-  --app-success: #2F7D4F;
-  --app-success-rgb: 47, 125, 79;
-  --app-success-soft: #E7F3EC;
-  --app-danger: #B42318;
-  --app-danger-rgb: 180, 35, 24;
+  /* statusi */
+  --app-success: #2E7D32;
+  --app-success-rgb: 46, 125, 50;
+  --app-success-soft: #E8F3E9;
+  --app-danger: #B3261E;
+  --app-danger-rgb: 179, 38, 30;
   --app-danger-soft: #FBEAE8;
 
-  /* grafikoni (Chart.js čita ove promenljive): nijanse plave i siva */
-  --app-chart-1: #16365F;
-  --app-chart-2: #1E4E8C;
-  --app-chart-3: #2563EB;
-  --app-chart-4: #60A5FA;
-  --app-chart-5: #BFDBFE;
-  --app-chart-6: #94A3B8;
+  /* grafikoni (Chart.js čita ove promenljive): nivoi jasno razdvojeni */
+  --app-chart-1: #006BA6;
+  --app-chart-2: #0496FF;
+  --app-chart-3: #8F2D56;
+  --app-chart-4: #FFBC42;
+  --app-chart-5: #D81159;
+  --app-chart-6: #9CA3AF;
 
   /* fontovi (ugrađeni preko @fontsource, latin + latin-ext: č ć š ž đ) */
   --app-font-body: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
@@ -75,14 +90,15 @@
   --bs-danger: var(--app-danger);
   --bs-danger-rgb: var(--app-danger-rgb);
 
-  /* bez žute i tirkizne: warning = svetla plavo-siva, info = svetloplava (tamni tekst, 17:1) */
-  --bs-warning: #E2E8F0;
-  --bs-warning-rgb: 226, 232, 240;
-  --bs-warning-text-emphasis: var(--app-navbar);
-  --bs-warning-bg-subtle: var(--app-neutral-soft);
+  /* upozorenja: jantarna sa TAMNIM tekstom (text-bg-warning ima crn tekst, 9+:1) */
+  --bs-warning: var(--app-amber);
+  --bs-warning-rgb: 255, 188, 66;
+  --bs-warning-text-emphasis: var(--app-text);
+  --bs-warning-bg-subtle: var(--app-amber-soft);
   --bs-warning-border-subtle: var(--app-border);
-  --bs-info: #DBEAFE;
-  --bs-info-rgb: 219, 234, 254;
+  /* info: svetla glavna (bez tirkizne) */
+  --bs-info: var(--app-primary-soft);
+  --bs-info-rgb: 230, 240, 247;
   --bs-info-text-emphasis: var(--app-navbar);
   --bs-info-bg-subtle: var(--app-primary-soft);
   --bs-info-border-subtle: var(--app-border);
@@ -90,7 +106,7 @@
   --bs-link-color: var(--app-primary);
   --bs-link-color-rgb: var(--app-primary-rgb);
   --bs-link-hover-color: var(--app-primary-hover);
-  --bs-link-hover-color-rgb: 29, 78, 216;
+  --bs-link-hover-color-rgb: 0, 90, 140;
 }
 
 body {
@@ -104,7 +120,7 @@ h1, h2, h3, h4, h5, h6,
   font-family: var(--app-font-heading);
 }
 
-/* Kartice i paneli: beli, tanka svetlosiva ivica, meka senka, 12 px.
+/* Kartice i paneli: beli, tanka svetlosiva ivica, meka senka, 12 px, bez obojenih ivica.
    !important zato što Bootstrap .border-0 / .border-primary su takođe !important. */
 .card,
 .section-card {
@@ -114,15 +130,21 @@ h1, h2, h3, h4, h5, h6,
   box-shadow: var(--app-shadow);
 }
 
-/* Oznaka u boji teme (umesto šarenih Bootstrap oznaka gde boja ne znači status) */
+/* Oznaka u boji teme (gde boja ne znači status) */
 .badge-soft {
   background-color: var(--app-primary-soft);
   color: var(--app-navbar);
   border: 1px solid var(--app-border);
 }
 
+/* Značka/brojač u akcentu - samo za sitne elemente (beli tekst 5,1:1) */
+.badge-accent {
+  background-color: var(--app-accent);
+  color: #FFFFFF;
+}
+
 /* Dugmad: Bootstrap ih boji iz Sass-a, ne iz --bs-primary, pa se postavljaju posebno.
-   btn-warning / btn-outline-warning (i u ekranima koje ova grana ne menja) postaju plava. */
+   btn-warning / btn-outline-warning (i u ekranima koje ova grana ne menja) su glavna boja. */
 .btn-primary,
 .btn-warning {
   --bs-btn-color: #FFFFFF;
@@ -137,7 +159,7 @@ h1, h2, h3, h4, h5, h6,
   --bs-btn-disabled-color: #FFFFFF;
   --bs-btn-disabled-bg: var(--app-primary);
   --bs-btn-disabled-border-color: var(--app-primary);
-  --bs-btn-focus-shadow-rgb: var(--app-primary-rgb);
+  --bs-btn-focus-shadow-rgb: var(--app-accent-rgb);
 }
 
 .btn-outline-primary,
@@ -152,16 +174,16 @@ h1, h2, h3, h4, h5, h6,
   --bs-btn-active-border-color: var(--app-primary-hover);
   --bs-btn-disabled-color: var(--app-primary);
   --bs-btn-disabled-border-color: var(--app-primary);
-  --bs-btn-focus-shadow-rgb: var(--app-primary-rgb);
+  --bs-btn-focus-shadow-rgb: var(--app-accent-rgb);
 }
 
 .btn-success {
   --bs-btn-bg: var(--app-success);
   --bs-btn-border-color: var(--app-success);
-  --bs-btn-hover-bg: #276A43;
-  --bs-btn-hover-border-color: #276A43;
-  --bs-btn-active-bg: #276A43;
-  --bs-btn-active-border-color: #276A43;
+  --bs-btn-hover-bg: #256628;
+  --bs-btn-hover-border-color: #256628;
+  --bs-btn-active-bg: #256628;
+  --bs-btn-active-border-color: #256628;
   --bs-btn-disabled-bg: var(--app-success);
   --bs-btn-disabled-border-color: var(--app-success);
   --bs-btn-focus-shadow-rgb: var(--app-success-rgb);
@@ -180,10 +202,10 @@ h1, h2, h3, h4, h5, h6,
 .btn-danger {
   --bs-btn-bg: var(--app-danger);
   --bs-btn-border-color: var(--app-danger);
-  --bs-btn-hover-bg: #961D14;
-  --bs-btn-hover-border-color: #961D14;
-  --bs-btn-active-bg: #961D14;
-  --bs-btn-active-border-color: #961D14;
+  --bs-btn-hover-bg: #921F18;
+  --bs-btn-hover-border-color: #921F18;
+  --bs-btn-active-bg: #921F18;
+  --bs-btn-active-border-color: #921F18;
   --bs-btn-disabled-bg: var(--app-danger);
   --bs-btn-disabled-border-color: var(--app-danger);
   --bs-btn-focus-shadow-rgb: var(--app-danger-rgb);
@@ -199,11 +221,11 @@ h1, h2, h3, h4, h5, h6,
   --bs-btn-focus-shadow-rgb: var(--app-danger-rgb);
 }
 
-/* fokus polja forme u boji teme (Bootstrap ima fiksnu svetloplavu) */
+/* fokus: tanak akcentni prsten (detalj, ne površina) */
 .form-control:focus,
 .form-select:focus {
-  border-color: rgba(var(--app-primary-rgb), 0.55);
-  box-shadow: 0 0 0 0.25rem rgba(var(--app-primary-rgb), 0.18);
+  border-color: rgba(var(--app-primary-rgb), 0.6);
+  box-shadow: 0 0 0 0.2rem rgba(var(--app-accent-rgb), 0.18);
 }
 
 .form-check-input:checked {

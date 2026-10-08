@@ -2,10 +2,7 @@
 
 html,
 body {
-  background:
-    radial-gradient(circle at top left, rgba(var(--app-primary-rgb), 0.06), transparent 25%),
-    radial-gradient(circle at top right, rgba(var(--app-primary-rgb), 0.04), transparent 25%),
-    var(--app-bg);
+  background: var(--app-bg);  /* neutralna, bez plavog tona */
   color: var(--app-text);
   min-height: 100vh;
 }
