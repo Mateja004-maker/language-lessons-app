@@ -103,10 +103,22 @@ body {
   gap: 0.5rem;
 }
 
-/* filter u zaglavlju: iste visine kao dugme */
+/* filter i dugme u zaglavlju: ista visina (40px) */
 .page-header-actions .form-select {
   width: auto;
   min-width: 200px;
+}
+
+.page-header-actions .form-select,
+.page-header-actions .btn {
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.page-header-actions .btn {
+  display: inline-flex;
+  align-items: center;
 }
 
 /* Naslov sekcije unutar stranice ili kartice */
