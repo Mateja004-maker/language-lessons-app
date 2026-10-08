@@ -157,7 +157,7 @@ export default {
       try {
         await removeQuestionFromExam(route.params.id, id)
       } catch (err) {
-        alert(err.response?.data?.error || 'Error removing question from exam')
+        alert(err.response?.data?.error || 'Uklanjanje pitanja iz testa nije uspelo.')
       }
       await loadExam()
     }
@@ -198,10 +198,10 @@ export default {
     const publish = async () => {
       try {
         await publishExam(route.params.id)
-        alert('Exam published!')
+        alert('Test je objavljen.')
         router.push('/exams')
       } catch (err) {
-        alert(err.response?.data?.error || 'Error publishing exam')
+        alert(err.response?.data?.error || 'Objavljivanje testa nije uspelo.')
       }
     }
 
@@ -247,7 +247,7 @@ export default {
 
 <template>
   <div class="container py-4">
-    <div v-if="loading">Loading...</div>
+    <div v-if="loading">Učitavanje...</div>
 
     <div v-else>
       <PageHeader :title="exam.title">
@@ -259,7 +259,7 @@ export default {
             class="me-1"
             :class="exam.is_published ? 'fa-solid fa-check' : 'fa-solid fa-pen-to-square'"
           ></i>
-          {{ exam.is_published ? 'Published' : 'Draft' }}
+          {{ exam.is_published ? 'Objavljen' : 'Nacrt' }}
         </span>
       </PageHeader>
 
@@ -434,7 +434,7 @@ export default {
 
               <span v-if="a.is_correct" class="badge bg-success ms-2">
                 <i class="fa-solid fa-check me-1"></i>
-                Correct
+                Tačan
               </span>
             </div>
           </div>
@@ -457,11 +457,11 @@ export default {
           @click="publish"
         >
           <i class="fa-solid fa-upload me-2"></i>
-          Publish Exam
+          Objavi test
         </button>
 
         <div v-if="!canPublish" class="text-muted small mt-2">
-          Add at least 1 question with 2 answers and 1 correct answer to publish.
+          Za objavljivanje dodaj bar jedno pitanje sa dva odgovora, od kojih je jedan tačan.
         </div>
       </div>
     </div>
