@@ -50,13 +50,15 @@ mysql -u root language_learning < db/seed.sql
 
 Nova baza nema nijednog korisnika (`seed.sql` dodaje probne naloge, ali samo za lokalni razvoj).
 
-1. Registrujte se u aplikaciji (ili `POST /api/auth/register` sa `"role": "ADMIN"`).
-   Registracija pravi **neaktivan** nalog koji čeka odobrenje.
-2. Prvi nalog nema ko da odobri, pa ga aktivirajte ručno:
+1. Registrujte se u aplikaciji kao student ili nastavnik. Javna registracija ne dozvoljava
+   ulogu ADMIN, i pravi **neaktivan** nalog koji čeka odobrenje.
+2. Prvi nalog nema ko da odobri, pa ga ručno pretvorite u aktivnog administratora:
    ```sql
-   UPDATE users SET is_active = 1 WHERE email = 'vas@email';
+   UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'ADMIN'), is_active = 1
+   WHERE email = 'vas@email';
    ```
 3. Ostale naloge admin odobrava ili pravi u aplikaciji: **Users** (`/admin/users`, samo ADMIN).
+   Nove ADMIN naloge posle toga pravi samo postojeći admin.
 
 ### Predmeti
 
@@ -171,6 +173,7 @@ python tests/verify_generation_failures.py
 python tests/verify_set_generation.py
 python tests/verify_experiment_export.py
 python tests/verify_validate_batch.py
+python tests/verify_registration.py
 ```
 
 Svaki skript na kraju ispisuje zbir (`Ukupno: N, palo: 0` ili `N/N OK`). Ako nešto
