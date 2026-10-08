@@ -1,0 +1,167 @@
+/*
+ * Tema aplikacije "Onlajn testiranje" - SVE boje, fontovi, zaobljenja i senke
+ * su ovde. Za promenu izgleda menja se samo ovaj fajl.
+ *
+ * Pravac A: mirna plava/siva (akademski). Kontrast (WCAG):
+ *   tekst / pozadina 13,8:1   sporedni tekst / bela 6,5:1   beli tekst / primarna 8,3:1
+ *   --app-accent (zlatna) 3,6:1 na beloj -> SAMO za ukrase i krupne oznake;
+ *   za sitan tekst i linkove u zlatnoj koristi --app-accent-text (6,6:1 na beloj).
+ *
+ * Boje Bootstrap-a (--bs-*) se pune iz ovih promenljivih, pa i ekrani bez
+ * sopstvenih stilova dobijaju istu temu.
+ */
+:root {
+  /* osnovne boje */
+  --app-primary: #1E4E8C;
+  --app-primary-rgb: 30, 78, 140;
+  --app-primary-hover: #183F72;
+  --app-primary-soft: #E8EEF7;
+
+  --app-accent: #B7791F;
+  --app-accent-rgb: 183, 121, 31;
+  --app-accent-text: #805415;
+  --app-accent-soft: #FBF3E4;
+
+  --app-bg: #F5F7FA;
+  --app-surface: #FFFFFF;
+  --app-border: #E1E6EE;
+
+  --app-text: #1F2933;
+  --app-text-rgb: 31, 41, 51;
+  --app-text-muted: #52606D;
+
+  --app-success: #2F7D4F;
+  --app-success-rgb: 47, 125, 79;
+  --app-success-soft: #E7F3EC;
+  --app-danger: #B42318;
+  --app-danger-rgb: 180, 35, 24;
+  --app-danger-soft: #FBEAE8;
+
+  --app-navbar: #16365F;
+
+  /* fontovi (ugrađeni preko @fontsource, latin + latin-ext: č ć š ž đ) */
+  --app-font-body: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --app-font-heading: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+
+  /* oblik */
+  --app-radius: 12px;
+  --app-radius-lg: 16px;
+  --app-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.06);
+  --app-shadow-hover: 0 2px 4px rgba(16, 24, 40, 0.08), 0 10px 24px rgba(16, 24, 40, 0.10);
+
+  /* Bootstrap 5.3 promenljive -> tema */
+  --bs-body-font-family: var(--app-font-body);
+  --bs-body-bg: var(--app-bg);
+  --bs-body-color: var(--app-text);
+  --bs-body-color-rgb: var(--app-text-rgb);
+  --bs-secondary-color: var(--app-text-muted);
+  --bs-border-color: var(--app-border);
+
+  --bs-primary: var(--app-primary);
+  --bs-primary-rgb: var(--app-primary-rgb);
+  --bs-primary-text-emphasis: var(--app-primary-hover);
+  --bs-primary-bg-subtle: var(--app-primary-soft);
+  --bs-success: var(--app-success);
+  --bs-success-rgb: var(--app-success-rgb);
+  --bs-danger: var(--app-danger);
+  --bs-danger-rgb: var(--app-danger-rgb);
+
+  --bs-link-color: var(--app-primary);
+  --bs-link-color-rgb: var(--app-primary-rgb);
+  --bs-link-hover-color: var(--app-primary-hover);
+  --bs-link-hover-color-rgb: 24, 63, 114;
+}
+
+body {
+  font-family: var(--app-font-body);
+}
+
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6,
+.navbar-brand,
+.page-title {
+  font-family: var(--app-font-heading);
+}
+
+/* Dugmad: Bootstrap ih boji iz Sass-a, ne iz --bs-primary, pa se postavljaju posebno */
+.btn-primary {
+  --bs-btn-bg: var(--app-primary);
+  --bs-btn-border-color: var(--app-primary);
+  --bs-btn-hover-bg: var(--app-primary-hover);
+  --bs-btn-hover-border-color: var(--app-primary-hover);
+  --bs-btn-active-bg: var(--app-primary-hover);
+  --bs-btn-active-border-color: var(--app-primary-hover);
+  --bs-btn-disabled-bg: var(--app-primary);
+  --bs-btn-disabled-border-color: var(--app-primary);
+  --bs-btn-focus-shadow-rgb: var(--app-primary-rgb);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--app-primary);
+  --bs-btn-border-color: var(--app-primary);
+  --bs-btn-hover-color: #FFFFFF;
+  --bs-btn-hover-bg: var(--app-primary);
+  --bs-btn-hover-border-color: var(--app-primary);
+  --bs-btn-active-color: #FFFFFF;
+  --bs-btn-active-bg: var(--app-primary-hover);
+  --bs-btn-active-border-color: var(--app-primary-hover);
+  --bs-btn-disabled-color: var(--app-primary);
+  --bs-btn-disabled-border-color: var(--app-primary);
+  --bs-btn-focus-shadow-rgb: var(--app-primary-rgb);
+}
+
+.btn-success {
+  --bs-btn-bg: var(--app-success);
+  --bs-btn-border-color: var(--app-success);
+  --bs-btn-hover-bg: #276A43;
+  --bs-btn-hover-border-color: #276A43;
+  --bs-btn-active-bg: #276A43;
+  --bs-btn-active-border-color: #276A43;
+  --bs-btn-disabled-bg: var(--app-success);
+  --bs-btn-disabled-border-color: var(--app-success);
+  --bs-btn-focus-shadow-rgb: var(--app-success-rgb);
+}
+
+.btn-outline-success {
+  --bs-btn-color: var(--app-success);
+  --bs-btn-border-color: var(--app-success);
+  --bs-btn-hover-bg: var(--app-success);
+  --bs-btn-hover-border-color: var(--app-success);
+  --bs-btn-active-bg: var(--app-success);
+  --bs-btn-active-border-color: var(--app-success);
+  --bs-btn-focus-shadow-rgb: var(--app-success-rgb);
+}
+
+.btn-danger {
+  --bs-btn-bg: var(--app-danger);
+  --bs-btn-border-color: var(--app-danger);
+  --bs-btn-hover-bg: #961D14;
+  --bs-btn-hover-border-color: #961D14;
+  --bs-btn-active-bg: #961D14;
+  --bs-btn-active-border-color: #961D14;
+  --bs-btn-disabled-bg: var(--app-danger);
+  --bs-btn-disabled-border-color: var(--app-danger);
+  --bs-btn-focus-shadow-rgb: var(--app-danger-rgb);
+}
+
+.btn-outline-danger {
+  --bs-btn-color: var(--app-danger);
+  --bs-btn-border-color: var(--app-danger);
+  --bs-btn-hover-bg: var(--app-danger);
+  --bs-btn-hover-border-color: var(--app-danger);
+  --bs-btn-active-bg: var(--app-danger);
+  --bs-btn-active-border-color: var(--app-danger);
+  --bs-btn-focus-shadow-rgb: var(--app-danger-rgb);
+}
+
+/* fokus polja forme u boji teme (Bootstrap ima fiksnu svetloplavu) */
+.form-control:focus,
+.form-select:focus {
+  border-color: rgba(var(--app-primary-rgb), 0.55);
+  box-shadow: 0 0 0 0.25rem rgba(var(--app-primary-rgb), 0.18);
+}
+
+.form-check-input:checked {
+  background-color: var(--app-primary);
+  border-color: var(--app-primary);
+}
