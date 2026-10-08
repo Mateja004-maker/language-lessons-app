@@ -154,7 +154,7 @@ onMounted(loadAttempt)
 
           <div class="mt-2 text-muted small">
             <template v-if="q.answered">
-              Vaš odgovor: <span class="text-body">{{ q.student_answer_text ?? '—' }}</span>
+              Tvoj odgovor: <span class="text-body">{{ q.student_answer_text ?? '—' }}</span>
               · {{ q.points_awarded }} / {{ q.points }} poena
             </template>
             <template v-else>Niste odgovorili na ovo pitanje · 0 / {{ q.points }} poena</template>
@@ -186,11 +186,11 @@ onMounted(loadAttempt)
 
                 <div v-if="explanations[q.question_id].rated" class="alert alert-success mb-0">
                   <i class="fa-solid fa-check me-2"></i>
-                  {{ explanations[q.question_id].justRated ? 'Hvala, vaša ocena je sačuvana.' : 'Već ste ocenili ovo objašnjenje.' }}
+                  {{ explanations[q.question_id].justRated ? 'Hvala, tvoja ocena je sačuvana.' : 'Ovo objašnjenje je već ocenjeno.' }}
                 </div>
 
                 <div v-else class="border-top pt-3">
-                  <div class="fw-semibold mb-2">Koliko vam je ovo objašnjenje pomoglo?</div>
+                  <div class="fw-semibold mb-2">Koliko ti je ovo objašnjenje pomoglo?</div>
 
                   <div
                     v-for="criterion in explanations[q.question_id].rubric"
