@@ -222,7 +222,7 @@ async function loadAiCounts() {
 
 const aiCards = computed(() => [
   aiPendingCount.value !== null && {
-    key: 'pending', to: '/ai/predlozi', cls: 'stat-highlight', icon: 'fa-solid fa-wand-magic-sparkles',
+    key: 'pending', to: '/ai/predlozi', cls: 'stat-blue', icon: 'fa-solid fa-wand-magic-sparkles',
     title: 'AI predlozi na čekanju', value: aiPendingCount.value, text: 'Predlozi pitanja koji čekaju odluku'
   },
   mySecondRatingCount.value !== null && {
@@ -348,7 +348,7 @@ onMounted(loadAiCounts)
       <template v-if="role === 'ADMIN'">
         <div class="row g-4 mb-4">
           <div class="col-12 col-md-4">
-            <div class="dashboard-card stat-card stat-blue h-100">
+            <div class="dashboard-card stat-card stat-tinted stat-blue h-100">
               <div class="stat-icon"><i class="fa-solid fa-globe"></i></div>
               <div class="stat-title">Jezici</div>
               <div class="stat-number">{{ languages.length }}</div>
@@ -357,7 +357,7 @@ onMounted(loadAiCounts)
           </div>
 
           <div class="col-12 col-md-4">
-            <div class="dashboard-card stat-card stat-purple h-100">
+            <div class="dashboard-card stat-card stat-tinted stat-purple h-100">
               <div class="stat-icon"><i class="fa-solid fa-book-open"></i></div>
               <div class="stat-title">Lekcije</div>
               <div class="stat-number">{{ lessons.length }}</div>
@@ -366,7 +366,7 @@ onMounted(loadAiCounts)
           </div>
 
           <div class="col-12 col-md-4">
-            <div class="dashboard-card stat-card stat-green h-100">
+            <div class="dashboard-card stat-card stat-tinted stat-green h-100">
               <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
               <div class="stat-title">Korisnici</div>
               <div class="stat-number">{{ users.length }}</div>
@@ -672,8 +672,8 @@ a:hover > .stat-card {
   box-shadow: var(--app-shadow-hover);
 }
 
-/* ikonice u karticama: neutralne slate-sive; zvezdica omiljenih jantarna (ukras);
-   jedina istaknuta kartica (AI predlozi na čekanju): ikonica i brojač u akcentu (5,1:1) */
+/* ikonice u karticama: neutralne slate-sive; zvezdica omiljenih jantarna (ukras).
+   Brojevi su tamni tekst, kao i naslovi. */
 .stat-blue,
 .stat-purple,
 .stat-green {
@@ -684,12 +684,9 @@ a:hover > .stat-card {
   --stat-color: var(--app-amber);
 }
 
-.stat-highlight {
-  --stat-color: var(--app-accent);
-}
-
-.stat-highlight .stat-number {
-  color: var(--app-accent);
+/* statističke kartice ADMIN-a (Jezici, Lekcije, Korisnici): vrlo svetla šljiva */
+.stat-tinted {
+  background: var(--app-plum-soft);
 }
 
 .stat-icon {
@@ -726,7 +723,7 @@ a:hover > .stat-card {
 .section-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: var(--app-secondary);
+  color: var(--app-text);
   font-family: var(--app-font-heading);
 }
 
