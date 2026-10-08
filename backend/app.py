@@ -589,7 +589,10 @@ def uploaded_lesson_image(filename):
 # =========================
 # 5) Auth
 # =========================
-@app.post("/api/auth/register") #Registracija 
+PUBLIC_REGISTRATION_ROLES = ("STUDENT", "TEACHER")  # isto kao izbor na RegisterView.vue
+
+
+@app.post("/api/auth/register") #Registracija
 def register():
     data = request.get_json() or {}
     email = (data.get("email") or "").strip().lower()
@@ -602,6 +605,14 @@ def register():
 
     if role_name not in ("ADMIN", "TEACHER", "STUDENT"):
         return jsonify({"error": "Invalid role"}), 400
+
+    # Javna registracija sme samo uloge sa ekrana za registraciju; ADMIN nalog pravi
+    # postojeći admin (POST /api/users) ili se prvi admin postavlja u bazi (README).
+    if role_name not in PUBLIC_REGISTRATION_ROLES:
+        return jsonify({
+            "error": f"Uloga {role_name} se ne može izabrati pri registraciji "
+                     f"(dozvoljeno: {', '.join(PUBLIC_REGISTRATION_ROLES)})"
+        }), 400
 
     try:
         conn = get_db_connection()
