@@ -168,10 +168,17 @@ body {
   border: 1px solid var(--app-border);
 }
 
+/* status (Objavljen, Položeno...): prirodna visina, ne razvlači se u flex redu */
 .status-badge {
   display: inline-flex;
+  align-items: center;
   justify-content: center;
+  align-self: flex-start;
+  flex: 0 0 auto;
   min-width: 96px;
+  height: auto;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 /* Polja forme */
