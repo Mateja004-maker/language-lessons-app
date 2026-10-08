@@ -29,13 +29,17 @@ export default {
 </script>
 
 <template>
-  <div class="container mt-4">
-    <h2 class="page-title mb-4">Moji rezultati</h2>
+  <div class="container py-4">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Moji rezultati</h1>
+      </div>
+    </div>
 
     <div v-if="loading">Učitavanje...</div>
 
     <div v-else>
-      <div v-if="results.length === 0" class="section-card section-padding text-center text-muted">
+      <div v-if="results.length === 0" class="section-card empty-state">
         <AppIllustration kind="chart" class="mb-2" />
         <div>Još nemaš rezultata.</div>
       </div>

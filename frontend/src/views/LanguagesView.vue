@@ -69,15 +69,12 @@ onMounted(load)
 <template>
   
   <div class="container py-4">
-    <div class="d-flex align-items-center justify-content-between mb-3">
-      <h2 class="page-title mb-4">Admin: Languages</h2>
+    <div class="page-header">
+      <h1 class="page-title">Admin: Languages</h1>
       <button class="btn btn-outline-secondary btn-sm" :disabled="loading" @click="load">
         Refresh
       </button>
     </div>
-    <div class="page-subtitle mb-4">
-  
-</div>
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>

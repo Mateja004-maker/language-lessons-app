@@ -194,8 +194,8 @@ onMounted(loadAll)
 
 <template>
   <div class="container py-4">
-    <div class="d-flex align-items-center justify-content-between mb-3">
-      <h2 class="page-title mb-4">Manage Lessons</h2>
+    <div class="page-header">
+      <h1 class="page-title">Manage Lessons</h1>
       <span v-if="role" class="badge text-bg-secondary">Role: {{ role }}</span>
     </div>
 

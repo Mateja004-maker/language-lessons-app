@@ -95,11 +95,12 @@ export default {
 </script>
 
 <template>
-  <div class="container mt-4 mb-5">
-    <h2 class="page-title mb-4">
-      <i class="fa-solid fa-file-circle-plus me-2"></i>
-      Create Exam
-    </h2>
+  <div class="container py-4">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Create Exam</h1>
+      </div>
+    </div>
 
     <div class="card border-0 shadow-sm">
       <div class="card-body">

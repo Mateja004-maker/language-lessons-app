@@ -92,12 +92,10 @@ onMounted(async () => {
 <template>
   <div class="container py-4">
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="page-header">
       <div>
-        <div class="page-title">Lekcije</div>
-        <div class="page-subtitle">
-          Lekcije iz tvojih predmeta
-        </div>
+        <h1 class="page-title">Lekcije</h1>
+        <p class="page-subtitle">Lekcije iz tvojih predmeta</p>
       </div>
 
       <button
@@ -117,7 +115,7 @@ onMounted(async () => {
       Učitavanje lekcija...
     </div>
 
-    <div v-else-if="lessons.length === 0" class="section-card section-padding text-center">
+    <div v-else-if="lessons.length === 0" class="section-card empty-state">
       <AppIllustration kind="book" class="mb-2" />
       <h5 class="mb-1">Nema dostupnih lekcija.</h5>
       <p class="text-muted mb-0">

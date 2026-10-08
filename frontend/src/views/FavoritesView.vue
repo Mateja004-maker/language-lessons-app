@@ -41,12 +41,10 @@ onMounted(loadFavorites)
 
 <template>
   <div class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="page-header">
       <div>
-        <div class="page-title">Omiljene lekcije</div>
-        <div class="page-subtitle">
-          Sačuvane lekcije za brz pristup
-        </div>
+        <h1 class="page-title">Omiljene lekcije</h1>
+        <p class="page-subtitle">Sačuvane lekcije za brz pristup</p>
       </div>
 
       <button class="btn btn-outline-secondary btn-sm" @click="loadFavorites">
@@ -62,7 +60,7 @@ onMounted(loadFavorites)
       Učitavanje omiljenih lekcija...
     </div>
 
-    <div v-else-if="favorites.length === 0" class="section-card section-padding text-center">
+    <div v-else-if="favorites.length === 0" class="section-card empty-state">
       <AppIllustration kind="star" class="mb-2" />
       <h5 class="mb-1">Još nemaš omiljenih lekcija.</h5>
       <p class="text-muted mb-0">

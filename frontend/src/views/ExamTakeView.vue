@@ -199,7 +199,7 @@ export default {
 </script>
 
 <template>
-  <div class="container mt-4 mb-5">
+  <div class="container py-4">
     <div v-if="error" class="alert alert-danger">
       {{ error }}
     </div>

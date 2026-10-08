@@ -132,7 +132,11 @@ onMounted(loadAttempt)
     </div>
 
     <div v-else-if="attempt">
-      <h2 class="page-title mb-2">{{ attempt.title }}</h2>
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">{{ attempt.title }}</h1>
+        </div>
+      </div>
 
       <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
         <span class="badge bg-dark">{{ attempt.score }} / {{ attempt.total }} poena</span>

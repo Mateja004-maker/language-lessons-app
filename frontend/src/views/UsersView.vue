@@ -150,9 +150,9 @@ onMounted(loadAll)
   <div class="container py-4">
 
     <div class="page-header">
-      <div class="page-title">Users</div>
-      <div class="page-subtitle">
-        Kreiranje i upravljanje studentima i nastavnicima
+      <div>
+        <h1 class="page-title">Users</h1>
+        <p class="page-subtitle">Kreiranje i upravljanje studentima i nastavnicima</p>
       </div>
     </div>
 

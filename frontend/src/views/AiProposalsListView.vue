@@ -36,7 +36,11 @@ onMounted(loadArtifacts)
 
 <template>
   <div class="container py-4">
-    <h2 class="page-title mb-4">AI predlozi</h2>
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">AI predlozi</h1>
+      </div>
+    </div>
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
 
@@ -45,7 +49,7 @@ onMounted(loadArtifacts)
       Učitavanje...
     </div>
 
-    <div v-else-if="!artifacts.length" class="empty-state text-muted text-center py-5">
+    <div v-else-if="!artifacts.length" class="section-card empty-state">
       <AppIllustration kind="inbox" class="mb-3 d-block mx-auto" />
       Nema predloga na čekanju.
     </div>

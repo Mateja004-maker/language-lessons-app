@@ -73,10 +73,10 @@ onMounted(async () => {
     <div v-if="lesson" class="lesson-card">
       <div class="lesson-header">
         <div>
-          <div class="page-title">{{ lesson.title }}</div>
-          <div class="page-subtitle">
+          <h1 class="page-title">{{ lesson.title }}</h1>
+          <p class="page-subtitle">
             {{ lesson.language_code?.toUpperCase() }} • {{ lesson.level }}
-          </div>
+          </p>
         </div>
         <div v-if="role === 'STUDENT'" class="viewed-actions">
           <button

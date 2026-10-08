@@ -241,7 +241,11 @@ onMounted(loadArtifact)
     </div>
 
     <div v-else-if="artifact">
-      <h2 class="page-title mb-2">AI predlog #{{ artifact.id }}</h2>
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">AI predlog #{{ artifact.id }}</h1>
+        </div>
+      </div>
 
       <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
         <span class="badge bg-dark">{{ artifact.subject_name || 'Nepoznat predmet' }}</span>

@@ -36,11 +36,13 @@ onMounted(load)
 
 <template>
   <div class="container py-4">
-    <h2 class="page-title mb-1">Druga ocena AI predloga</h2>
-    <p class="text-muted mb-4">
-      Ocena po rubrici bez donošenja odluke, radi saglasnosti ocenjivača. Model, odluka i tuđe ocene se ne
-      prikazuju dok ne predaš svoju ocenu ili dok se serija ne zatvori.
-    </p>
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Druga ocena AI predloga</h1>
+        <p class="page-subtitle">Ocena po rubrici bez donošenja odluke, radi saglasnosti ocenjivača. Model, odluka i tuđe ocene se ne
+        prikazuju dok ne predaš svoju ocenu ili dok se serija ne zatvori.</p>
+      </div>
+    </div>
 
     <div v-if="saved" class="alert alert-success">{{ saved }}</div>
 
@@ -51,7 +53,7 @@ onMounted(load)
 
     <div v-else-if="error" class="alert alert-warning">{{ error }}</div>
 
-    <div v-else-if="!items.length" class="text-muted text-center py-5">
+    <div v-else-if="!items.length" class="section-card empty-state">
       <AppIllustration kind="scale" class="mb-3 d-block mx-auto" />
       Nema predloga za drugu ocenu.
     </div>

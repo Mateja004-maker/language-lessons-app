@@ -63,12 +63,9 @@ export default {
 </script>
 
 <template>
-  <div class="container mt-4 mb-5">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2 class="page-title mb-0">
-        <i class="fa-solid fa-chart-column me-2"></i>
-        Results for: {{ exam?.title || 'Exam' }}
-      </h2>
+  <div class="container py-4">
+    <div class="page-header">
+      <h1 class="page-title">Results for: {{ exam?.title || 'Exam' }}</h1>
 
       <button
         class="btn btn-success"

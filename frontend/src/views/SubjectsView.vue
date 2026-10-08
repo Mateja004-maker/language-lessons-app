@@ -31,7 +31,11 @@ onMounted(load)
 
 <template>
   <div class="container py-4">
-    <h2 class="page-title mb-4">Predmeti</h2>
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Predmeti</h1>
+      </div>
+    </div>
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="loading">Učitavanje...</div>

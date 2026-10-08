@@ -1,7 +1,7 @@
 <template>
-  <div class="container mt-4 mb-5">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2 class="page-title mb-4">Exams</h2>
+  <div class="container py-4">
+    <div class="page-header">
+      <h1 class="page-title">Exams</h1>
 
       <router-link
         v-if="role === 'ADMIN' || role === 'TEACHER'"
@@ -17,7 +17,7 @@
     </div>
 
     <div v-else>
-      <div v-if="exams.length === 0" class="section-card section-padding text-center text-muted mb-4">
+      <div v-if="exams.length === 0" class="section-card empty-state mb-4">
         <AppIllustration kind="clipboard" class="mb-2" />
         <div>Nema dostupnih testova.</div>
       </div>

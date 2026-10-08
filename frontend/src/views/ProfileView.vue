@@ -115,9 +115,9 @@ onMounted(loadProfile)
   <div class="container py-4">
 
     <div class="page-header">
-      <div class="page-title">My Profile</div>
-      <div class="page-subtitle">
-        Manage your personal information
+      <div>
+        <h1 class="page-title">My Profile</h1>
+        <p class="page-subtitle">Manage your personal information</p>
       </div>
     </div>
 

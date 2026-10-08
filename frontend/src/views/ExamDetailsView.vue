@@ -244,15 +244,12 @@ export default {
 </script>
 
 <template>
-  <div class="container mt-4 mb-5">
+  <div class="container py-4">
     <div v-if="loading">Loading...</div>
 
     <div v-else>
-      <div class="mb-4">
-        <h2 class="page-title">
-          <i class="fa-solid fa-file-lines me-2"></i>
-          {{ exam.title }}
-        </h2>
+      <div class="page-header">
+        <h1 class="page-title">{{ exam.title }}</h1>
 
         <span
           class="badge status-badge"
