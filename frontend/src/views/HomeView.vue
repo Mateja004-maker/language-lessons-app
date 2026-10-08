@@ -803,7 +803,7 @@ a:hover > .stat-card {
 .progress-percent {
   font-size: 1.6rem;
   font-weight: 700;
-  color: var(--app-primary);
+  color: var(--app-text);
 }
 
 .chart-box {
