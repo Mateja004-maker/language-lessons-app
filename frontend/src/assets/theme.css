@@ -78,6 +78,9 @@
   --bs-body-color: var(--app-text);
   --bs-body-color-rgb: var(--app-text-rgb);
   --bs-secondary-color: var(--app-text-muted);
+  /* Bootstrap siva #6c757d ima 4,4:1 na pozadini - zamenjena sporednim tekstom (5,9:1) */
+  --bs-secondary: var(--app-text-muted);
+  --bs-secondary-rgb: 91, 96, 104;
   --bs-border-color: var(--app-border);
 
   --bs-primary: var(--app-primary);
@@ -219,6 +222,28 @@ h1, h2, h3, h4, h5, h6,
   --bs-btn-active-bg: var(--app-danger);
   --bs-btn-active-border-color: var(--app-danger);
   --bs-btn-focus-shadow-rgb: var(--app-danger-rgb);
+}
+
+.btn-outline-secondary {
+  --bs-btn-color: var(--app-text-muted);
+  --bs-btn-border-color: var(--app-text-muted);
+  --bs-btn-hover-color: #FFFFFF;
+  --bs-btn-hover-bg: var(--app-text-muted);
+  --bs-btn-hover-border-color: var(--app-text-muted);
+  --bs-btn-active-color: #FFFFFF;
+  --bs-btn-active-bg: var(--app-text-muted);
+  --bs-btn-active-border-color: var(--app-text-muted);
+  --bs-btn-disabled-color: var(--app-text-muted);
+  --bs-btn-disabled-border-color: var(--app-text-muted);
+}
+
+.btn-secondary {
+  --bs-btn-bg: var(--app-text-muted);
+  --bs-btn-border-color: var(--app-text-muted);
+  --bs-btn-hover-bg: #474B52;
+  --bs-btn-hover-border-color: #474B52;
+  --bs-btn-active-bg: #474B52;
+  --bs-btn-active-border-color: #474B52;
 }
 
 /* fokus: tanak akcentni prsten (detalj, ne površina) */

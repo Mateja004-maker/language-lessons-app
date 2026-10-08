@@ -313,7 +313,7 @@ function onLogout() {
 }
 
 .user-role {
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.85);  /* 70% je bilo 4,45:1 na polju avatara */
   font-size: 0.75rem;
 }
 .navbar-profile-img {
