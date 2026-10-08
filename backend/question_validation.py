@@ -58,6 +58,10 @@ def prompt_version_number(prompt_version):
 
 
 def strict_fields_enabled(prompt_version) -> bool:
+    """Strogo pravilo (nepoznata polja = greška, oznake obavezne): mc/open od v3
+    i svaka verzija generisanja iz skupa (set-v1 ...), koje je nastalo posle v3."""
+    if isinstance(prompt_version, str) and prompt_version.strip().startswith("set-"):
+        return True
     number = prompt_version_number(prompt_version)
     return number is not None and number >= STRICT_FIELDS_FROM_VERSION
 
@@ -130,6 +134,83 @@ def validate(parsed, question_type, expected_answer_count, prompt_version=None,
                 return _fail(error)
 
     return ValidationResult(passed=True)
+
+
+# --- Generisanje iz skupa pitanja (tačka J) ---
+# Odgovor modela: {"questions": [stavka, ...]}; svaka stavka je MC (3-5 odgovora)
+# ili otvoreno pitanje, sa istim pravilima kao v3 pitanje. Prazan niz ili više
+# od K stavki je greška celog odgovora. Delimično ispravan niz: prihvataju se
+# samo ispravne stavke (odbijene se beleže); ceo odgovor je neuspeh tek kad
+# nijedna stavka nije ispravna.
+
+SET_MIN_ANSWERS = 3
+SET_MAX_ANSWERS = 5
+ALLOWED_SET_FIELDS = {"questions"}
+
+
+@dataclass
+class SetItemResult:
+    index: int
+    question_type: str
+    passed: bool
+    errors: list
+    item: object
+
+
+@dataclass
+class SetValidationResult:
+    passed: bool
+    errors: list = field(default_factory=list)
+    items: list = field(default_factory=list)
+
+    @property
+    def accepted(self):
+        return [r for r in self.items if r.passed]
+
+    @property
+    def rejected(self):
+        return [r for r in self.items if not r.passed]
+
+
+def validate_set_item(item, prompt_version) -> SetItemResult:
+    """Jedna stavka niza: MC ako ima "answers", inače otvoreno pitanje."""
+    question_type = "mc" if isinstance(item, dict) and "answers" in item else "open"
+    if question_type == "mc":
+        answers = item.get("answers")
+        if not isinstance(answers, list) or not SET_MIN_ANSWERS <= len(answers) <= SET_MAX_ANSWERS:
+            return SetItemResult(0, question_type, False,
+                                 [f"Očekivano je {SET_MIN_ANSWERS}-{SET_MAX_ANSWERS} ponuđenih odgovora"], item)
+        expected = len(answers)
+    else:
+        expected = 0
+    result = validate(item, question_type, expected, prompt_version)
+    return SetItemResult(0, question_type, result.passed, result.errors, item)
+
+
+def validate_set(parsed, k, prompt_version) -> SetValidationResult:
+    """Ceo odgovor za skup; passed = bar jedna ispravna stavka."""
+    if not isinstance(parsed, dict):
+        return SetValidationResult(False, ["Odgovor modela mora biti JSON objekat"])
+    if strict_fields_enabled(prompt_version):
+        unknown = sorted(set(parsed) - ALLOWED_SET_FIELDS)
+        if unknown:
+            return SetValidationResult(False, [f"Nepoznata polja u odgovoru: {', '.join(unknown)}"])
+    questions = parsed.get("questions")
+    if not isinstance(questions, list):
+        return SetValidationResult(False, ["Nedostaje niz questions"])
+    if not questions:
+        return SetValidationResult(False, ["Prazan niz questions"])
+    if len(questions) > k:
+        return SetValidationResult(False, [f"Vraćeno {len(questions)} pitanja, a traženo najviše {k}"])
+
+    items = []
+    for index, item in enumerate(questions):
+        result = validate_set_item(item, prompt_version)
+        result.index = index
+        items.append(result)
+    if not any(r.passed for r in items):
+        return SetValidationResult(False, [f"Nijedno pitanje nije ispravno (prvo: {items[0].errors[0]})"], items)
+    return SetValidationResult(True, [], items)
 
 
 # --- Komandna linija ---

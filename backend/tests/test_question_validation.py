@@ -21,6 +21,7 @@ from question_validation import (  # noqa: E402
     prompt_version_number,
     strict_fields_enabled,
     validate,
+    validate_set,
 )
 
 LABELS = {"difficulty": "srednje", "bloom_level": "primena"}
@@ -177,6 +178,66 @@ class V3LabelCases(unittest.TestCase):
 
     def test_format_error_comes_before_label_error(self):
         self.assertFail(validate(mc(question_text=""), "mc", 3, "mc-v3"), "Nedostaje ili je prazan question_text")
+
+
+def set_mc(n=4, **extra):
+    return {"question_text": "Novo MC pitanje", **LABELS,
+            "answers": [{"answer_text": f"o{i}", "is_correct": i == 0} for i in range(n)], **extra}
+
+
+def set_open(**extra):
+    return {"question_text": "Novo otvoreno pitanje", **LABELS, **extra}
+
+
+class SetValidation(unittest.TestCase):
+    def test_all_valid(self):
+        r = validate_set({"questions": [set_mc(3), set_open(), set_mc(5)]}, 3, "set-v1")
+        self.assertTrue(r.passed)
+        self.assertEqual(len(r.accepted), 3)
+        self.assertEqual([i.question_type for i in r.items], ["mc", "open", "mc"])
+
+    def test_partial_accepts_only_valid_items(self):
+        r = validate_set({"questions": [set_mc(4), set_mc(2), set_open(note="x")]}, 3, "set-v1")
+        self.assertTrue(r.passed)
+        self.assertEqual([i.index for i in r.accepted], [0])
+        self.assertEqual([i.index for i in r.rejected], [1, 2])
+        self.assertEqual(r.items[1].errors, ["Očekivano je 3-5 ponuđenih odgovora"])
+        self.assertEqual(r.items[2].errors, ["Nepoznata polja u odgovoru: note"])
+
+    def test_fewer_than_k_is_allowed(self):
+        self.assertTrue(validate_set({"questions": [set_open()]}, 3, "set-v1").passed)
+
+    def test_empty_array(self):
+        r = validate_set({"questions": []}, 3, "set-v1")
+        self.assertEqual((r.passed, r.errors), (False, ["Prazan niz questions"]))
+
+    def test_more_than_k(self):
+        r = validate_set({"questions": [set_open()] * 4}, 3, "set-v1")
+        self.assertEqual((r.passed, r.errors), (False, ["Vraćeno 4 pitanja, a traženo najviše 3"]))
+
+    def test_no_valid_item(self):
+        r = validate_set({"questions": [set_mc(2), set_mc(6)]}, 3, "set-v1")
+        self.assertFalse(r.passed)
+        self.assertTrue(r.errors[0].startswith("Nijedno pitanje nije ispravno"))
+        self.assertEqual(len(r.rejected), 2)
+
+    def test_structure_errors(self):
+        self.assertEqual(validate_set([1], 3, "set-v1").errors, ["Odgovor modela mora biti JSON objekat"])
+        self.assertEqual(validate_set({"items": []}, 3, "set-v1").errors, ["Nepoznata polja u odgovoru: items"])
+        self.assertEqual(validate_set({}, 3, "set-v1").errors, ["Nedostaje niz questions"])
+
+    def test_item_labels_required_and_mc_rules(self):
+        no_labels = {"question_text": "x", "answers": [{"answer_text": f"{i}", "is_correct": i == 0} for i in range(3)]}
+        two_correct = set_mc(3)
+        two_correct["answers"][1]["is_correct"] = True
+        r = validate_set({"questions": [no_labels, two_correct]}, 2, "set-v1")
+        self.assertFalse(r.passed)
+        self.assertIn("difficulty", r.items[0].errors[0])
+        self.assertIn("tačno jedan tačan", r.items[1].errors[0])
+
+    def test_set_versions_are_strict(self):
+        self.assertTrue(strict_fields_enabled("set-v1"))
+        self.assertTrue(strict_fields_enabled("set-v2"))
 
 
 class Versions(unittest.TestCase):
