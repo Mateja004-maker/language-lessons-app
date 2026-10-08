@@ -224,6 +224,10 @@ function onLogout() {
 /* boje iz teme (src/assets/theme.css) */
 .app-navbar {
   background-color: var(--app-navbar);
+  /* neaktivne stavke 78% bele (6,1:1); Bootstrap-ovih 55% bi bilo ispod 4,5:1 */
+  --bs-navbar-color: rgba(255, 255, 255, 0.78);
+  --bs-navbar-hover-color: #FFFFFF;
+  --bs-navbar-active-color: #FFFFFF;
 }
 
 .app-navbar .dropdown-menu-dark {
@@ -242,12 +246,25 @@ function onLogout() {
   white-space: nowrap;
 }
 
-/* aktivna stavka: beli tekst na svetlijoj pozadini (8,5:1) */
-.nav-link.router-link-active,
-.nav-link.dropdown-toggle.active {
+/* aktivna stavka (i meni otvorene stranice): SAMO tanka bela podvlaka ispod teksta.
+   Bela (8,9:1) jer #D81159 na navbaru ima samo 1,75:1. Bez pozadine iza stavke. */
+.app-navbar .nav-link {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 8px;
+  text-decoration-color: transparent;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.app-navbar .nav-link:hover {
+  color: #FFFFFF;
+  text-decoration-color: rgba(255, 255, 255, 0.35);
+}
+
+.app-navbar .nav-link.router-link-active,
+.app-navbar .nav-link.dropdown-toggle.active {
   color: #FFFFFF !important;
-  background-color: rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
+  text-decoration-color: #FFFFFF;
 }
 
 .user-box {
