@@ -203,13 +203,13 @@ onMounted(loadData)
     <div class="hero-box mb-4">
       <div class="row align-items-center g-4">
         <div class="col-12 col-lg-8">
-          <div class="hero-badge mb-3">
+          <!-- ADMIN: uloga se već vidi u navbaru, ne ponavlja se -->
+          <div v-if="role !== 'ADMIN'" class="hero-badge mb-3">
             {{ role }}
           </div>
 
           <h1 class="hero-title mb-2">
             Welcome back, {{ profile?.display_name || 'User' }}
-            <span class="text-primary">.</span>
           </h1>
           <div
             v-if="subjectNames && role !== 'ADMIN'"
@@ -241,16 +241,23 @@ onMounted(loadData)
 
         <div class="col-12 col-lg-4">
           <div class="hero-side-card">
-            <div class="mini-label">Current role</div>
-            <div class="mini-value mb-4">
-              {{ role }}
-            </div>
+            <template v-if="role !== 'ADMIN'">
+              <div class="mini-label">Current role</div>
+              <div class="mini-value mb-4">
+                {{ role }}
+              </div>
+            </template>
 
+            <!-- ADMIN: jedna kartica umesto "Pending approvals" + "Notifications" -->
             <template v-if="role === 'ADMIN'">
-              <div class="mini-label">Pending approvals</div>
+              <div class="mini-label">Zahtevi za registraciju</div>
 
-              <div class="mini-value text-warning mb-3">
+              <div class="mini-value text-warning mb-1">
                 {{ pendingUsers.length }}
+              </div>
+
+              <div class="mini-label mb-3">
+                {{ pendingUsers.length > 0 ? 'Nalozi čekaju odobrenje.' : 'Nema novih zahteva.' }}
               </div>
 
               <router-link
@@ -258,7 +265,7 @@ onMounted(loadData)
                 class="btn btn-warning btn-sm w-100"
               >
                 <i class="fa-solid fa-user-check me-2"></i>
-                Review requests
+                Pregledaj zahteve
               </router-link>
             </template>
 
@@ -324,39 +331,6 @@ onMounted(loadData)
           </div>
 
           
-        </div>
-
-        <div class="dashboard-card p-4 mb-4">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <div class="section-title">
-              Notifications
-            </div>
-
-            <span class="badge text-bg-warning">
-              {{ pendingUsers.length }}
-            </span>
-          </div>
-
-          <div
-            v-if="pendingUsers.length > 0"
-            class="notification-item"
-          >
-            <i class="fa-solid fa-triangle-exclamation me-2"></i>
-            You have
-            <strong>{{ pendingUsers.length }}</strong>
-            pending registration request(s).
-
-            <router-link to="/admin/users" class="ms-2 fw-bold">
-              Review now →
-            </router-link>
-          </div>
-
-          <div
-            v-else
-            class="text-muted"
-          >
-            No pending notifications.
-          </div>
         </div>
 
         <div class="dashboard-card p-4">
@@ -685,15 +659,6 @@ onMounted(loadData)
   font-size: 1.2rem;
   font-weight: 700;
   color: #1f2937;
-}
-
-.notification-item {
-  background: #fff7ed;
-  border: 1px solid #fdba74;
-  color: #9a3412;
-  border-radius: 14px;
-  padding: 14px;
-  font-size: 0.96rem;
 }
 
 .action-card {
