@@ -33,6 +33,10 @@ const canManageLessons = computed(() =>
   role.value === 'TEACHER' || role.value === 'ADMIN'
 )
 
+// prikaz uloge na srpskom; vrednost u localStorage/JWT ostaje ADMIN / TEACHER / STUDENT
+const ROLE_LABELS = { ADMIN: 'Administrator', TEACHER: 'Nastavnik', STUDENT: 'Student' }
+const roleLabel = computed(() => ROLE_LABELS[role.value] || role.value)
+
 // padajući meni je istaknut kad je otvorena neka od njegovih stranica
 const isAiRoute = computed(() => route.path.startsWith('/ai/'))
 const isAdminRoute = computed(() => route.path.startsWith('/admin/'))
@@ -69,38 +73,38 @@ function onLogout() {
 
           <li class="nav-item">
             <router-link class="nav-link" to="/">
-              Home
+              Početna
             </router-link>
           </li>
 
           <li v-if="isLoggedIn" class="nav-item">
             <router-link class="nav-link" to="/lessons">
-              Lessons
+              Lekcije
             </router-link>
           </li>
 
           <li v-if="isLoggedIn && isStudent" class="nav-item">
             <router-link class="nav-link" to="/favorites">
-              Favorites
+              Omiljene lekcije
             </router-link>
           </li>
 
           <li v-if="isLoggedIn && canManageLessons" class="nav-item">
             <router-link class="nav-link" to="/manage/lessons">
-              Manage Lessons
+              Uređivanje lekcija
             </router-link>
           </li>
 
           <!-- ista ruta za sve uloge (ranije dve stavke: TEACHER/ADMIN i STUDENT) -->
           <li v-if="isLoggedIn && (canManageLessons || isStudent)" class="nav-item">
             <router-link class="nav-link" to="/exams">
-              Exams
+              Testovi
             </router-link>
           </li>
 
           <li v-if="isLoggedIn && isStudent" class="nav-item">
             <router-link class="nav-link" to="/my-results">
-              My Results
+              Moji rezultati
             </router-link>
           </li>
 
@@ -122,9 +126,9 @@ function onLogout() {
               AI
             </a>
             <ul class="dropdown-menu dropdown-menu-dark">
-              <li><router-link class="dropdown-item" to="/ai/predlozi">AI predlozi</router-link></li>
+              <li><router-link class="dropdown-item" to="/ai/predlozi">Predlozi pitanja</router-link></li>
               <li><router-link class="dropdown-item" to="/ai/druga-ocena">Druga ocena</router-link></li>
-              <li><router-link class="dropdown-item" to="/ai/objasnjenja">AI objašnjenja</router-link></li>
+              <li><router-link class="dropdown-item" to="/ai/objasnjenja">Objašnjenja</router-link></li>
             </ul>
           </li>
 
@@ -140,8 +144,8 @@ function onLogout() {
               Administracija
             </a>
             <ul class="dropdown-menu dropdown-menu-dark">
-              <li><router-link class="dropdown-item" to="/admin/users">Users</router-link></li>
-              <li><router-link class="dropdown-item" to="/admin/languages">Languages</router-link></li>
+              <li><router-link class="dropdown-item" to="/admin/users">Korisnici</router-link></li>
+              <li><router-link class="dropdown-item" to="/admin/languages">Jezici</router-link></li>
             </ul>
           </li>
 
@@ -160,7 +164,7 @@ function onLogout() {
                 <img
                   v-if="profile?.profile_image"
                   :src="`http://127.0.0.1:5000${profile.profile_image}`"
-                  alt="Profile"
+                  alt="Profilna slika"
                   class="navbar-profile-img"
                 />
 
@@ -171,11 +175,11 @@ function onLogout() {
 
               <span class="user-info">
                 <span class="user-name">
-                  {{ profile?.display_name || 'User' }}
+                  {{ profile?.display_name || 'Korisnik' }}
                 </span>
 
                 <span class="user-role">
-                  {{ role }}
+                  {{ roleLabel }}
                 </span>
               </span>
             </button>
@@ -183,13 +187,13 @@ function onLogout() {
             <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
               <li>
                 <router-link class="dropdown-item" to="/profile">
-                  <i class="bi bi-person me-2"></i>My Profile
+                  <i class="bi bi-person me-2"></i>Moj profil
                 </router-link>
               </li>
               <li><hr class="dropdown-divider" /></li>
               <li>
-                <button class="dropdown-item" type="button" title="Logout" @click="onLogout">
-                  <i class="bi bi-box-arrow-right me-2"></i>Logout
+                <button class="dropdown-item" type="button" title="Odjava" @click="onLogout">
+                  <i class="bi bi-box-arrow-right me-2"></i>Odjava
                 </button>
               </li>
             </ul>
@@ -200,7 +204,7 @@ function onLogout() {
             class="btn btn-outline-primary btn-sm"
             to="/login"
           >
-            Login
+            Prijava
           </router-link>
 
         </div>

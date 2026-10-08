@@ -57,7 +57,7 @@ Nova baza nema nijednog korisnika (`seed.sql` dodaje probne naloge, ali samo za 
    UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'ADMIN'), is_active = 1
    WHERE email = 'vas@email';
    ```
-3. Ostale naloge admin odobrava ili pravi u aplikaciji: **Users** (`/admin/users`, samo ADMIN).
+3. Ostale naloge admin odobrava ili pravi u aplikaciji: **Administracija → Korisnici** (`/admin/users`, samo ADMIN).
    Nove ADMIN naloge posle toga pravi samo postojeći admin.
 
 ### Predmeti
@@ -69,7 +69,7 @@ Aplikacija nema ekran ni API za pravljenje predmeta, pa se predmeti unose SQL-om
 INSERT INTO subjects (code, name) VALUES ('OP', 'Osnove programiranja'), ('MAT', 'Matematika');
 ```
 
-Predmete nastavnicima i studentima dodeljuje admin na stranici **Users**
+Predmete nastavnicima i studentima dodeljuje admin na stranici **Administracija → Korisnici**
 (`/admin/users`): pri pravljenju korisnika ili kasnijom izmenom (`PUT /api/users/<id>/subjects`).
 Oblasti unutar predmeta i banku pitanja nastavnik pravi u aplikaciji.
 
