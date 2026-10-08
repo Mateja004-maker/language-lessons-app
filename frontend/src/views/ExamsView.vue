@@ -1,17 +1,28 @@
 <template>
   <div class="container py-4">
-    <PageHeader title="Exams">
+    <PageHeader title="Testovi">
+      <select v-if="role === 'ADMIN'" v-model="selectedSubject" class="form-select" aria-label="Predmet">
+        <option value="">Svi predmeti</option>
+        <option
+          v-for="subject in subjects"
+          :key="subject"
+          :value="subject"
+        >
+          {{ subject }}
+        </option>
+      </select>
+
       <router-link
         v-if="role === 'ADMIN' || role === 'TEACHER'"
         to="/exams/create"
         class="btn btn-primary"
       >
-        Create Exam
+        Napravi test
       </router-link>
     </PageHeader>
 
     <div v-if="loading" class="card border-0 shadow-sm">
-      <div class="card-body">Loading...</div>
+      <div class="card-body">Učitavanje...</div>
     </div>
 
     <div v-else>
@@ -20,27 +31,10 @@
         <div>Nema dostupnih testova.</div>
       </div>
 
-      <!-- ADMIN SUBJECT FILTER -->
-      <div v-if="role === 'ADMIN'" class="card border-0 shadow-sm mb-4">
-        <div class="card-body">
-          <label class="form-label fw-semibold">Filter by subject</label>
-          <select v-model="selectedSubject" class="form-select">
-            <option value="">All subjects</option>
-            <option
-              v-for="subject in subjects"
-              :key="subject"
-              :value="subject"
-            >
-              {{ subject }}
-            </option>
-          </select>
-        </div>
-      </div>
-
       <!-- STUDENT VIEW -->
       <template v-if="role === 'STUDENT'">
         <section v-if="pendingExams.length > 0" class="mb-4">
-          <h4 class="section-title mb-3">Available Exams</h4>
+          <h4 class="section-title mb-3">Dostupni testovi</h4>
 
           <div class="row g-3">
             <div
@@ -54,7 +48,7 @@
 
                   <div class="mb-2">
                     <span v-if="exam.exam_mode" class="badge bg-dark me-1">
-                      Exam mode
+                      Ispitni režim
                     </span>
                     <span class="badge bg-light text-dark border">
                       {{ exam.subject_name }}
@@ -65,14 +59,14 @@
                   </div>
 
                   <div class="small text-muted">
-                    <div><strong>Duration:</strong> {{ exam.duration_minutes }} min</div>
+                    <div><strong>Trajanje:</strong> {{ exam.duration_minutes }} min</div>
 
                     <div v-if="exam.open_at">
-                      <strong>From:</strong> {{ formatDate(exam.open_at) }}
+                      <strong>Od:</strong> {{ formatDate(exam.open_at) }}
                     </div>
 
                     <div v-if="exam.close_at">
-                      <strong>Until:</strong> {{ formatDate(exam.close_at) }}
+                      <strong>Do:</strong> {{ formatDate(exam.close_at) }}
                     </div>
                   </div>
                 </div>
@@ -82,7 +76,7 @@
                     :to="'/exams/' + exam.id + '/take'"
                     class="btn btn-primary w-100"
                   >
-                    Take Exam
+                    Započni test
                   </router-link>
                 </div>
               </div>
@@ -91,7 +85,7 @@
         </section>
 
         <section v-if="completedExams.length > 0">
-          <h4 class="section-title mb-3">Completed Exams</h4>
+          <h4 class="section-title mb-3">Završeni testovi</h4>
 
           <div class="row g-3">
             <div
@@ -103,7 +97,7 @@
                 <div class="card-body">
                   <div class="d-flex justify-content-between">
                     <h5 class="fw-bold fs-4 mb-2">{{ exam.title }}</h5>
-                    <span class="badge bg-success status-badge">Completed</span>
+                    <span class="badge bg-success status-badge">Završen</span>
                   </div>
 
                   <div class="mb-2">
@@ -116,7 +110,7 @@
                   </div>
 
                   <div class="small text-muted mb-2">
-                    <strong>Score:</strong>
+                    <strong>Poeni:</strong>
                     {{ exam.score }} / {{ exam.total_points }}
                   </div>
 
@@ -124,13 +118,13 @@
                     class="badge"
                     :class="isPassed(exam) ? 'bg-success' : 'bg-danger'"
                   >
-                    {{ isPassed(exam) ? 'Passed' : 'Failed' }}
+                    {{ isPassed(exam) ? 'Položeno' : 'Nije položeno' }}
                   </span>
                 </div>
 
                 <div class="card-footer bg-white border-0">
                   <router-link to="/my-results" class="btn btn-outline-secondary w-100">
-                    View Result
+                    Pogledaj rezultat
                   </router-link>
                 </div>
               </div>
@@ -142,7 +136,7 @@
       <!-- ADMIN / TEACHER VIEW -->
       <template v-else>
         <section v-if="publishedExams.length > 0" class="mb-4">
-          <h4 class="section-title mb-3">Published Exams</h4>
+          <h4 class="section-title mb-3">Objavljeni testovi</h4>
 
           <div class="row g-3">
             <div
@@ -154,7 +148,7 @@
                 <div class="card-body">
                   <div class="d-flex justify-content-between">
                     <h5 class="fw-bold fs-4 mb-2">{{ exam.title }}</h5>
-                    <span class="badge bg-success status-badge">Published</span>
+                    <span class="badge bg-success status-badge">Objavljen</span>
                   </div>
 
                   <div class="mb-2">
@@ -167,7 +161,7 @@
                   </div>
 
                   <div class="small text-muted">
-                    <div><strong>Duration:</strong> {{ exam.duration_minutes }} min</div>
+                    <div><strong>Trajanje:</strong> {{ exam.duration_minutes }} min</div>
                   </div>
                 </div>
 
@@ -176,14 +170,14 @@
                     :to="'/exams/' + exam.id + '/results'"
                     class="btn btn-outline-secondary w-100"
                   >
-                    Results
+                    Rezultati
                   </router-link>
 
                   <button
                     class="btn btn-outline-danger w-100"
                     @click="deleteExamClick(exam)"
                   >
-                    Delete
+                    Obriši
                   </button>
                 </div>
               </div>
@@ -192,7 +186,7 @@
         </section>
 
         <section v-if="draftExams.length > 0">
-          <h4 class="section-title mb-3">Drafts</h4>
+          <h4 class="section-title mb-3">Nacrti</h4>
 
           <div class="row g-3">
             <div
@@ -204,7 +198,7 @@
                 <div class="card-body">
                   <div class="d-flex justify-content-between">
                     <h5 class="fw-bold fs-4 mb-2">{{ exam.title }}</h5>
-                    <span class="badge bg-secondary status-badge">Draft</span>
+                    <span class="badge bg-secondary status-badge">Nacrt</span>
                   </div>
 
                   <div class="mb-2">
@@ -217,7 +211,7 @@
                   </div>
 
                   <div class="small text-muted">
-                    <div><strong>Duration:</strong> {{ exam.duration_minutes }} min</div>
+                    <div><strong>Trajanje:</strong> {{ exam.duration_minutes }} min</div>
                   </div>
                 </div>
 
@@ -226,13 +220,13 @@
                     :to="'/exams/' + exam.id"
                     class="btn btn-outline-secondary w-100"
                   >
-                    Manage
+                    Uredi
                   </router-link>
                   <button
                     class="btn btn-outline-danger w-100"
                     @click="deleteExamClick(exam)"
                   >
-                    Delete
+                    Obriši
                   </button>
 
                   <!-- <router-link
@@ -326,7 +320,7 @@ export default {
       this.exams = res.data
     } catch (err) {
       console.error(err)
-      alert('Failed to load exams')
+      alert('Učitavanje testova nije uspelo.')
     } finally {
       this.loading = false
     }
