@@ -176,19 +176,17 @@ const lessonsByLevel = computed(() => {
   return levels
 })
 
+function themeColor(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
+
 const levelChartData = computed(() => ({
   labels: Object.keys(lessonsByLevel.value),
   datasets: [
     {
       data: Object.values(lessonsByLevel.value),
-      backgroundColor: [
-        '#2563eb',
-        '#10b981',
-        '#f59e0b',
-        '#ef4444',
-        '#8b5cf6',
-        '#14b8a6'
-      ]
+      // boje iz teme (theme.css: --app-chart-1 ... --app-chart-6)
+      backgroundColor: [1, 2, 3, 4, 5, 6].map(i => themeColor(`--app-chart-${i}`))
     }
   ]
 }))
@@ -599,17 +597,19 @@ onMounted(loadAiCounts)
 </template>
 
 <style scoped>
+/* Boje, zaobljenja i senke dolaze iz teme (src/assets/theme.css). */
 .hero-box {
-  background: linear-gradient(135deg, #ffffff 0%, #eef4ff 100%);
-  border-radius: 24px;
+  background: linear-gradient(135deg, var(--app-surface) 0%, var(--app-primary-soft) 100%);
+  border-radius: var(--app-radius-lg);
   padding: 32px;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--app-shadow);
+  border-top: 4px solid var(--app-accent);
 }
 
 .hero-badge {
   display: inline-block;
-  background: #212529;
-  color: white;
+  background: var(--app-navbar);
+  color: #FFFFFF;
   border-radius: 999px;
   padding: 6px 14px;
   font-size: 0.85rem;
@@ -618,79 +618,88 @@ onMounted(loadAiCounts)
 
 .hero-title {
   font-size: 2.4rem;
-  font-weight: 800;
-  color: #1f2937;
+  font-weight: 700;
+  color: var(--app-text);
 }
 
 .hero-text {
   font-size: 1.05rem;
-  color: #6b7280;
+  color: var(--app-text-muted);
   max-width: 700px;
 }
 
 .hero-side-card {
-  background: rgba(255, 255, 255, 0.85);
-  border-radius: 20px;
+  background: var(--app-surface);
+  border-radius: var(--app-radius-lg);
   padding: 24px;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+  box-shadow: inset 0 0 0 1px var(--app-border);
 }
 
 .mini-label {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--app-text-muted);
   margin-bottom: 4px;
 }
 
 .mini-value {
   font-size: 1.2rem;
-  font-weight: 800;
-  color: #111827;
+  font-weight: 700;
+  color: var(--app-text);
 }
 
 .dashboard-card {
-  background: white;
-  border-radius: 22px;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  background: var(--app-surface);
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--app-shadow);
 }
 
+/* statistika: bela kartica, boja samo u ivici i ikonici (tekst ostaje tamno na belom) */
 .stat-card {
   padding: 24px;
-  color: white;
+  color: var(--app-text);
   overflow: hidden;
   position: relative;
+  border-left: 4px solid var(--stat-color, var(--app-primary));
+  transition: box-shadow 0.18s ease;
+}
+
+a:hover > .stat-card {
+  box-shadow: var(--app-shadow-hover);
 }
 
 .stat-blue {
-  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  --stat-color: var(--app-primary);
 }
 
 .stat-purple {
-  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+  --stat-color: var(--app-navbar);
 }
 
 .stat-orange {
-  background: linear-gradient(135deg, #ea580c, #f97316);
+  --stat-color: var(--app-accent);
 }
 
 .stat-green {
-  background: linear-gradient(135deg, #059669, #10b981);
+  --stat-color: var(--app-success);
 }
 
 .stat-icon {
   font-size: 2rem;
   margin-bottom: 12px;
+  color: var(--stat-color, var(--app-primary));
 }
 
 .stat-title {
   font-size: 1rem;
   font-weight: 600;
-  opacity: 0.95;
+  color: var(--app-text-muted);
 }
 
 .stat-number {
   font-size: 2rem;
-  font-weight: 800;
+  font-weight: 700;
   margin: 6px 0;
+  font-family: var(--app-font-heading);
 }
 
 .small-number {
@@ -698,52 +707,54 @@ onMounted(loadAiCounts)
 }
 
 .stat-text {
-  opacity: 0.9;
+  color: var(--app-text-muted);
 }
 
 .section-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--app-text);
+  font-family: var(--app-font-heading);
 }
 
 .action-card {
   display: block;
-  background: #f8fafc;
-  border-radius: 18px;
+  background: var(--app-bg);
+  border-radius: var(--app-radius);
   padding: 20px;
   height: 100%;
   transition: all 0.18s ease;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--app-border);
 }
 
 .action-card:hover {
   transform: translateY(-3px);
-  background: white;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-hover);
 }
 
 .action-icon {
   font-size: 1.7rem;
   margin-bottom: 10px;
+  color: var(--app-primary);
 }
 
 .action-title {
   font-size: 1.05rem;
   font-weight: 700;
-  color: #111827;
+  color: var(--app-text);
   margin-bottom: 4px;
 }
 
 .action-text {
-  color: #6b7280;
+  color: var(--app-text-muted);
   font-size: 0.95rem;
 }
 
 .language-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(var(--app-text-rgb), 0.55);
   z-index: 9999;
   display: flex;
   align-items: center;
@@ -752,40 +763,43 @@ onMounted(loadAiCounts)
 }
 
 .language-modal-card {
-  background: white;
+  background: var(--app-surface);
   width: 100%;
   max-width: 430px;
-  border-radius: 24px;
+  border-radius: var(--app-radius-lg);
   padding: 32px;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+  box-shadow: var(--app-shadow-hover);
   text-align: center;
 }
 
 .modal-icon {
   font-size: 3rem;
   margin-bottom: 12px;
+  color: var(--app-primary);
 }
+
 .hero-language {
   font-size: 1rem;
   font-weight: 600;
-  color: #2563eb;
+  color: var(--app-primary);
 }
+
 .progress-custom {
   height: 14px;
   border-radius: 999px;
-  background: #e5e7eb;
+  background: var(--app-border);
   overflow: hidden;
 }
 
 .progress-custom .progress-bar {
   border-radius: 999px;
-  background: linear-gradient(135deg, #2563eb, #10b981);
+  background: linear-gradient(135deg, var(--app-primary), var(--app-success));
 }
 
 .progress-percent {
   font-size: 1.6rem;
-  font-weight: 800;
-  color: #2563eb;
+  font-weight: 700;
+  color: var(--app-primary);
 }
 
 .chart-box {

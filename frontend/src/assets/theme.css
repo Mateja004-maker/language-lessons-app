@@ -39,6 +39,14 @@
 
   --app-navbar: #16365F;
 
+  /* grafikoni (Chart.js čita ove promenljive) */
+  --app-chart-1: #1E4E8C;
+  --app-chart-2: #2F7D4F;
+  --app-chart-3: #B7791F;
+  --app-chart-4: #B42318;
+  --app-chart-5: #5B6B9A;
+  --app-chart-6: #2C7A7B;
+
   /* fontovi (ugrađeni preko @fontsource, latin + latin-ext: č ć š ž đ) */
   --app-font-body: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
   --app-font-heading: 'Source Serif 4', Georgia, 'Times New Roman', serif;
