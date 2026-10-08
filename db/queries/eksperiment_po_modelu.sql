@@ -10,6 +10,8 @@
 -- odgovorio (infrastruktura); empty, invalid_json, schema = odgovor neupotrebljiv.
 -- Stopa formalne ispravnosti iz prve računa se samo nad pozivima u kojima je
 -- model odgovorio (bez infrastrukturnih padova).
+-- NULL u uslovu (npr. failure_type uspešnog poziva) se u stopama računa kao 0 (COALESCE),
+-- inače bi AVG preskočio uspešne pozive.
 -- Vreme: response_time_ms (poslednji HTTP pokušaj; kod ponovnog zahteva zbir dva odgovora).
 
 -- (A) Po pozivu modela
@@ -31,7 +33,7 @@ SELECT
     purpose                                                         AS rezim,
     COUNT(*)                                                        AS pokusaja,
     SUM(validation_passed = 1)                                      AS uspesnih,
-    ROUND(100 * AVG(validation_passed = 1), 1)                      AS stopa_uspeha_pct,
+    ROUND(100 * AVG(COALESCE(validation_passed = 1, 0)), 1)         AS stopa_uspeha_pct,
     SUM(first_attempt_passed = 1)                                   AS prosao_iz_prve,
     SUM(format_retries > 0)                                         AS sa_ponovnim_zahtevom,
     ROUND(100 * SUM(first_attempt_passed = 1)
@@ -44,7 +46,7 @@ SELECT
     SUM(failure_type = 'empty')                                     AS pad_empty,
     SUM(failure_type = 'invalid_json')                              AS pad_invalid_json,
     SUM(failure_type = 'schema')                                    AS pad_schema,
-    ROUND(100 * AVG(failure_type IN ('network', 'http_4xx', 'rate_limit', 'http_5xx')), 1)
+    ROUND(100 * AVG(COALESCE(failure_type IN ('network', 'http_4xx', 'rate_limit', 'http_5xx'), 0)), 1)
                                                                     AS bez_odgovora_pct,
     ROUND(AVG(response_time_ms))                                    AS prosek_ms,
     MAX(median_ms)                                                  AS medijana_ms,
