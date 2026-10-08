@@ -37,7 +37,7 @@ export default {
         const link = document.createElement('a')
 
         link.href = url
-        link.setAttribute('download', `exam_${route.params.id}_results.xlsx`)
+        link.setAttribute('download', `test_${route.params.id}_rezultati.xlsx`)
         document.body.appendChild(link)
         link.click()
 
