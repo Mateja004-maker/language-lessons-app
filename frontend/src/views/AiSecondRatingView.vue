@@ -103,8 +103,11 @@ onMounted(load)
           <div class="card shadow-sm h-100">
             <div class="card-header bg-white">Originalno pitanje</div>
             <div class="card-body">
-              <p class="mb-3">{{ artifact.source_question_text }}</p>
-              <div v-for="(a, idx) in artifact.source_answers" :key="idx"
+              <ol v-if="artifact.input_questions?.length" class="mb-0 ps-3">
+                <li v-for="q in artifact.input_questions" :key="q.id" class="mb-1">{{ q.question_text }}</li>
+              </ol>
+              <p v-else class="mb-3">{{ artifact.source_question_text }}</p>
+              <div v-for="(a, idx) in (artifact.input_questions?.length ? [] : artifact.source_answers)" :key="idx"
                    class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">
                 <span>{{ a.answer_text }}</span>
                 <span v-if="a.is_correct" class="badge bg-success">Tačan</span>

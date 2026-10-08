@@ -7,7 +7,10 @@ import {
   getBankQuestions,
   assignBankQuestionToExam,
   removeQuestionFromExam,
-  publishExam
+  publishExam,
+  generateSimilarFromExam,
+  getEvaluationBatches,
+  MISTRAL_ENABLED
 } from '@/services/api'
 
 export default {
@@ -157,6 +160,39 @@ export default {
       await loadExam()
     }
 
+    // AI: K novih pitanja na osnovu svih pitanja ovog testa (tačka J)
+    const genProvider = ref('groq')
+    const genK = ref(3)
+    const genBatchId = ref(null)
+    const evaluationBatches = ref([])
+    const generatingSet = ref(false)
+    const genResult = ref(null)
+    const genError = ref('')
+
+    const loadEvaluationBatches = async () => {
+      try {
+        const { data } = await getEvaluationBatches()
+        evaluationBatches.value = data || []
+        genBatchId.value = evaluationBatches.value.length ? evaluationBatches.value[0].id : null
+      } catch {
+        evaluationBatches.value = []
+      }
+    }
+
+    const generateFromExam = async () => {
+      genError.value = ''
+      genResult.value = null
+      generatingSet.value = true
+      try {
+        const { data } = await generateSimilarFromExam(route.params.id, genProvider.value, Number(genK.value), genBatchId.value)
+        genResult.value = data
+      } catch (err) {
+        genError.value = err.response?.data?.details || err.response?.data?.error || 'Ne mogu da pokrenem generisanje.'
+      } finally {
+        generatingSet.value = false
+      }
+    }
+
     const publish = async () => {
       try {
         await publishExam(route.params.id)
@@ -170,6 +206,7 @@ export default {
     onMounted(async () => {
       await loadExam()
       await loadBankSection()
+      await loadEvaluationBatches()
     })
 
     return {
@@ -191,7 +228,16 @@ export default {
       addSelectedToExam,
       removeQuestion,
       publish,
-      canPublish
+      canPublish,
+      MISTRAL_ENABLED,
+      genProvider,
+      genK,
+      genBatchId,
+      evaluationBatches,
+      generatingSet,
+      genResult,
+      genError,
+      generateFromExam
     }
   }
 }
@@ -218,6 +264,53 @@ export default {
           ></i>
           {{ exam.is_published ? 'Published' : 'Draft' }}
         </span>
+      </div>
+
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h5 class="mb-3">
+            <i class="fa-solid fa-wand-magic-sparkles me-2"></i>
+            AI: generiši slična pitanja iz ovog testa
+          </h5>
+          <p class="text-muted small">
+            Model dobija sva pitanja testa ({{ exam.questions?.length || 0 }}) i predlaže K novih. Predlozi idu na
+            pregled (AI predlozi), ne u test.
+          </p>
+          <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-3">
+              <label class="form-label" for="gen-set-provider">Model</label>
+              <select id="gen-set-provider" v-model="genProvider" class="form-select" :disabled="generatingSet">
+                <option value="groq">groq</option>
+                <option value="gemini">gemini</option>
+                <option v-if="MISTRAL_ENABLED" value="mistral">mistral</option>
+                <option value="openrouter">openrouter</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label" for="gen-set-k">Broj (K)</label>
+              <input id="gen-set-k" v-model="genK" type="number" min="1" max="10" class="form-control" :disabled="generatingSet" />
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label" for="gen-set-batch">Serija (opciono)</label>
+              <select id="gen-set-batch" v-model="genBatchId" class="form-select" :disabled="generatingSet">
+                <option :value="null">Bez serije (razvojna proba)</option>
+                <option v-for="b in evaluationBatches" :key="b.id" :value="b.id">#{{ b.id }} {{ b.name }}</option>
+              </select>
+            </div>
+            <div class="col-12 col-md-3">
+              <button class="btn btn-outline-primary w-100" :disabled="generatingSet || !exam.questions?.length" @click="generateFromExam">
+                <span v-if="generatingSet" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                {{ generatingSet ? 'Generišem...' : 'Generiši' }}
+              </button>
+            </div>
+          </div>
+          <div v-if="genError" class="alert alert-danger mt-3 mb-0">{{ genError }}</div>
+          <div v-if="genResult" class="alert alert-success mt-3 mb-0">
+            Napravljeno predloga: {{ genResult.accepted }} od {{ genResult.requested }}
+            <template v-if="genResult.rejected">(odbijeno neispravnih: {{ genResult.rejected }})</template>.
+            <router-link to="/ai/predlozi" class="ms-1">Idi na AI predloge</router-link>
+          </div>
+        </div>
       </div>
 
       <div v-if="exam.is_published" class="alert alert-secondary mb-4">

@@ -143,6 +143,12 @@ export const generateSimilarQuestion = (questionId, provider, evaluationBatchId)
     params: { provider, evaluation_batch_id: evaluationBatchId }
   })
 
+// Generisanje iz skupa pitanja testa (tačka J): do K novih pitanja jednim pozivom
+export const generateSimilarFromExam = (examId, provider, k, evaluationBatchId) =>
+  api.post(`/exams/${examId}/generate-similar`, null, {
+    params: { provider, k, evaluation_batch_id: evaluationBatchId }
+  })
+
 // Evaluacione serije (oznaka eksperimenta za generisanje), najnovija prva
 export const getEvaluationBatches = () =>
   api.get('/evaluation-batches')
