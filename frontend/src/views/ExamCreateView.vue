@@ -1,9 +1,11 @@
 <script>
+import PageHeader from '@/components/PageHeader.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { createExam, api } from '@/services/api'
 
 export default {
+  components: { PageHeader },
   setup() {
     const router = useRouter()
 
@@ -96,11 +98,7 @@ export default {
 
 <template>
   <div class="container py-4">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Create Exam</h1>
-      </div>
-    </div>
+    <PageHeader title="Create Exam" />
 
     <div class="card border-0 shadow-sm">
       <div class="card-body">

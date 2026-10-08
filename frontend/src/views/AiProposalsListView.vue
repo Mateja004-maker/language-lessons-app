@@ -1,4 +1,5 @@
 ﻿<script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getAiArtifacts } from '@/services/api'
@@ -36,11 +37,7 @@ onMounted(loadArtifacts)
 
 <template>
   <div class="container py-4">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">AI predlozi</h1>
-      </div>
-    </div>
+    <PageHeader title="AI predlozi" />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
 

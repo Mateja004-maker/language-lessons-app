@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, ref } from 'vue'
 import { api } from '@/services/api'
 import AppIllustration from '@/components/AppIllustration.vue'
@@ -41,16 +42,11 @@ onMounted(loadFavorites)
 
 <template>
   <div class="container py-4">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Omiljene lekcije</h1>
-        <p class="page-subtitle">Sačuvane lekcije za brz pristup</p>
-      </div>
-
-      <button class="btn btn-outline-secondary btn-sm" @click="loadFavorites">
+    <PageHeader title="Omiljene lekcije">
+      <button class="btn btn-outline-secondary" @click="loadFavorites">
         Osveži
       </button>
-    </div>
+    </PageHeader>
 
     <div v-if="error" class="alert alert-danger">
       {{ error }}

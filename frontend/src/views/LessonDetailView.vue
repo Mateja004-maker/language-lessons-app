@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '@/services/api'
+import PageHeader from '@/components/PageHeader.vue'
 
 const route = useRoute()
 const lesson = ref(null)
@@ -70,32 +71,28 @@ onMounted(async () => {
     <div v-if="loading" class="text-muted">Loading...</div>
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
 
-    <div v-if="lesson" class="lesson-card">
-      <div class="lesson-header">
-        <div>
-          <h1 class="page-title">{{ lesson.title }}</h1>
-          <p class="page-subtitle">
-            {{ lesson.language_code?.toUpperCase() }} • {{ lesson.level }}
-          </p>
-        </div>
-        <div v-if="role === 'STUDENT'" class="viewed-actions">
-          <button
-            v-if="!isViewed()"
-            class="btn btn-outline-secondary btn-sm"
-            @click="markViewed"
-          >
-            Mark as viewed
-          </button>
+    <template v-if="lesson">
+    <PageHeader :title="lesson.title">
+      <template v-if="role === 'STUDENT'">
+        <button
+          v-if="!isViewed()"
+          class="btn btn-outline-secondary"
+          @click="markViewed"
+        >
+          Mark as viewed
+        </button>
 
-          <button
-            v-else
-            class="btn btn-primary btn-sm"
-            @click="unmarkViewed"
-          >
-            Viewed ✓
-          </button>
-        </div>
-      </div>
+        <button
+          v-else
+          class="btn btn-primary"
+          @click="unmarkViewed"
+        >
+          Viewed ✓
+        </button>
+      </template>
+    </PageHeader>
+
+    <div class="lesson-card">
 
       <div class="lesson-content" v-html="lesson.content"></div>
 
@@ -111,14 +108,11 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.container {
-  max-width: 1000px;
-}
-
 .lesson-card {
   background: var(--app-surface);
   border-radius: var(--app-radius);
@@ -126,15 +120,6 @@ onMounted(async () => {
   box-shadow: var(--app-shadow);
 }
 
-.lesson-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  padding-bottom: 18px;
-  margin-bottom: 24px;
-  border-bottom: 1px solid var(--app-border);
-}
 
 .lesson-content {
   font-size: 1.05rem;

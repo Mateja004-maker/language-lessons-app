@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, ref } from 'vue'
 import { api } from '@/services/api'
 
@@ -69,12 +70,11 @@ onMounted(load)
 <template>
   
   <div class="container py-4">
-    <div class="page-header">
-      <h1 class="page-title">Admin: Languages</h1>
-      <button class="btn btn-outline-secondary btn-sm" :disabled="loading" @click="load">
+    <PageHeader title="Admin: Languages">
+      <button class="btn btn-outline-secondary" :disabled="loading" @click="load">
         Refresh
       </button>
-    </div>
+    </PageHeader>
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>

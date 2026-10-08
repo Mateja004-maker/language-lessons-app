@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSecondRatingArtifact, submitSecondRating } from '@/services/api'
@@ -90,11 +91,7 @@ onMounted(load)
     <div v-else-if="error" class="alert alert-warning">{{ error }}</div>
 
     <div v-else-if="artifact">
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">Druga ocena predloga #{{ artifact.id }}</h1>
-        </div>
-      </div>
+      <PageHeader :title="`Druga ocena predloga #${artifact.id}`" />
       <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
         <span class="badge bg-dark">{{ artifact.subject_name || 'Nepoznat predmet' }}</span>
         <span v-if="artifact.area_name" class="badge bg-secondary">{{ artifact.area_name }}</span>

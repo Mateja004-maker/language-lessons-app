@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, ref } from 'vue'
 import { api } from '@/services/api'
 
@@ -149,12 +150,7 @@ onMounted(loadAll)
 <template>
   <div class="container py-4">
 
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Users</h1>
-        <p class="page-subtitle">Kreiranje i upravljanje studentima i nastavnicima</p>
-      </div>
-    </div>
+    <PageHeader title="Users" />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>

@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, ref, computed } from 'vue'
 import { api } from '@/services/api'
 import { QuillEditor } from '@vueup/vue-quill'
@@ -194,10 +195,9 @@ onMounted(loadAll)
 
 <template>
   <div class="container py-4">
-    <div class="page-header">
-      <h1 class="page-title">Manage Lessons</h1>
+    <PageHeader title="Manage Lessons">
       <span v-if="role" class="badge text-bg-secondary">Role: {{ role }}</span>
-    </div>
+    </PageHeader>
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>

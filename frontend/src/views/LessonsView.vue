@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, ref, computed } from 'vue'
 import { api } from '@/services/api'
 import AppIllustration from '@/components/AppIllustration.vue'
@@ -92,20 +93,15 @@ onMounted(async () => {
 <template>
   <div class="container py-4">
 
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Lekcije</h1>
-        <p class="page-subtitle">Lekcije iz tvojih predmeta</p>
-      </div>
-
+    <PageHeader title="Lekcije">
       <button
-        class="btn btn-outline-secondary btn-sm px-3"
+        class="btn btn-outline-secondary"
         @click="load"
         :disabled="loading"
       >
         Osveži
       </button>
-    </div>
+    </PageHeader>
 
     <div v-if="error" class="alert alert-danger">
       {{ error }}

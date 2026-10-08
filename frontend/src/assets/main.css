@@ -70,13 +70,15 @@ body {
    Boje i oblik iz theme.css. Lokalni (scoped) stilovi ovo ne prepisuju.
    ===================================================================== */
 
-/* Zaglavlje: naslov + podnaslov levo, akcije desno, tanka linija ispod */
+/* Zaglavlje (komponenta PageHeader.vue): naslov levo, filteri i glavno dugme desno u istom
+   redu, tanka linija ispod preko cele širine. Isti odnos na svim stranicama, bez podnaslova. */
 .page-header {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.75rem 1rem;
+  min-height: 3.25rem;
   margin-bottom: 1.5rem;
   padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--app-border);
@@ -93,10 +95,17 @@ body {
   border: 0;
 }
 
-.page-subtitle {
-  color: var(--app-text-muted);
-  font-size: 0.95rem;
-  margin: 0.25rem 0 0;
+.page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* filter u zaglavlju: iste visine kao dugme */
+.page-header-actions .form-select {
+  width: auto;
+  min-width: 200px;
 }
 
 /* Naslov sekcije unutar stranice ili kartice */

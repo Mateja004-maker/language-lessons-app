@@ -1,9 +1,11 @@
 <script>
+import PageHeader from '@/components/PageHeader.vue'
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getExamResults, exportExamResults, getExamDetails } from '@/services/api'
 
 export default {
+  components: { PageHeader },
   setup() {
     const route = useRoute()
     const results = ref([])
@@ -64,9 +66,7 @@ export default {
 
 <template>
   <div class="container py-4">
-    <div class="page-header">
-      <h1 class="page-title">Results for: {{ exam?.title || 'Exam' }}</h1>
-
+    <PageHeader :title="`Results for: ${exam?.title || 'Exam'}`">
       <button
         class="btn btn-primary"
         :disabled="exporting || loading"
@@ -75,7 +75,7 @@ export default {
         <i class="fa-solid fa-file-excel me-2"></i>
         {{ exporting ? 'Exporting...' : 'Export Excel' }}
       </button>
-    </div>
+    </PageHeader>
 
     <div v-if="loading" class="card border-0 shadow-sm">
       <div class="card-body">

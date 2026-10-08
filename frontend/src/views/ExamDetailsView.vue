@@ -1,4 +1,5 @@
 <script>
+import PageHeader from '@/components/PageHeader.vue'
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -14,6 +15,7 @@ import {
 } from '@/services/api'
 
 export default {
+  components: { PageHeader },
   setup() {
     const route = useRoute()
     const router = useRouter()
@@ -248,9 +250,7 @@ export default {
     <div v-if="loading">Loading...</div>
 
     <div v-else>
-      <div class="page-header">
-        <h1 class="page-title">{{ exam.title }}</h1>
-
+      <PageHeader :title="exam.title">
         <span
           class="badge status-badge"
           :class="exam.is_published ? 'bg-success' : 'bg-secondary'"
@@ -261,7 +261,7 @@ export default {
           ></i>
           {{ exam.is_published ? 'Published' : 'Draft' }}
         </span>
-      </div>
+      </PageHeader>
 
       <div class="card shadow-sm mb-4">
         <div class="card-body">

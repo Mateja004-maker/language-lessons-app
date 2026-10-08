@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSecondRatingList } from '@/services/api'
@@ -36,13 +37,7 @@ onMounted(load)
 
 <template>
   <div class="container py-4">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Druga ocena AI predloga</h1>
-        <p class="page-subtitle">Ocena po rubrici bez donošenja odluke, radi saglasnosti ocenjivača. Model, odluka i tuđe ocene se ne
-        prikazuju dok ne predaš svoju ocenu ili dok se serija ne zatvori.</p>
-      </div>
-    </div>
+    <PageHeader title="Druga ocena AI predloga" />
 
     <div v-if="saved" class="alert alert-success">{{ saved }}</div>
 

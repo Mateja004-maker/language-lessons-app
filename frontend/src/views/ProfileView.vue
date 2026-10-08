@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, ref, computed } from 'vue'
 import { api } from '@/services/api'
 
@@ -114,12 +115,7 @@ onMounted(loadProfile)
 <template>
   <div class="container py-4">
 
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">My Profile</h1>
-        <p class="page-subtitle">Manage your personal information</p>
-      </div>
-    </div>
+    <PageHeader title="My Profile" />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>

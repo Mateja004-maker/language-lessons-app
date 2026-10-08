@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getMyResultDetail, getQuestionExplanation, rateExplanationArtifact } from '@/services/api'
@@ -132,11 +133,7 @@ onMounted(loadAttempt)
     </div>
 
     <div v-else-if="attempt">
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">{{ attempt.title }}</h1>
-        </div>
-      </div>
+      <PageHeader :title="attempt.title" />
 
       <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
         <span class="badge bg-dark">{{ attempt.score }} / {{ attempt.total }} poena</span>

@@ -1,10 +1,11 @@
 <script>
+import PageHeader from '@/components/PageHeader.vue'
 import { ref, onMounted } from 'vue'
 import { getMyResults } from '@/services/api'
 import AppIllustration from '@/components/AppIllustration.vue'
 
 export default {
-  components: { AppIllustration },
+  components: { PageHeader, AppIllustration },
   setup() {
     const results = ref([])
     const loading = ref(true)
@@ -30,11 +31,7 @@ export default {
 
 <template>
   <div class="container py-4">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">Moji rezultati</h1>
-      </div>
-    </div>
+    <PageHeader title="Moji rezultati" />
 
     <div v-if="loading">Učitavanje...</div>
 

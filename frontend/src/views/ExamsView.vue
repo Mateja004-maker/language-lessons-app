@@ -1,8 +1,6 @@
 <template>
   <div class="container py-4">
-    <div class="page-header">
-      <h1 class="page-title">Exams</h1>
-
+    <PageHeader title="Exams">
       <router-link
         v-if="role === 'ADMIN' || role === 'TEACHER'"
         to="/exams/create"
@@ -10,7 +8,7 @@
       >
         Create Exam
       </router-link>
-    </div>
+    </PageHeader>
 
     <div v-if="loading" class="card border-0 shadow-sm">
       <div class="card-body">Loading...</div>
@@ -254,11 +252,12 @@
 </template>
 
 <script>
+import PageHeader from '@/components/PageHeader.vue'
 import { getExams, deleteExam } from '@/services/api'
 import AppIllustration from '@/components/AppIllustration.vue'
 
 export default {
-  components: { AppIllustration },
+  components: { PageHeader, AppIllustration },
   data() {
     return {
       exams: [],
