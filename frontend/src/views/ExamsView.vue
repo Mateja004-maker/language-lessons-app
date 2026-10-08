@@ -17,8 +17,9 @@
     </div>
 
     <div v-else>
-      <div v-if="exams.length === 0" class="alert alert-info">
-        No exams available.
+      <div v-if="exams.length === 0" class="section-card section-padding text-center text-muted mb-4">
+        <AppIllustration kind="clipboard" class="mb-2" />
+        <div>Nema dostupnih testova.</div>
       </div>
 
       <!-- ADMIN SUBJECT FILTER -->
@@ -254,8 +255,10 @@
 
 <script>
 import { getExams, deleteExam } from '@/services/api'
+import AppIllustration from '@/components/AppIllustration.vue'
 
 export default {
+  components: { AppIllustration },
   data() {
     return {
       exams: [],

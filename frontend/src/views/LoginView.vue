@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { login } from '@/services/auth'
+import AppIllustration from '@/components/AppIllustration.vue'
 
 const router = useRouter()
 
@@ -32,8 +33,8 @@ async function onSubmit() {
 
           <div class="col-lg-6 d-none d-lg-block">
             <div class="pe-4">
-              <div class="mb-3 icon-hero">
-                <i class="fa-solid fa-clipboard-check"></i>
+              <div class="mb-3">
+                <AppIllustration kind="test" :size="200" />
               </div>
 
               <h1 class="fw-bold mb-3" style="font-size: 3rem; line-height: 1.1;">
@@ -149,11 +150,6 @@ async function onSubmit() {
 </template>
 
 <style scoped>
-.icon-hero {
-  font-size: 3rem;
-  color: var(--app-primary);
-}
-
 .icon-card {
   font-size: 2.5rem;
   color: var(--app-primary);

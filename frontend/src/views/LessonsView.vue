@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref, computed } from 'vue'
 import { api } from '@/services/api'
+import AppIllustration from '@/components/AppIllustration.vue'
 
 const lessons = ref([])
 const error = ref('')
@@ -124,7 +125,7 @@ onMounted(async () => {
     </div>
 
     <div v-else-if="lessons.length === 0" class="section-card section-padding text-center">
-      <div class="empty-icon mb-2">📚</div>
+      <AppIllustration kind="book" class="mb-2" />
       <h5 class="mb-1">Nema dostupnih lekcija.</h5>
       <p class="text-muted mb-0">
         Kada nastavnik doda lekcije, pojaviće se ovde.
@@ -287,7 +288,4 @@ onMounted(async () => {
   padding: 6px 10px;
 }
 
-.empty-icon {
-  font-size: 2rem;
-}
 </style>

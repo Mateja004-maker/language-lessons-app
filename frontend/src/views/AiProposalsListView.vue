@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getAiArtifacts } from '@/services/api'
+import AppIllustration from '@/components/AppIllustration.vue'
 
 const router = useRouter()
 
@@ -45,7 +46,7 @@ onMounted(loadArtifacts)
     </div>
 
     <div v-else-if="!artifacts.length" class="empty-state text-muted text-center py-5">
-      <i class="fa-solid fa-inbox fa-2x mb-3 d-block"></i>
+      <AppIllustration kind="inbox" class="mb-3 d-block mx-auto" />
       Nema predloga na čekanju.
     </div>
 

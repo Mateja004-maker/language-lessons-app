@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { api } from '@/services/api'
+import AppIllustration from '@/components/AppIllustration.vue'
 
 const favorites = ref([])
 const loading = ref(false)
@@ -62,10 +63,10 @@ onMounted(loadFavorites)
     </div>
 
     <div v-else-if="favorites.length === 0" class="section-card section-padding text-center">
-      <div class="stat-icon"><i class="fa-solid fa-star"></i></div>
-      <h5 class="mb-1">No favorite lessons yet.</h5>
+      <AppIllustration kind="star" class="mb-2" />
+      <h5 class="mb-1">Još nemaš omiljenih lekcija.</h5>
       <p class="text-muted mb-0">
-        Add lessons to favorites from the Lessons page.
+        Dodaj lekcije u omiljene sa stranice Lekcije.
       </p>
     </div>
 

@@ -1,8 +1,10 @@
 <script>
 import { ref, onMounted } from 'vue'
 import { getMyResults } from '@/services/api'
+import AppIllustration from '@/components/AppIllustration.vue'
 
 export default {
+  components: { AppIllustration },
   setup() {
     const results = ref([])
     const loading = ref(true)
@@ -33,8 +35,9 @@ export default {
     <div v-if="loading">Loading...</div>
 
     <div v-else>
-      <div v-if="results.length === 0" class="alert alert-info">
-        No results yet.
+      <div v-if="results.length === 0" class="section-card section-padding text-center text-muted">
+        <AppIllustration kind="chart" class="mb-2" />
+        <div>Još nemaš rezultata.</div>
       </div>
 
       <div v-else class="table-container">

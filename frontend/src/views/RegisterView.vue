@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { api } from '@/services/api'
+import AppIllustration from '@/components/AppIllustration.vue'
 
 const display_name = ref('')
 const email = ref('')
@@ -48,8 +49,8 @@ async function register() {
           <!-- LEFT -->
           <div class="col-lg-6 d-none d-lg-block">
             <div class="pe-4">
-              <div class="mb-3 register-hero-icon">
-                <i class="fa-solid fa-sparkles"></i>
+              <div class="mb-3">
+                <AppIllustration kind="register" :size="200" />
               </div>
 
               <h1 class="fw-bold mb-3 register-hero-title">
@@ -196,10 +197,6 @@ async function register() {
 .auth-btn {
   padding: 12px;
   font-weight: 700;
-}
-
-.register-hero-icon {
-  font-size: 3rem;
 }
 
 .register-hero-title {

@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSecondRatingList } from '@/services/api'
+import AppIllustration from '@/components/AppIllustration.vue'
 
 // Druga ocena (slepo, bez odluke): predlozi iz otvorenih evaluacionih serija
 // koje ovaj ocenjivač još nije ocenio - nasumičan, stabilan uzorak.
@@ -50,7 +51,10 @@ onMounted(load)
 
     <div v-else-if="error" class="alert alert-warning">{{ error }}</div>
 
-    <div v-else-if="!items.length" class="text-muted">Nema predloga za drugu ocenu.</div>
+    <div v-else-if="!items.length" class="text-muted text-center py-5">
+      <AppIllustration kind="scale" class="mb-3 d-block mx-auto" />
+      Nema predloga za drugu ocenu.
+    </div>
 
     <div v-else>
       <div
