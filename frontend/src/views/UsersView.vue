@@ -1,9 +1,8 @@
 <script setup>
 import PageHeader from '@/components/PageHeader.vue'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { api } from '@/services/api'
 
-const languages = ref([])
 const subjects = ref([])
 const users = ref([])
 
@@ -11,7 +10,6 @@ const email = ref('')
 const password = ref('')
 const display_name = ref('')
 const role = ref('STUDENT')
-const learning_language_id = ref('')
 const selected_subject_ids = ref([])
 
 const error = ref('')
@@ -23,10 +21,11 @@ const editingSubjectIds = ref([])
 
 const currentRole = localStorage.getItem('user_role')
 
-async function loadLanguages() {
-  const { data } = await api.get('/languages')
-  languages.value = data
-}
+// filter tabele po ulozi ('' = svi)
+const roleFilter = ref('')
+const filteredUsers = computed(() =>
+  roleFilter.value ? users.value.filter(u => u.role === roleFilter.value) : users.value
+)
 
 async function loadSubjects() {
   const { data } = await api.get('/subjects')
@@ -42,7 +41,7 @@ async function loadAll() {
   error.value = ''
   loading.value = true
   try {
-    await Promise.all([loadLanguages(), loadSubjects(), loadUsers()])
+    await Promise.all([loadSubjects(), loadUsers()])
   } catch (e) {
     error.value = e?.response?.data?.error || 'Ne mogu da učitam podatke.'
   } finally {
@@ -60,7 +59,7 @@ async function createUser() {
   msg.value = ''
 
   if (!email.value.trim() || !password.value.trim()) {
-    error.value = 'Email i password su obavezni.'
+    error.value = 'Email i lozinka su obavezni.'
     return
   }
 
@@ -70,7 +69,6 @@ async function createUser() {
       password: password.value.trim(),
       display_name: display_name.value.trim(),
       role: role.value,
-      learning_language_id: learning_language_id.value || null,
       subject_ids: selected_subject_ids.value
     })
 
@@ -78,7 +76,6 @@ async function createUser() {
     password.value = ''
     display_name.value = ''
     role.value = 'STUDENT'
-    learning_language_id.value = ''
     selected_subject_ids.value = []
 
     msg.value = 'Korisnik uspešno kreiran.'
@@ -150,18 +147,25 @@ onMounted(loadAll)
 <template>
   <div class="container py-4">
 
-    <PageHeader title="Users" />
+    <PageHeader title="Korisnici">
+      <select v-model="roleFilter" class="form-select" aria-label="Uloga">
+        <option value="">Svi</option>
+        <option value="STUDENT">Studenti</option>
+        <option value="TEACHER">Nastavnici</option>
+        <option value="ADMIN">Administratori</option>
+      </select>
+    </PageHeader>
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>
-    <div v-if="loading" class="text-muted">Loading...</div>
+    <div v-if="loading" class="text-muted">Učitavanje...</div>
 
     <div class="section-card section-padding mb-4">
-      <h5 class="mb-3">Create User</h5>
+      <h5 class="mb-3">Novi korisnik</h5>
 
       <div class="row g-3">
         <div class="col-md-6">
-          <label class="form-label">Display name</label>
+          <label class="form-label">Ime i prezime</label>
           <input v-model="display_name" class="form-control" />
         </div>
 
@@ -171,30 +175,20 @@ onMounted(loadAll)
         </div>
 
         <div class="col-md-6">
-          <label class="form-label">Password</label>
+          <label class="form-label">Lozinka</label>
           <input v-model="password" type="password" class="form-control" />
         </div>
 
-        <div class="col-md-3">
-          <label class="form-label">Role</label>
+        <div class="col-md-6">
+          <label class="form-label">Uloga</label>
           <select v-model="role" class="form-select">
-            <option value="STUDENT">STUDENT</option>
-            <option value="TEACHER">TEACHER</option>
-          </select>
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label">Language (staro, jedan jezik)</label>
-          <select v-model="learning_language_id" class="form-select">
-            <option value="">-- Select --</option>
-            <option v-for="l in languages" :key="l.id" :value="l.id">
-              {{ l.name }}
-            </option>
+            <option value="STUDENT">Student</option>
+            <option value="TEACHER">Nastavnik</option>
           </select>
         </div>
 
         <div class="col-md-12">
-          <label class="form-label">Predmeti (moze vise odjednom)</label>
+          <label class="form-label">Predmeti (može više odjednom)</label>
           <select v-model="selected_subject_ids" class="form-select" multiple size="4">
             <option v-for="s in subjects" :key="s.id" :value="s.id">
               {{ s.name }}
@@ -206,16 +200,16 @@ onMounted(loadAll)
 
       <div class="mt-4 text-end">
         <button class="btn btn-primary px-4" @click="createUser">
-          Create User
+          Napravi korisnika
         </button>
       </div>
     </div>
 
     <div class="section-card section-padding">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="m-0">All Users</h5>
+        <h5 class="m-0">Svi korisnici</h5>
         <button class="btn btn-outline-secondary btn-sm" @click="loadUsers">
-          Refresh
+          Osveži
         </button>
       </div>
 
@@ -224,25 +218,25 @@ onMounted(loadAll)
           <thead class="table-light">
             <tr>
               <th>ID</th>
-              <th>Name</th>
+              <th>Ime</th>
               <th>Email</th>
-              <th>Role</th>
+              <th>Uloga</th>
               <th>Predmeti</th>
               <th>Status</th>
-              <th class="text-end">Actions</th>
+              <th class="text-end">Akcije</th>
             </tr>
           </thead>
 
           <tbody>
-            <template v-for="u in users" :key="u.id">
+            <template v-for="u in filteredUsers" :key="u.id">
               <tr>
                 <td>{{ u.id }}</td>
                 <td>{{ u.display_name || '-' }}</td>
                 <td>{{ u.email }}</td>
                 <td>
-                  <span v-if="u.role === 'ADMIN'" class="badge badge-soft">ADMIN</span>
-                  <span v-else-if="u.role === 'TEACHER'" class="badge badge-soft">TEACHER</span>
-                  <span v-else class="badge badge-soft">STUDENT</span>
+                  <span v-if="u.role === 'ADMIN'" class="badge badge-soft">Administrator</span>
+                  <span v-else-if="u.role === 'TEACHER'" class="badge badge-soft">Nastavnik</span>
+                  <span v-else class="badge badge-soft">Student</span>
                 </td>
                 <td>
                   <span
@@ -256,11 +250,11 @@ onMounted(loadAll)
                 </td>
                 <td>
                   <span v-if="u.is_active == 1" class="badge text-bg-success">
-                    Approved
+                    Odobren
                   </span>
 
                   <span v-else class="badge text-bg-secondary">
-                    Pending
+                    Na čekanju
                   </span>
                 </td>
                 <td class="text-end">
@@ -270,7 +264,7 @@ onMounted(loadAll)
                       class="btn btn-outline-secondary btn-sm"
                       @click="approveUser(u)"
                     >
-                      Approve
+                      Odobri
                     </button>
 
                     <button
@@ -278,7 +272,7 @@ onMounted(loadAll)
                       class="btn btn-outline-secondary btn-sm"
                       @click="startEditSubjects(u)"
                     >
-                      Edit subjects
+                      Izmeni predmete
                     </button>
 
                     <button
@@ -286,11 +280,11 @@ onMounted(loadAll)
                       class="btn btn-outline-danger btn-sm"
                       @click="deleteUser(u)"
                     >
-                      Delete
+                      Obriši
                     </button>
 
                     <span v-if="u.role === 'ADMIN'" class="text-muted small">
-                      Protected
+                      Zaštićen
                     </span>
                   </div>
                 </td>
@@ -305,8 +299,8 @@ onMounted(loadAll)
                       </option>
                     </select>
                     <div class="d-flex flex-column gap-2">
-                      <button class="btn btn-primary btn-sm" @click="saveSubjects(u)">Save</button>
-                      <button class="btn btn-outline-secondary btn-sm" @click="cancelEditSubjects">Cancel</button>
+                      <button class="btn btn-primary btn-sm" @click="saveSubjects(u)">Sačuvaj</button>
+                      <button class="btn btn-outline-secondary btn-sm" @click="cancelEditSubjects">Otkaži</button>
                     </div>
                   </div>
                 </td>
