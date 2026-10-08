@@ -68,7 +68,7 @@ onMounted(async () => {
 
 <template>
   <div class="container py-4">
-    <div v-if="loading" class="text-muted">Loading...</div>
+    <div v-if="loading" class="text-muted">Učitavanje...</div>
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
 
     <template v-if="lesson">
@@ -79,7 +79,7 @@ onMounted(async () => {
           class="btn btn-outline-secondary"
           @click="markViewed"
         >
-          Mark as viewed
+          Označi kao pregledano
         </button>
 
         <button
@@ -87,7 +87,7 @@ onMounted(async () => {
           class="btn btn-primary"
           @click="unmarkViewed"
         >
-          Viewed ✓
+          Pregledano ✓
         </button>
       </template>
     </PageHeader>
@@ -98,12 +98,12 @@ onMounted(async () => {
 
       <div class="lesson-extra-grid">
         <div v-if="lesson.tips" class="extra-card tips-card">
-          <h5>Tips & Tricks</h5>
+          <h5>Saveti</h5>
           <p>{{ lesson.tips }}</p>
         </div>
 
         <div v-if="lesson.important_info" class="extra-card important-card">
-          <h5>Important Information</h5>
+          <h5>Važne informacije</h5>
           <p>{{ lesson.important_info }}</p>
         </div>
       </div>
