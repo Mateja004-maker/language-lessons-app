@@ -21,7 +21,7 @@ async function loadFavorites() {
     const { data } = await api.get('/favorites')
     favorites.value = data
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to load favorites.'
+    error.value = e?.response?.data?.error || 'Učitavanje omiljenih lekcija nije uspelo.'
   } finally {
     loading.value = false
   }
@@ -32,7 +32,7 @@ async function removeFavorite(id) {
     await api.delete(`/lessons/${id}/favorite`)
     await loadFavorites()
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to remove favorite.'
+    error.value = e?.response?.data?.error || 'Uklanjanje iz omiljenih nije uspelo.'
   }
 }
 
@@ -43,14 +43,14 @@ onMounted(loadFavorites)
   <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
       <div>
-        <div class="page-title">My Favorites</div>
+        <div class="page-title">Omiljene lekcije</div>
         <div class="page-subtitle">
-          Saved lessons for quick access
+          Sačuvane lekcije za brz pristup
         </div>
       </div>
 
       <button class="btn btn-outline-secondary btn-sm" @click="loadFavorites">
-        Refresh
+        Osveži
       </button>
     </div>
 
@@ -59,7 +59,7 @@ onMounted(loadFavorites)
     </div>
 
     <div v-if="loading" class="section-card section-padding text-muted">
-      Loading favorites...
+      Učitavanje omiljenih lekcija...
     </div>
 
     <div v-else-if="favorites.length === 0" class="section-card section-padding text-center">
@@ -94,7 +94,7 @@ onMounted(loadFavorites)
                   </span>
 
                   <span class="badge text-bg-light border">
-                    Favorite
+                    Omiljena
                   </span>
                 </div>
               </div>
@@ -103,7 +103,7 @@ onMounted(loadFavorites)
             </div>
 
             <p class="lesson-preview mb-3">
-              {{ stripHtml(lesson.content).slice(0, 120) || 'No lesson description available.' }}
+              {{ stripHtml(lesson.content).slice(0, 120) || 'Lekcija nema opis.' }}
               <span v-if="stripHtml(lesson.content).length > 120">...</span>
             </p>
 
@@ -112,14 +112,14 @@ onMounted(loadFavorites)
                 :to="`/lessons/${lesson.id}`"
                 class="btn btn-primary btn-sm"
               >
-                Open lesson
+                Otvori lekciju
               </router-link>
 
               <button
                 class="btn btn-outline-danger btn-sm"
                 @click="removeFavorite(lesson.id)"
               >
-                Remove
+                Ukloni
               </button>
             </div>
           </div>

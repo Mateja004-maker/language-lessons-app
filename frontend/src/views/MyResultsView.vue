@@ -15,7 +15,7 @@ export default {
         results.value = res.data
       } catch (err) {
         console.error(err)
-        alert('Failed to load results')
+        alert('Učitavanje rezultata nije uspelo.')
       } finally {
         loading.value = false
       }
@@ -30,9 +30,9 @@ export default {
 
 <template>
   <div class="container mt-4">
-    <h2 class="page-title mb-4">My Results</h2>
+    <h2 class="page-title mb-4">Moji rezultati</h2>
 
-    <div v-if="loading">Loading...</div>
+    <div v-if="loading">Učitavanje...</div>
 
     <div v-else>
       <div v-if="results.length === 0" class="section-card section-padding text-center text-muted">
@@ -44,11 +44,11 @@ export default {
       <table class="table table-hover align-middle mb-0">
         <thead>
           <tr>
-            <th>Exam</th>
-            <th>Score</th>
-            <th>Total</th>
+            <th>Test</th>
+            <th>Poeni</th>
+            <th>Ukupno</th>
             <th>Status</th>
-            <th>Date</th>
+            <th>Datum</th>
             <th></th>
           </tr>
         </thead>
@@ -64,7 +64,7 @@ export default {
                 class="badge status-badge"
                 :class="r.score >= r.total * 0.5 ? 'bg-success' : 'bg-danger'"
               >
-                {{ r.score >= r.total * 0.5 ? 'Passed' : 'Failed' }}
+                {{ r.score >= r.total * 0.5 ? 'Položeno' : 'Nije položeno' }}
               </span>
             </td>
 
