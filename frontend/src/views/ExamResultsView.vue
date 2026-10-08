@@ -149,8 +149,8 @@ export default {
 .page-title {
   font-size: 2rem;
   font-weight: 800;
-  color: #111827;
-  border-bottom: 2px solid #e5e7eb;
+  color: var(--app-text);
+  border-bottom: 2px solid var(--app-border);
   padding-bottom: 0.75rem;
 }
 
@@ -158,18 +158,18 @@ export default {
   background: white;
   border-radius: 12px;
   padding: 0.75rem;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-shadow: var(--app-shadow);
   overflow: hidden;
 }
 
 .table thead {
-  background-color: #f9fafb;
+  background-color: var(--app-bg);
 }
 
 .table th {
   font-weight: 600;
-  color: #374151;
-  border-bottom: 2px solid #e5e7eb;
+  color: var(--app-text);
+  border-bottom: 2px solid var(--app-border);
 }
 
 .table td {

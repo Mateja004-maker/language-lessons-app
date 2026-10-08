@@ -65,6 +65,6 @@ onMounted(load)
 
 .subject-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1) !important;
+  box-shadow: var(--app-shadow-hover) !important;
 }
 </style>

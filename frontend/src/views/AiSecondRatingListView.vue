@@ -87,6 +87,6 @@ onMounted(load)
 }
 
 .rating-card:hover {
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.12) !important;
+  box-shadow: var(--app-shadow-hover) !important;
 }
 </style>

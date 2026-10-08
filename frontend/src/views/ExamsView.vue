@@ -336,15 +336,15 @@ export default {
 .page-title {
   font-size: 2rem;
   font-weight: 800;
-  color: #111827;
-  border-bottom: 2px solid #e5e7eb;
+  color: var(--app-text);
+  border-bottom: 2px solid var(--app-border);
   padding-bottom: 0.75rem;
 }
 
 .section-title {
   font-size: 1.45rem;
   font-weight: 750;
-  color: #111827;
+  color: var(--app-text);
   margin-top: 1.5rem;
 }
 

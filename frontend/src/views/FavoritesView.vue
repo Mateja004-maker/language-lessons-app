@@ -133,14 +133,14 @@ onMounted(loadFavorites)
 .favorite-card {
   border: none;
   border-radius: 18px;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--app-shadow);
 }
 
 .lesson-kicker {
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: #f59e0b;
+  color: var(--app-accent-text);
 }
 
 .card-title {
@@ -154,12 +154,12 @@ onMounted(loadFavorites)
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: #fff7ed;
+  background: var(--app-accent-soft);
   font-size: 1.1rem;
 }
 
 .lesson-preview {
-  color: #4b5563;
+  color: var(--app-text-muted);
   line-height: 1.5;
   font-size: 0.97rem;
 }

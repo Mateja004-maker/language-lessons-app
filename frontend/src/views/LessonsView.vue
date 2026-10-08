@@ -229,7 +229,7 @@ onMounted(async () => {
 .lesson-card {
   border: none;
   border-radius: 18px;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--app-shadow);
   transition:
     transform 0.18s ease,
     box-shadow 0.18s ease;
@@ -239,14 +239,14 @@ onMounted(async () => {
 
 .lesson-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.10);
+  box-shadow: var(--app-shadow-hover);
 }
 
 .lesson-kicker {
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: #6366f1;
+  color: var(--app-primary);
 }
 
 .lesson-icon {
@@ -255,7 +255,7 @@ onMounted(async () => {
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: #eef2ff;
+  background: var(--app-primary-soft);
   font-size: 1.1rem;
 }
 
@@ -265,7 +265,7 @@ onMounted(async () => {
 }
 
 .lesson-preview {
-  color: #4b5563;
+  color: var(--app-text-muted);
   line-height: 1.5;
   font-size: 0.97rem;
 
@@ -277,7 +277,7 @@ onMounted(async () => {
 }
 
 .lesson-footer {
-  color: #2563eb;
+  color: var(--app-primary);
   font-weight: 700;
   font-size: 0.95rem;
 }

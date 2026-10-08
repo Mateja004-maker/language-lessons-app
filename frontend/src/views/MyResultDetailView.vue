@@ -257,6 +257,6 @@ onMounted(loadAttempt)
 }
 
 .explanation-box {
-  background: #fcfcfd;
+  background: var(--app-bg);
 }
 </style>

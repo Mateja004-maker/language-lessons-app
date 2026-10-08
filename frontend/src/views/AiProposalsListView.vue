@@ -98,12 +98,12 @@ onMounted(loadArtifacts)
 }
 
 .artifact-card:hover {
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1) !important;
+  box-shadow: var(--app-shadow-hover) !important;
   transform: translateY(-1px);
 }
 
 .empty-state {
-  border: 1px dashed rgba(0, 0, 0, 0.15);
+  border: 1px dashed var(--app-border);
   border-radius: 0.75rem;
 }
 </style>

@@ -151,11 +151,11 @@ async function onSubmit() {
 <style scoped>
 .icon-hero {
   font-size: 3rem;
-  color: #0d6efd;
+  color: var(--app-primary);
 }
 
 .icon-card {
   font-size: 2.5rem;
-  color: #0d6efd;
+  color: var(--app-primary);
 }
 </style>

@@ -370,36 +370,36 @@ onMounted(loadAll)
 .page-title {
   font-size: 2rem;
   font-weight: 800;
-  color: #111827;
-  border-bottom: 2px solid #e5e7eb;
+  color: var(--app-text);
+  border-bottom: 2px solid var(--app-border);
   padding-bottom: 0.75rem;
 }
 .container {
   max-width: 1100px;
 }
 .info-box {
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--app-border);
   border-radius: 18px;
   padding: 16px;
-  background: #ffffff;
+  background: var(--app-surface);
 }
 
 .tips-box {
-  border-left: 5px solid #0d6efd;
+  border-left: 5px solid var(--app-primary);
 }
 
 .important-box {
-  border-left: 5px solid #dc3545;
+  border-left: 5px solid var(--app-danger);
 }
 :deep(.ql-toolbar) {
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--app-border);
   border-radius: 16px 16px 0 0;
-  background: #f8fafc;
+  background: var(--app-bg);
   padding: 12px;
 }
 
 :deep(.ql-container) {
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--app-border);
   border-top: none;
   border-radius: 0 0 16px 16px;
   min-height: 280px;
@@ -413,7 +413,7 @@ onMounted(loadAll)
 }
 
 :deep(.ql-editor.ql-blank::before) {
-  color: #9ca3af;
+  color: var(--app-text-muted);
   font-style: normal;
 }
 </style>

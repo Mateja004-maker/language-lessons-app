@@ -120,10 +120,10 @@ onMounted(async () => {
 }
 
 .lesson-card {
-  background: #ffffff;
+  background: var(--app-surface);
   border-radius: 24px;
   padding: 34px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--app-shadow);
 }
 
 .lesson-header {
@@ -133,13 +133,13 @@ onMounted(async () => {
   gap: 16px;
   padding-bottom: 18px;
   margin-bottom: 24px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--app-border);
 }
 
 .lesson-content {
   font-size: 1.05rem;
   line-height: 1.8;
-  color: #374151;
+  color: var(--app-text);
 }
 
 .lesson-content :deep(h1),
@@ -147,7 +147,7 @@ onMounted(async () => {
 .lesson-content :deep(h3) {
   margin-top: 22px;
   margin-bottom: 12px;
-  color: #111827;
+  color: var(--app-text);
   font-weight: 700;
 }
 
@@ -177,8 +177,8 @@ onMounted(async () => {
 .extra-card {
   border-radius: 18px;
   padding: 20px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
+  background: var(--app-bg);
+  border: 1px solid var(--app-border);
 }
 
 .extra-card h5 {
@@ -189,16 +189,16 @@ onMounted(async () => {
 .extra-card p {
   margin: 0;
   line-height: 1.6;
-  color: #374151;
+  color: var(--app-text);
   white-space: pre-line;
 }
 
 .tips-card {
-  border-left: 5px solid #0d6efd;
+  border-left: 5px solid var(--app-primary);
 }
 
 .important-card {
-  border-left: 5px solid #dc3545;
+  border-left: 5px solid var(--app-danger);
 }
 
 @media (max-width: 768px) {

@@ -205,6 +205,6 @@ onMounted(loadProfile)
   height: 120px;
   border-radius: 50%;
   object-fit: cover;
-  border: 4px solid #e5e7eb;
+  border: 4px solid var(--app-border);
 }
 </style>
