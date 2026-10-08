@@ -5,7 +5,7 @@
  * Paleta 1: #006BA6, #0496FF, #FFBC42, #D81159, #8F2D56. Uloge:
  *   glavna #006BA6      dugmad, linkovi (beli tekst 5,8:1; kao tekst na beloj 5,8:1)
  *   navbar #004E7A      tamnija nijansa glavne (beli tekst 8,9:1)
- *   akcent #D81159      SAMO sitno: značke, brojači, jedna istaknuta ikonica, fokus/hover detalji
+ *   akcent #D81159      SAMO značka/brojač kad je > 0 (klasa .badge-accent); naslovi i brojevi su tamni
  *                       (beli tekst na njemu 5,1:1; kao tekst na beloj 5,1:1). Na navbaru je
  *                       1,75:1, pa je podvlaka aktivne stavke BELA (8,9:1).
  *   sekundarna #8F2D56  sekundarni naslovi, u maloj meri (7,8:1 na beloj)
@@ -163,7 +163,7 @@ h1, h2, h3, h4, h5, h6,
   --bs-btn-disabled-color: #FFFFFF;
   --bs-btn-disabled-bg: var(--app-primary);
   --bs-btn-disabled-border-color: var(--app-primary);
-  --bs-btn-focus-shadow-rgb: var(--app-accent-rgb);
+  --bs-btn-focus-shadow-rgb: var(--app-primary-rgb);
 }
 
 .btn-outline-primary,
@@ -178,7 +178,7 @@ h1, h2, h3, h4, h5, h6,
   --bs-btn-active-border-color: var(--app-primary-hover);
   --bs-btn-disabled-color: var(--app-primary);
   --bs-btn-disabled-border-color: var(--app-primary);
-  --bs-btn-focus-shadow-rgb: var(--app-accent-rgb);
+  --bs-btn-focus-shadow-rgb: var(--app-primary-rgb);
 }
 
 .btn-success {
@@ -247,11 +247,11 @@ h1, h2, h3, h4, h5, h6,
   --bs-btn-active-border-color: #474B52;
 }
 
-/* fokus: tanak akcentni prsten (detalj, ne površina) */
+/* fokus: tanak prsten u glavnoj boji */
 .form-control:focus,
 .form-select:focus {
   border-color: rgba(var(--app-primary-rgb), 0.6);
-  box-shadow: 0 0 0 0.2rem rgba(var(--app-accent-rgb), 0.18);
+  box-shadow: 0 0 0 0.2rem rgba(var(--app-primary-rgb), 0.18);
 }
 
 .form-check-input:checked {

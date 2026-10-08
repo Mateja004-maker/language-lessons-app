@@ -103,7 +103,7 @@ defineProps({
 .primary { fill: var(--app-primary); }
 .accent { fill: var(--app-navbar); }
 .gray { fill: var(--app-neutral); }
-.hot { fill: var(--app-accent); }
+.hot { fill: var(--app-primary); }  /* istaknut detalj u glavnoj boji (akcent je samo za brojače) */
 .border { fill: var(--app-border); }
 
 .line {

@@ -287,7 +287,8 @@ onMounted(loadAiCounts)
               <div class="mini-label">Zahtevi za registraciju</div>
 
               <div class="mini-value pending-count mb-1">
-                {{ pendingUsers.length }}
+                <!-- akcentna značka samo kad ima zahteva; 0 ostaje tamni tekst -->
+                <span :class="pendingUsers.length > 0 ? 'badge badge-accent' : ''">{{ pendingUsers.length }}</span>
               </div>
 
               <div class="mini-label mb-3">
