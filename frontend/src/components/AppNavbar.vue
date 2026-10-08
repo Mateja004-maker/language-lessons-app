@@ -48,7 +48,7 @@ function onLogout() {
 </script>
 
 <template>
-  <nav class="navbar navbar-expand-xl navbar-dark bg-dark shadow-sm">
+  <nav class="navbar navbar-expand-xl navbar-dark app-navbar shadow-sm">
     <div class="container nav-container">
 
       <router-link class="navbar-brand" to="/">
@@ -221,9 +221,21 @@ function onLogout() {
   max-width: 1320px;
 }
 
+/* boje iz teme (src/assets/theme.css); zlatna linija je samo ukras */
+.app-navbar {
+  background-color: var(--app-navbar);
+  border-bottom: 3px solid var(--app-accent);
+}
+
+.app-navbar .dropdown-menu-dark {
+  --bs-dropdown-bg: var(--app-navbar);
+  --bs-dropdown-link-active-bg: var(--app-primary);
+  --bs-dropdown-link-hover-bg: rgba(255, 255, 255, 0.10);
+}
+
 .navbar-brand {
   font-size: 1.6rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .nav-link {
@@ -231,8 +243,10 @@ function onLogout() {
   white-space: nowrap;
 }
 
-.nav-link.router-link-active {
-  color: #ffffff !important;
+.nav-link.router-link-active,
+.nav-link.dropdown-toggle.active {
+  color: #FFFFFF !important;
+  box-shadow: inset 0 -2px 0 var(--app-accent);
 }
 
 .user-box {
@@ -262,8 +276,8 @@ function onLogout() {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: #3b82f6;
-  color: white;
+  background: var(--app-accent-soft);
+  color: var(--app-accent-text);
   display: flex;
   align-items: center;
   justify-content: center;
