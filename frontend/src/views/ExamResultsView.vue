@@ -68,7 +68,7 @@ export default {
       <h1 class="page-title">Results for: {{ exam?.title || 'Exam' }}</h1>
 
       <button
-        class="btn btn-success"
+        class="btn btn-primary"
         :disabled="exporting || loading"
         @click="handleExport"
       >

@@ -81,7 +81,7 @@ onMounted(async () => {
         <div v-if="role === 'STUDENT'" class="viewed-actions">
           <button
             v-if="!isViewed()"
-            class="btn btn-outline-success btn-sm"
+            class="btn btn-outline-secondary btn-sm"
             @click="markViewed"
           >
             Mark as viewed
@@ -89,7 +89,7 @@ onMounted(async () => {
 
           <button
             v-else
-            class="btn btn-success btn-sm"
+            class="btn btn-primary btn-sm"
             @click="unmarkViewed"
           >
             Viewed ✓

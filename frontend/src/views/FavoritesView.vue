@@ -114,7 +114,7 @@ onMounted(loadFavorites)
               </router-link>
 
               <button
-                class="btn btn-outline-danger btn-sm"
+                class="btn btn-outline-secondary btn-sm"
                 @click="removeFavorite(lesson.id)"
               >
                 Ukloni

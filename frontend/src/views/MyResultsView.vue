@@ -75,7 +75,7 @@ export default {
             <td>{{ new Date(r.submitted_at).toLocaleString() }}</td>
 
             <td class="text-end">
-              <router-link :to="`/my-results/${r.id}`" class="btn btn-outline-primary btn-sm">
+              <router-link :to="`/my-results/${r.id}`" class="btn btn-outline-secondary btn-sm">
                 Detalji
               </router-link>
             </td>

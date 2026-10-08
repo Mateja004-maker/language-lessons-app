@@ -266,7 +266,7 @@ onMounted(loadAiCounts)
               Otvori lekcije
             </router-link>
 
-            <router-link to="/profile" class="btn btn-outline-dark btn-lg px-4">
+            <router-link to="/profile" class="btn btn-outline-secondary btn-lg px-4">
               <i class="fa-solid fa-user me-2"></i>
               Moj profil
             </router-link>

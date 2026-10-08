@@ -295,7 +295,7 @@ export default {
               </select>
             </div>
             <div class="col-12 col-md-3">
-              <button class="btn btn-outline-primary w-100" :disabled="generatingSet || !exam.questions?.length" @click="generateFromExam">
+              <button class="btn btn-outline-secondary w-100" :disabled="generatingSet || !exam.questions?.length" @click="generateFromExam">
                 <span v-if="generatingSet" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
                 {{ generatingSet ? 'Generišem...' : 'Generiši' }}
               </button>
@@ -452,7 +452,7 @@ export default {
 
       <div class="mt-4">
         <button
-          class="btn btn-success w-100"
+          class="btn btn-primary w-100"
           :disabled="!canPublish || exam.is_published"
           @click="publish"
         >

@@ -144,7 +144,7 @@ onMounted(loadProfile)
         </div>
 
         <button
-          class="btn btn-outline-primary mt-3"
+          class="btn btn-outline-secondary mt-3"
           type="button"
           @click="uploadProfileImage"
         >

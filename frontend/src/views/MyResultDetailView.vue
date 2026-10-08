@@ -164,7 +164,7 @@ onMounted(loadAttempt)
           </div>
 
           <div v-if="explanations[q.question_id]" class="mt-3">
-            <button class="btn btn-outline-primary btn-sm" @click="toggleExplanation(q)">
+            <button class="btn btn-outline-secondary btn-sm" @click="toggleExplanation(q)">
               <i class="fa-solid fa-lightbulb me-1"></i>
               Objašnjenje
               <i class="fa-solid ms-1" :class="explanations[q.question_id].open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>

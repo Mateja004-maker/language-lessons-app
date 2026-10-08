@@ -271,7 +271,7 @@ onMounted(loadAll)
                   <div class="d-flex justify-content-end gap-2">
                     <button
                       v-if="u.is_active != 1 && u.role !== 'ADMIN'"
-                      class="btn btn-outline-success btn-sm"
+                      class="btn btn-outline-secondary btn-sm"
                       @click="approveUser(u)"
                     >
                       Approve
@@ -279,7 +279,7 @@ onMounted(loadAll)
 
                     <button
                       v-if="u.role !== 'ADMIN'"
-                      class="btn btn-outline-primary btn-sm"
+                      class="btn btn-outline-secondary btn-sm"
                       @click="startEditSubjects(u)"
                     >
                       Edit subjects

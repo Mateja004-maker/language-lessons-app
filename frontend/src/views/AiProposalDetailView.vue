@@ -338,9 +338,9 @@ onMounted(loadArtifact)
               <input type="radio" class="btn-check" id="dup-da" value="da" v-model="reviewedDuplicate" :disabled="submitting" />
               <label class="btn btn-outline-primary" for="dup-da">Da, duplikat</label>
               <input type="radio" class="btn-check" id="dup-ne" value="ne" v-model="reviewedDuplicate" :disabled="submitting" />
-              <label class="btn btn-outline-secondary" for="dup-ne">Ne</label>
+              <label class="btn btn-outline-primary" for="dup-ne">Ne</label>
               <input type="radio" class="btn-check" id="dup-none" value="" v-model="reviewedDuplicate" :disabled="submitting" />
-              <label class="btn btn-outline-light text-dark border" for="dup-none">Nije označeno</label>
+              <label class="btn btn-outline-primary text-dark border" for="dup-none">Nije označeno</label>
             </div>
             <div class="form-text">Opciono; čuva se uz odluku.</div>
           </template>
@@ -479,7 +479,7 @@ onMounted(loadArtifact)
           </div>
 
           <div class="d-flex gap-2 mt-3">
-            <button class="btn btn-secondary btn-sm" :disabled="submitting" @click="cancelEdit">
+            <button class="btn btn-outline-secondary btn-sm" :disabled="submitting" @click="cancelEdit">
               Otkaži izmenu
             </button>
           </div>
@@ -498,7 +498,7 @@ onMounted(loadArtifact)
           </div>
 
           <div class="d-flex gap-2 mt-3">
-            <button class="btn btn-secondary btn-sm" :disabled="submitting" @click="cancelReject">
+            <button class="btn btn-outline-secondary btn-sm" :disabled="submitting" @click="cancelReject">
               Otkaži
             </button>
           </div>
@@ -518,7 +518,7 @@ onMounted(loadArtifact)
 
           <div class="d-flex flex-wrap gap-2">
             <button
-              class="btn btn-success"
+              class="btn btn-primary"
               :disabled="!canAccept || submitting"
               @click="acceptWithoutChange"
             >
@@ -529,7 +529,7 @@ onMounted(loadArtifact)
 
             <button
               v-if="!showEditForm"
-              class="btn btn-outline-primary"
+              class="btn btn-outline-secondary"
               :disabled="!canAccept || submitting"
               @click="openEditForm"
             >
@@ -550,7 +550,7 @@ onMounted(loadArtifact)
 
             <button
               v-if="!showRejectForm"
-              class="btn btn-outline-danger"
+              class="btn btn-outline-secondary"
               :disabled="!allScored || submitting"
               @click="openRejectForm"
             >
@@ -560,7 +560,7 @@ onMounted(loadArtifact)
 
             <button
               v-else
-              class="btn btn-danger"
+              class="btn btn-primary"
               :disabled="!allScored || submitting || !rejectReason.trim()"
               @click="reject"
             >

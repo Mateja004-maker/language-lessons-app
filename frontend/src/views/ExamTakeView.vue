@@ -220,7 +220,7 @@ export default {
           Please enter fullscreen mode to continue.
         </div>
 
-        <button class="btn btn-dark" @click="requestFullscreen">
+        <button class="btn btn-primary" @click="requestFullscreen">
           Enter Fullscreen
         </button>
       </div>
@@ -362,7 +362,7 @@ export default {
             </div>
 
             <button
-              class="btn btn-success px-4"
+              class="btn btn-primary px-4"
               @click="submit"
               :disabled="isSubmitting"
             >

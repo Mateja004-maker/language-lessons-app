@@ -282,7 +282,7 @@ onMounted(loadAll)
 
             <button
               v-else
-              class="btn btn-success w-100"
+              class="btn btn-primary w-100"
               :disabled="loading"
               @click="updateLesson"
             >
@@ -339,7 +339,7 @@ onMounted(loadAll)
                     <td class="fw-semibold">{{ l.title }}</td>
                     <td class="text-end">
                       <button
-                        class="btn btn-outline-primary btn-sm me-2"
+                        class="btn btn-outline-secondary btn-sm me-2"
                         @click="startEdit(l)"
                       >
                         Edit

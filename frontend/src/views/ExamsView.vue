@@ -82,7 +82,7 @@
                 <div class="card-footer bg-white border-0">
                   <router-link
                     :to="'/exams/' + exam.id + '/take'"
-                    class="btn btn-success w-100"
+                    class="btn btn-primary w-100"
                   >
                     Take Exam
                   </router-link>
@@ -131,7 +131,7 @@
                 </div>
 
                 <div class="card-footer bg-white border-0">
-                  <router-link to="/my-results" class="btn btn-outline-dark w-100">
+                  <router-link to="/my-results" class="btn btn-outline-secondary w-100">
                     View Result
                   </router-link>
                 </div>
@@ -176,7 +176,7 @@
                 <div class="card-footer bg-white border-0 d-flex gap-2">
                   <router-link
                     :to="'/exams/' + exam.id + '/results'"
-                    class="btn btn-outline-dark w-100"
+                    class="btn btn-outline-secondary w-100"
                   >
                     Results
                   </router-link>
@@ -226,7 +226,7 @@
                 <div class="card-footer bg-white border-0 d-flex gap-2">
                   <router-link
                     :to="'/exams/' + exam.id"
-                    class="btn btn-outline-primary w-100"
+                    class="btn btn-outline-secondary w-100"
                   >
                     Manage
                   </router-link>
@@ -239,7 +239,7 @@
 
                   <!-- <router-link
                     :to="'/exams/' + exam.id + '/results'"
-                    class="btn btn-outline-dark w-100"
+                    class="btn btn-outline-secondary w-100"
                   >
                     Results
                   </router-link> -->
