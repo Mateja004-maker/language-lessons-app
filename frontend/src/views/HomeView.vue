@@ -194,6 +194,36 @@ const levelChartOptions = {
 }
 
 onMounted(loadData)
+
+// AI kartice (ADMIN i TEACHER): samo brojevi iz postojećih GET ruta, bez modela.
+// Učitavaju se odvojeno; ako ruta vrati grešku (npr. 409 bez migracije), kartica se ne prikazuje.
+const aiPendingCount = ref(null)
+const mySecondRatingCount = ref(null)
+
+async function loadAiCounts() {
+  if (role !== 'ADMIN' && role !== 'TEACHER') return
+  const [pending, secondRating] = await Promise.allSettled([
+    api.get('/ai/artifacts', { params: { status: 'predlog' } }),
+    api.get('/ai/artifacts/second-rating')
+  ])
+  aiPendingCount.value =
+    pending.status === 'fulfilled' && Array.isArray(pending.value.data) ? pending.value.data.length : null
+  mySecondRatingCount.value =
+    secondRating.status === 'fulfilled' && Array.isArray(secondRating.value.data) ? secondRating.value.data.length : null
+}
+
+const aiCards = computed(() => [
+  aiPendingCount.value !== null && {
+    key: 'pending', to: '/ai/predlozi', cls: 'stat-orange', icon: 'fa-solid fa-wand-magic-sparkles',
+    title: 'AI predlozi na čekanju', value: aiPendingCount.value, text: 'Predlozi pitanja koji čekaju odluku'
+  },
+  mySecondRatingCount.value !== null && {
+    key: 'second', to: '/ai/druga-ocena', cls: 'stat-purple', icon: 'fa-solid fa-scale-balanced',
+    title: 'Moja druga ocena', value: mySecondRatingCount.value, text: 'Predlozi koji čekaju tvoju drugu ocenu'
+  }
+].filter(Boolean))
+
+onMounted(loadAiCounts)
 </script>
 
 <template>
@@ -289,6 +319,19 @@ onMounted(loadData)
     <div v-if="loading" class="text-muted">Loading...</div>
 
     <div v-else>
+      <div v-if="aiCards.length" class="row g-4 mb-4">
+        <div v-for="card in aiCards" :key="card.key" class="col-12 col-md-6">
+          <router-link :to="card.to" class="text-decoration-none">
+            <div class="dashboard-card stat-card h-100" :class="card.cls">
+              <div class="stat-icon"><i :class="card.icon"></i></div>
+              <div class="stat-title">{{ card.title }}</div>
+              <div class="stat-number">{{ card.value }}</div>
+              <div class="stat-text">{{ card.text }}</div>
+            </div>
+          </router-link>
+        </div>
+      </div>
+
       <div class="dashboard-card p-4 mb-4">
         <div class="section-title mb-3">Lessons by Level</div>
 
