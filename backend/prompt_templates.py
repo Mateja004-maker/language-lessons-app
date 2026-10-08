@@ -22,6 +22,9 @@ from jinja2 import Template
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
 PURPOSE_SIMILAR_QUESTION = "similar_question"
+# Generisanje iz SKUPA pitanja testa (tačka J): jedan poziv -> do K novih pitanja
+PURPOSE_SIMILAR_QUESTION_SET = "similar_question_set"
+SET_TEMPLATE_FILE = PROMPTS_DIR / "similar_question_set.txt"
 
 # AKTIVNI šabloni (učitavaju se pri generisanju): mc-v3 i open-v3 - model
 # vraća i difficulty/bloom_level. Prethodne verzije su sačuvane kao
@@ -92,6 +95,38 @@ def ensure_prompt_synced(conn, question_type: str) -> tuple[int, str]:
     cursor.close()
 
     return prompt_id, template_text
+
+
+def ensure_set_prompt_synced(conn) -> tuple[int, str, str]:
+    """Kao ensure_prompt_synced, za šablon generisanja iz skupa.
+    Vraća (prompt_id, template_text, version)."""
+    content = SET_TEMPLATE_FILE.read_text(encoding="utf-8")
+    version = template_version(content)
+    if not version:
+        raise ValueError(f"Fajl {SET_TEMPLATE_FILE.name} nema '{{# version: ... #}}' komentar na vrhu")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM ai_prompts WHERE purpose = %s AND version = %s",
+                       (PURPOSE_SIMILAR_QUESTION_SET, version))
+        row = cursor.fetchone()
+        if row:
+            return row[0], content, version
+        cursor.execute("INSERT INTO ai_prompts (purpose, version, template) VALUES (%s, %s, %s)",
+                       (PURPOSE_SIMILAR_QUESTION_SET, version, content))
+        conn.commit()
+        return cursor.lastrowid, content, version
+    finally:
+        cursor.close()
+
+
+def build_set_prompt(template_text: str, questions: list, k: int, subject_name: str) -> str:
+    """questions: [{'question_text', 'answers': [{'answer_text', 'is_correct'}]}] - ulazni skup."""
+    return Template(template_text).render(
+        subject_name=subject_name,
+        questions=questions,
+        input_count=len(questions),
+        k=k,
+    )
 
 
 def build_similar_question_prompt(
