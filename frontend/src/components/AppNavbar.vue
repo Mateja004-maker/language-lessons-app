@@ -1,10 +1,11 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/services/api'
 import { logout } from '@/services/auth'
 
 const router = useRouter()
+const route = useRoute()
 
 const token = computed(() => localStorage.getItem('access_token'))
 const role = computed(() => localStorage.getItem('user_role'))
@@ -31,6 +32,10 @@ const isStudent = computed(() => role.value === 'STUDENT')
 const canManageLessons = computed(() =>
   role.value === 'TEACHER' || role.value === 'ADMIN'
 )
+
+// padajući meni je istaknut kad je otvorena neka od njegovih stranica
+const isAiRoute = computed(() => route.path.startsWith('/ai/'))
+const isAdminRoute = computed(() => route.path.startsWith('/admin/'))
 
 function onLogout() {
   logout()
@@ -60,38 +65,12 @@ function onLogout() {
 
       <div id="nav" class="collapse navbar-collapse">
 
-        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <ul class="navbar-nav me-auto mb-2 mb-xl-0">
 
           <li class="nav-item">
             <router-link class="nav-link" to="/">
               Home
             </router-link>
-          </li>
-
-          <li
-            v-if="isLoggedIn"
-            class="nav-item d-flex align-items-center me-2"
-          >
-            <span
-              v-if="role === 'ADMIN'"
-              class="badge text-bg-danger"
-            >
-              ADMIN
-            </span>
-
-            <span
-              v-else-if="role === 'TEACHER'"
-              class="badge text-bg-warning"
-            >
-              TEACHER
-            </span>
-
-            <span
-              v-else
-              class="badge text-bg-success"
-            >
-              STUDENT
-            </span>
           </li>
 
           <li v-if="isLoggedIn" class="nav-item">
@@ -100,151 +79,129 @@ function onLogout() {
             </router-link>
           </li>
 
-          <li
-            v-if="isLoggedIn && isStudent"
-            class="nav-item"
-          >
+          <li v-if="isLoggedIn && isStudent" class="nav-item">
             <router-link class="nav-link" to="/favorites">
               Favorites
             </router-link>
           </li>
 
-          <li
-            v-if="isLoggedIn && canManageLessons"
-            class="nav-item"
-          >
+          <li v-if="isLoggedIn && canManageLessons" class="nav-item">
             <router-link class="nav-link" to="/manage/lessons">
               Manage Lessons
             </router-link>
           </li>
-          <li
-            v-if="isLoggedIn && (role === 'TEACHER' || role === 'ADMIN')"
-            class="nav-item"
-          >
+
+          <!-- ista ruta za sve uloge (ranije dve stavke: TEACHER/ADMIN i STUDENT) -->
+          <li v-if="isLoggedIn && (canManageLessons || isStudent)" class="nav-item">
             <router-link class="nav-link" to="/exams">
               Exams
             </router-link>
           </li>
-          <li
-            v-if="isLoggedIn && canManageLessons"
-            class="nav-item"
-          >
+
+          <li v-if="isLoggedIn && isStudent" class="nav-item">
+            <router-link class="nav-link" to="/my-results">
+              My Results
+            </router-link>
+          </li>
+
+          <li v-if="isLoggedIn && canManageLessons" class="nav-item">
             <router-link class="nav-link" to="/predmeti">
               Predmeti
             </router-link>
           </li>
-          <li
-            v-if="isLoggedIn && canManageLessons"
-            class="nav-item"
-          >
-            <router-link class="nav-link" to="/ai/predlozi">
-              AI predlozi
-            </router-link>
-          </li>
-          <li
-            v-if="isLoggedIn && canManageLessons"
-            class="nav-item"
-          >
-            <router-link class="nav-link" to="/ai/druga-ocena">
-              Druga ocena
-            </router-link>
-          </li>
-          <li
-            v-if="isLoggedIn && canManageLessons"
-            class="nav-item"
-          >
-            <router-link class="nav-link" to="/ai/objasnjenja">
-              AI objašnjenja
-            </router-link>
-          </li>
-          <router-link
-          v-if="isLoggedIn && role === 'STUDENT'"
-          class="nav-link"
-          to="/exams"
-        >
-          Exams
-        </router-link>
-          <router-link
-          v-if="isLoggedIn && isStudent"
-          class="nav-link"
-          to="/my-results"
-        >
-          My Results
-        </router-link>
 
-          <li class="nav-item">
-            <router-link class="nav-link" to="/profile">
-              My Profile
-            </router-link>
+          <li v-if="isLoggedIn && canManageLessons" class="nav-item dropdown">
+            <a
+              class="nav-link dropdown-toggle"
+              :class="{ active: isAiRoute }"
+              href="#"
+              role="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              AI
+            </a>
+            <ul class="dropdown-menu dropdown-menu-dark">
+              <li><router-link class="dropdown-item" to="/ai/predlozi">AI predlozi</router-link></li>
+              <li><router-link class="dropdown-item" to="/ai/druga-ocena">Druga ocena</router-link></li>
+              <li><router-link class="dropdown-item" to="/ai/objasnjenja">AI objašnjenja</router-link></li>
+            </ul>
           </li>
 
-          <li
-            v-if="isAdmin"
-            class="nav-item"
-          >
-            <router-link class="nav-link" to="/admin/users">
-              Users
-            </router-link>
-          </li>
-
-          <li
-            v-if="isLoggedIn && isAdmin"
-            class="nav-item"
-          >
-            <router-link class="nav-link" to="/admin/languages">
-              Languages
-            </router-link>
+          <li v-if="isLoggedIn && isAdmin" class="nav-item dropdown">
+            <a
+              class="nav-link dropdown-toggle"
+              :class="{ active: isAdminRoute }"
+              href="#"
+              role="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              Administracija
+            </a>
+            <ul class="dropdown-menu dropdown-menu-dark">
+              <li><router-link class="dropdown-item" to="/admin/users">Users</router-link></li>
+              <li><router-link class="dropdown-item" to="/admin/languages">Languages</router-link></li>
+            </ul>
           </li>
 
         </ul>
 
         <div class="d-flex align-items-center gap-3">
 
-          <div
-            v-if="isLoggedIn"
-            class="user-box"
-          >
-            <div class="user-avatar">
-              <img
-                v-if="profile?.profile_image"
-                :src="`http://127.0.0.1:5000${profile.profile_image}`"
-                alt="Profile"
-                class="navbar-profile-img"
-              />
+          <div v-if="isLoggedIn" class="dropdown">
+            <button
+              class="user-box dropdown-toggle"
+              type="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              <span class="user-avatar">
+                <img
+                  v-if="profile?.profile_image"
+                  :src="`http://127.0.0.1:5000${profile.profile_image}`"
+                  alt="Profile"
+                  class="navbar-profile-img"
+                />
 
-              <span v-else>
-                {{ profile?.display_name?.charAt(0)?.toUpperCase() || 'U' }}
+                <span v-else>
+                  {{ profile?.display_name?.charAt(0)?.toUpperCase() || 'U' }}
+                </span>
               </span>
-            </div>
 
-            <div class="user-info">
-              <div class="user-name">
-                {{ profile?.display_name || 'User' }}
-              </div>
+              <span class="user-info">
+                <span class="user-name">
+                  {{ profile?.display_name || 'User' }}
+                </span>
 
-              <div class="user-role">
-                {{ role }}
-              </div>
-            </div>
+                <span class="user-role">
+                  {{ role }}
+                </span>
+              </span>
+            </button>
+
+            <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark">
+              <li>
+                <router-link class="dropdown-item" to="/profile">
+                  <i class="bi bi-person me-2"></i>My Profile
+                </router-link>
+              </li>
+              <li><hr class="dropdown-divider" /></li>
+              <li>
+                <button class="dropdown-item" type="button" title="Logout" @click="onLogout">
+                  <i class="bi bi-box-arrow-right me-2"></i>Logout
+                </button>
+              </li>
+            </ul>
           </div>
 
           <router-link
-            v-if="!isLoggedIn"
+            v-else
             class="btn btn-outline-primary btn-sm"
             to="/login"
           >
             Login
           </router-link>
-
-          <button
-            v-else
-            class="logout-btn"
-            type="button"
-            @click="onLogout"
-            title="Logout"
-          >
-            <i class="bi bi-box-arrow-right"></i>
-          </button>
 
         </div>
 
@@ -267,6 +224,7 @@ function onLogout() {
 
 .nav-link {
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .nav-link.router-link-active {
@@ -279,10 +237,24 @@ function onLogout() {
   gap: 10px;
   background: rgba(255, 255, 255, 0.08);
   padding: 6px 12px;
+  border: none;
   border-radius: 14px;
+  color: white;
+  text-align: left;
+}
+
+.user-box:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.user-info,
+.user-name,
+.user-role {
+  display: block;
 }
 
 .user-avatar {
+  flex: 0 0 38px;
   width: 38px;
   height: 38px;
   border-radius: 50%;
@@ -307,21 +279,6 @@ function onLogout() {
 .user-role {
   color: rgba(255, 255, 255, 0.7);
   font-size: 0.75rem;
-}
-.logout-btn {
-  width: 42px;
-  height: 42px;
-  border: none;
-  border-radius: 12px;
-  background: rgba(255,255,255,0.08);
-  color: white;
-  font-size: 1.1rem;
-  transition: all 0.18s ease;
-}
-
-.logout-btn:hover {
-  background: rgba(255,255,255,0.18);
-  transform: translateY(-1px);
 }
 .navbar-profile-img {
   width: 100%;
