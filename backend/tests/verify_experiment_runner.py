@@ -24,9 +24,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import requests  # noqa: E402
 from flask_jwt_extended import create_access_token  # noqa: E402
 
+# app pre ai_provider-a: app.py ucitava backend/.env, a ai_provider cita kljuceve pri ucitavanju
+from app import app, get_db_connection, reference_sets_enabled  # noqa: E402
 import ai_provider  # noqa: E402
 import run_experiment as rx  # noqa: E402
-from app import app, get_db_connection, reference_sets_enabled  # noqa: E402
 
 PROVIDERS = ["groq", "gemini", "openrouter"]
 COUNT_TABLES = ("ai_generated_artifacts", "ai_generation_runs", "ai_evaluations", "ai_prompts",
