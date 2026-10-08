@@ -1,7 +1,12 @@
 """Pokretač eksperimenta generisanja sličnih pitanja (tačka D).
 
     python tools/run_experiment.py --batch ID --models groq,gemini,openrouter --per-question N
-        [--reference-set ID] [--max-calls K] [--dry-run]
+        [--mode single|set] [--group-size G --k K] [--reference-set ID] [--max-calls K] [--dry-run]
+
+Režimi (tačka J): single (podrazumevano) - svako pitanje skupa je poseban ulaz;
+set - pitanja referentnog skupa se dele redom u grupe od G pitanja, a jedan
+poziv daje do K novih pitanja (generate_similar_set). Jedna serija ne sme da
+meša režime, a u režimu set ni veličinu grupe ni K.
 
 (iz foldera backend/). Za svako pitanje referentnog skupa serije, za svaki
 model i za svaki od N pokušaja poziva istu logiku kao ruta
@@ -35,6 +40,7 @@ odbija da nastavi (mešanje bi pokvarilo poređenje).
 --reference-set ID vezuje skup za seriju koja još nema skup ni run-ove.
 """
 import argparse
+import json
 import os
 import sys
 from collections import Counter, defaultdict
@@ -46,8 +52,11 @@ sys.path.insert(0, BACKEND_DIR)
 # ai_provider čita API ključeve iz okruženja u trenutku učitavanja (inače 401).
 from app import (  # noqa: E402
     FAILURE_COLUMNS,
+    SET_MAX_K,
     generate_similar_for_question,
+    generate_similar_set,
     get_db_connection,
+    input_question_ids_of_run,
     reference_sets_enabled,
     table_columns_exist,
 )
@@ -67,14 +76,31 @@ class ExperimentError(Exception):
 
 # ---------- plan ----------
 
-def build_plan(question_ids, providers, per_question):
-    """Pun plan eksperimenta, istim redosledom za sve modele (naizmenično)."""
+MODES = ("single", "set")
+
+
+def build_plan(units, providers, per_question):
+    """Pun plan eksperimenta, istim redosledom za sve modele (naizmenično).
+    unit je id pitanja (single) ili grupa id-jeva kao tuple (set)."""
     return [
-        (attempt, question_id, provider)
+        (attempt, unit, provider)
         for attempt in range(1, per_question + 1)
-        for question_id in question_ids
+        for unit in units
         for provider in providers
     ]
+
+
+def make_groups(question_ids, group_size):
+    """Pitanja skupa redom u grupe od group_size (poslednja može biti manja)."""
+    return [tuple(question_ids[i:i + group_size]) for i in range(0, len(question_ids), group_size)]
+
+
+def _purpose(mode):
+    return prompt_templates.PURPOSE_SIMILAR_QUESTION_SET if mode == "set" else prompt_templates.PURPOSE_SIMILAR_QUESTION
+
+
+def _unit_label(unit):
+    return f"grupa {list(unit)}" if isinstance(unit, tuple) else f"pitanje {unit}"
 
 
 def _query(sql, params=()):
@@ -98,17 +124,18 @@ def _failure_columns_exist():
         conn.close()
 
 
-def answered_counts(batch_id):
-    """{(question_id, provider): broj run-ova serije u kojima je model odgovorio}.
+def answered_counts(batch_id, mode="single"):
+    """{(unit, provider): broj run-ova serije u kojima je model odgovorio}.
+    unit = id pitanja (single) ili grupa id-jeva (set, iz params_used.input_question_ids).
     Odgovorio = stiglo je telo odgovora, ili je (posle migracije tačke I) vrsta
     pada 'empty' / 'invalid_json' / 'schema'."""
     model_failure = ""
-    params = [batch_id, prompt_templates.PURPOSE_SIMILAR_QUESTION]
+    params = [batch_id, _purpose(mode)]
     if _failure_columns_exist():
         model_failure = f"OR r.failure_type IN ({', '.join(['%s'] * len(generation_failures.MODEL_FAILURES))})"
         params += list(generation_failures.MODEL_FAILURES)
     rows = _query(f"""
-        SELECT r.source_question_id AS question_id, m.provider, COUNT(*) AS n
+        SELECT r.source_question_id AS question_id, r.params_used, m.provider
         FROM ai_generation_runs r
         JOIN ai_models m ON m.id = r.model_id
         WHERE r.evaluation_batch_id = %s
@@ -116,22 +143,42 @@ def answered_counts(batch_id):
           AND (r.raw_response IS NOT NULL
                OR JSON_VALUE(r.params_used, '$.finish_reason') IS NOT NULL
                {model_failure})
-        GROUP BY r.source_question_id, m.provider
     """, tuple(params))
-    return {(row["question_id"], row["provider"]): row["n"] for row in rows}
+    counts = Counter()
+    for row in rows:
+        unit = tuple(input_question_ids_of_run(row["params_used"])) if mode == "set" else row["question_id"]
+        counts[(unit, row["provider"])] += 1
+    return dict(counts)
 
 
-def check_protocol(batch_id, providers):
-    """Serija ne sme da meša modele ni verzije prompta."""
-    active_versions = {prompt_templates._read_template_file(t)[0] for t in ("mc", "open")}
+def check_protocol(batch_id, providers, mode="single", groups=None, k=None):
+    """Serija ne sme da meša modele, verzije prompta ni režime (single / set);
+    u režimu set ni grupe ni K."""
+    problems = []
+    other_purpose = _purpose("set" if mode == "single" else "single")
+    if _query("SELECT 1 FROM ai_generation_runs WHERE evaluation_batch_id = %s AND purpose = %s LIMIT 1",
+              (batch_id, other_purpose)):
+        problems.append(f"serija već ima run-ove drugog režima ({other_purpose}) - serija ne sme da meša režime")
+    if mode == "set":
+        active_versions = {prompt_templates.template_version(prompt_templates.SET_TEMPLATE_FILE.read_text(encoding="utf-8"))}
+        planned = set(groups or [])
+        for row in _query("SELECT params_used FROM ai_generation_runs WHERE evaluation_batch_id = %s AND purpose = %s",
+                          (batch_id, _purpose("set"))):
+            group = tuple(input_question_ids_of_run(row["params_used"]))
+            if group not in planned:
+                problems.append(f"serija ima grupu {list(group)} koja nije u planu (druga veličina grupe ili drugi skup)")
+            run_k = (json.loads(row["params_used"]) or {}).get("k") if row["params_used"] else None
+            if run_k != k:
+                problems.append(f"serija ima K={run_k}, traženo je K={k}")
+    else:
+        active_versions = {prompt_templates._read_template_file(t)[0] for t in ("mc", "open")}
     rows = _query("""
         SELECT DISTINCT m.provider, m.model_name, p.version
         FROM ai_generation_runs r
         JOIN ai_models m ON m.id = r.model_id
         JOIN ai_prompts p ON p.id = r.prompt_id
         WHERE r.evaluation_batch_id = %s AND r.purpose = %s
-    """, (batch_id, prompt_templates.PURPOSE_SIMILAR_QUESTION))
-    problems = []
+    """, (batch_id, _purpose(mode)))
     for row in rows:
         expected_model = ai_provider.DEFAULT_MODELS.get(row["provider"])
         if row["provider"] in providers and row["model_name"] != expected_model:
@@ -176,13 +223,15 @@ def _raw_reason(run_id):
 
 
 def run_experiment(batch_id, question_ids, providers, per_question, dry_run=False,
-                   max_calls=None, generate=generate_similar_for_question, out=print):
+                   max_calls=None, generate=None, out=print, mode="single", group_size=None, k=None):
     """Izvršava (ili samo prikazuje) plan; vraća izveštaj kao dict."""
+    if mode not in MODES:
+        raise ExperimentError(f"--mode mora biti jedno od: {', '.join(MODES)}")
     unknown = [p for p in providers if p not in ai_provider.DEFAULT_MODELS]
     if unknown:
         raise ExperimentError(f"Nepoznati modeli: {unknown} (dozvoljeno: {sorted(ai_provider.DEFAULT_MODELS)})")
     missing_keys = [p for p in providers if not getattr(ai_provider, API_KEY_NAMES.get(p, ""), "")]
-    if missing_keys and not dry_run and generate is generate_similar_for_question:
+    if missing_keys and not dry_run and generate is None:
         raise ExperimentError(f"Nedostaje API ključ za: {missing_keys} (proveri backend/.env)")
     if per_question < 1:
         raise ExperimentError("--per-question mora biti bar 1")
@@ -191,9 +240,24 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
     if not _query("SELECT id FROM evaluation_batches WHERE id = %s", (batch_id,)):
         raise ExperimentError(f"Serija {batch_id} ne postoji")
 
-    check_protocol(batch_id, providers)
-    plan = build_plan(question_ids, providers, per_question)
-    counts = answered_counts(batch_id)
+    if mode == "set":
+        if not isinstance(group_size, int) or group_size < 1:
+            raise ExperimentError("--group-size mora biti bar 1 u režimu set")
+        if not isinstance(k, int) or not 1 <= k <= SET_MAX_K:
+            raise ExperimentError(f"--k mora biti od 1 do {SET_MAX_K} u režimu set")
+        units = make_groups(question_ids, group_size)
+        if generate is None:
+            def generate(unit, provider, batch):  # noqa: E306
+                return generate_similar_set(list(unit), provider, k, batch,
+                                            input_source={"type": "experiment", "batch": batch})
+    else:
+        units = list(question_ids)
+        if generate is None:
+            generate = generate_similar_for_question
+
+    check_protocol(batch_id, providers, mode=mode, groups=units, k=k)
+    plan = build_plan(units, providers, per_question)
+    counts = answered_counts(batch_id, mode)
     pending = pending_slots(plan, counts)
 
     report = {
@@ -203,20 +267,23 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
         "infra_types": defaultdict(Counter),
         "stopped": {}, "reasons": defaultdict(Counter), "calls": 0,
         "run_ids": [], "artifact_ids": [], "pending": len(pending),
+        "mode": mode, "items_accepted": Counter(), "items_rejected": Counter(),
     }
 
-    out(f"Serija {batch_id}: {len(question_ids)} pitanja x {len(providers)} modela x {per_question} "
+    unit_text = (f"{len(units)} grupa (do {group_size} pitanja, K={k})" if mode == "set"
+                 else f"{len(units)} pitanja")
+    out(f"Serija {batch_id} [{mode}]: {unit_text} x {len(providers)} modela x {per_question} "
         f"= {len(plan)} mesta; urađeno {len(plan) - len(pending)}, čeka {len(pending)}")
 
     if dry_run:
         done = set(plan) - set(pending)
         for slot in plan:
-            attempt, question_id, provider = slot
-            out(f"  {'urađeno' if slot in done else 'čeka  '}  pokušaj {attempt}  pitanje {question_id}  {provider}")
+            attempt, unit, provider = slot
+            out(f"  {'urađeno' if slot in done else 'čeka  '}  pokušaj {attempt}  {_unit_label(unit)}  {provider}")
         return report
 
     infra_streak = Counter()
-    for attempt, question_id, provider in pending:
+    for attempt, unit, provider in pending:
         if provider in report["stopped"]:
             continue
         if max_calls is not None and report["calls"] >= max_calls:
@@ -225,17 +292,20 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
 
         report["calls"] += 1
         try:
-            body, status = generate(question_id, provider, batch_id)
+            body, status = generate(unit, provider, batch_id)
         except Exception as e:  # npr. baza - nema smisla nastaviti
             report["error"][provider] += 1
             report["reasons"][provider][f"izuzetak: {e}"] += 1
-            out(f"  GREŠKA pokušaj {attempt} pitanje {question_id} {provider}: {e} - prekidam")
+            out(f"  GREŠKA pokušaj {attempt} {_unit_label(unit)} {provider}: {e} - prekidam")
             break
 
         if body.get("generation_run_id"):
             report["run_ids"].append(body["generation_run_id"])
         if body.get("artifact_id"):
             report["artifact_ids"].append(body["artifact_id"])
+        report["artifact_ids"].extend(body.get("artifact_ids") or [])
+        report["items_accepted"][provider] += body.get("accepted", 0) or 0
+        report["items_rejected"][provider] += body.get("rejected", 0) or 0
 
         kind = _classify(status, body)
         failure_type = body.get("failure_type")
@@ -246,7 +316,7 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
             report["reasons"][provider][reason] += 1
         if kind == "infra":
             report["infra_types"][provider][failure_type] += 1
-        out(f"  pokušaj {attempt}  pitanje {question_id}  {provider:10}  {kind}" + (f"  ({reason})" if reason else ""))
+        out(f"  pokušaj {attempt}  {_unit_label(unit)}  {provider:10}  {kind}" + (f"  ({reason})" if reason else ""))
 
         if kind == "infra":
             infra_streak[provider] += 1
@@ -261,7 +331,7 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
         if kind == "error":
             report["stopped"][provider] = f"greška {status}: {reason}"
 
-    remaining = pending_slots(plan, answered_counts(batch_id))
+    remaining = pending_slots(plan, answered_counts(batch_id, mode))
     report["pending"] = len(remaining)
     return report
 
@@ -274,6 +344,9 @@ def print_report(report, providers, out=print):
         out(f"  {p:12} {report['planned'][p]:>5} {report['done_before'][p]:>7} {report['ok_first'][p]:>11} "
             f"{report['ok_retry'][p]:>14} {report['format'][p]:>11} {report['empty'][p]:>7} "
             f"{report['infra'][p]:>9} {report['error'][p]:>7}")
+    if report.get("mode") == "set":
+        for p in providers:
+            out(f"  {p}: pitanja prihvaćeno {report['items_accepted'][p]}, odbijeno (stavke) {report['items_rejected'][p]}")
     for p in providers:
         if report["infra_types"][p]:
             out(f"  {p}: bez odgovora po vrsti: {dict(report['infra_types'][p])}")
@@ -336,6 +409,9 @@ def main(argv=None):
     parser.add_argument("--reference-set", type=int, help="veži skup za seriju bez skupa i bez run-ova")
     parser.add_argument("--max-calls", type=int, help="najviše ovoliko poziva modela u ovom pokretanju")
     parser.add_argument("--dry-run", action="store_true", help="samo ispiši plan, bez poziva modela")
+    parser.add_argument("--mode", choices=MODES, default="single", help="single (pitanje po pitanje) ili set (grupe pitanja)")
+    parser.add_argument("--group-size", type=int, help="režim set: broj pitanja skupa po grupi")
+    parser.add_argument("--k", type=int, help="režim set: broj novih pitanja po pozivu")
     args = parser.parse_args(argv)
 
     providers = [p.strip() for p in args.models.split(",") if p.strip()]
@@ -344,7 +420,8 @@ def main(argv=None):
             raise ExperimentError("--dry-run ne vezuje skup; prvo pokreni bez --dry-run ili veži skup ranije")
         question_ids = resolve_question_ids(args.batch, args.reference_set)
         report = run_experiment(args.batch, question_ids, providers, args.per_question,
-                                dry_run=args.dry_run, max_calls=args.max_calls)
+                                dry_run=args.dry_run, max_calls=args.max_calls,
+                                mode=args.mode, group_size=args.group_size, k=args.k)
     except ExperimentError as e:
         print(f"GREŠKA: {e}")
         return 2
