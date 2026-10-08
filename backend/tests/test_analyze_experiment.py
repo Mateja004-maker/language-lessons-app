@@ -116,6 +116,24 @@ class AnalyzeExperiment(unittest.TestCase):
         self.assertEqual(groq["mogucih_duplikata"], "1")
         self.assertIsNone(table["gemini/gemini-m [single]"]["prihvaceno_pct"])  # nijedna odluka
 
+    def test_score_distribution_per_model_and_dimension(self):
+        rows = [art(1, r1=(5, 4)), art(2, r1=(5, 2)), art(3, r1=(3, 4)), art(4, r1=(1, "")),
+                art(5, provider="gemini", r1=(2, 2))]
+        self.run_analyze(rows)
+        table = {(r["model"], r["kriterijum"]): r for r in ax.read_csv(os.path.join(self.out, "tabela_raspodela_ocena.csv"))}
+        t = table[("groq/groq-m [single]", "strucna_tacnost")]
+        self.assertEqual([t[f"ocena_{v}"] for v in range(1, 6)], ["1", "0", "1", "0", "2"])
+        self.assertEqual((t["broj_ocena"], t["prosek"]), ("4", "3.5"))
+        r = table[("groq/groq-m [single]", "relevantnost")]      # prazna ocena se ne broji
+        self.assertEqual([r[f"ocena_{v}"] for v in range(1, 6)], ["0", "1", "0", "2", "0"])
+        self.assertEqual(r["broj_ocena"], "3")
+        g = table[("gemini/gemini-m [single]", "strucna_tacnost")]
+        self.assertEqual((g["ocena_2"], g["broj_ocena"]), ("1", "1"))
+        self.assertEqual(len(table), 4)                         # 2 modela x 2 kriterijuma
+        self.assertTrue(os.path.exists(os.path.join(self.out, "grafikon_raspodela_ocena.svg")))
+        with open(os.path.join(self.out, "izvestaj.md"), encoding="utf-8") as f:
+            self.assertIn("Raspodela ocena po kriterijumu", f.read())
+
     def test_runs_table_failures_and_median(self):
         runs = [{"run_id": 1, "purpose": "similar_question", "provider": "groq", "model_name": "g",
                  "validation_passed": 1, "failure_type": "", "first_attempt_passed": 1, "format_retries": 0, "response_time_ms": 100},

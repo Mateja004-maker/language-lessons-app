@@ -274,7 +274,7 @@ def main():
                re.fullmatch(r"u_[0-9a-f]{12}", r1["decider"]) is not None and r1["decider"] != f"u_{teacher}")
 
         # --- SQL upiti iz db/queries ---
-        q_runs, q_arts = [db_all(q) for q in sql_queries(batch)]
+        q_runs, q_arts, q_scores = [db_all(q) for q in sql_queries(batch)]
         g = next(r for r in q_runs if r["provider"] == "groq")
         record("SQL A groq: pokusaja/uspesnih/iz prve/ponovni", "4/2/1/2",
                f"{g['pokusaja']}/{g['uspesnih']}/{g['prosao_iz_prve']}/{g['sa_ponovnim_zahtevom']}",
@@ -302,6 +302,15 @@ def main():
         csv_status = sorted(r["status"] for r in arts)
         sql_total = sum(int(r["predloga"]) for r in q_arts)
         record("SQL B i CSV izvoz: isti broj predloga", len(csv_status), sql_total, sql_total == len(csv_status))
+        sc = {(r["provider"], r["kriterijum"]): r for r in q_scores}
+        gt = sc.get(("groq", "strucna_tacnost"), {})
+        dist = [int(gt.get(f"ocena_{v}", -1)) for v in range(1, 6)]
+        record("SQL C groq strucna_tacnost: raspodela 1-5, broj, prosek", "[0, 0, 1, 0, 1] 2 4.0",
+               f"{dist} {gt.get('broj_ocena')} {gt.get('prosek')}",
+               dist == [0, 0, 1, 0, 1] and int(gt.get("broj_ocena", 0)) == 2 and float(gt.get("prosek", 0)) == 4.0)
+        record("SQL C: samo runda 1 nastavnika koji odlucuje", "4 reda (2 modela x 2 kriterijuma), gemini 1 ocena",
+               f"{len(q_scores)} redova, gemini {sc.get(('gemini', 'strucna_tacnost'), {}).get('broj_ocena')}",
+               len(q_scores) == 4 and int(sc[("gemini", "strucna_tacnost")]["broj_ocena"]) == 1)
 
         # --- analiza nad pravim izvozom ---
         paths = {}
@@ -314,6 +323,13 @@ def main():
         kappa = next(r for r in result["agreement"] if r["stavka"] == "strucna_tacnost")
         record("analiza izvoza: kapa nad 2 para", 2, kappa["parova"], kappa["parova"] == 2 and kappa["kapa"] is not None)
         record("analiza izvoza: alfa i sa trecim ocenjivacem", "broj", kappa["alfa"], kappa["alfa"] is not None)
+        dist_rows = ax.read_csv(os.path.join(tmp_dir, "izlaz", "tabela_raspodela_ocena.csv"))
+        same = all(
+            [int(r[f"ocena_{v}"]) for v in range(1, 6)]
+            == [int(sc[(r["model"].split("/")[0], r["kriterijum"])][f"ocena_{v}"]) for v in range(1, 6)]
+            for r in dist_rows)
+        record("analiza i SQL C: ista raspodela ocena", "jednako", "jednako" if same and len(dist_rows) == 4 else "razlicito",
+               same and len(dist_rows) == 4)
         record("analiza izvoza: izvestaj", "postoji", "postoji" if os.path.exists(os.path.join(tmp_dir, "izlaz", "izvestaj.md")) else "nema",
                os.path.exists(os.path.join(tmp_dir, "izlaz", "izvestaj.md")))
     finally:

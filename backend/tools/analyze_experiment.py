@@ -13,7 +13,8 @@ Po modelu (provajder/model [režim]):
     prosečno i medijansko vreme;
   - predlozi: odluke u %, razdaljina izmene, duplikati, raspodela težine i Bluma
     (model i nastavnik);
-  - prosečne ocene po kriterijumu (nastavnik koji odlučuje, runda 1);
+  - prosečne ocene po kriterijumu (nastavnik koji odlučuje, runda 1) i raspodela
+    ocena po kriterijumu (koliko ocena 1, 2, 3, 4, 5);
   - saglasnost: težinska (kvadratna) Koenova kapa nastavnik vs. druga ocena po
     kriterijumu, nominalna kapa za težinu i Blumov nivo, Kripendorfova alfa
     (ordinalna za ocene, nominalna za kategorije; iz --evaluations ako je dat, uz sve
@@ -146,6 +147,28 @@ def scores_table(artifacts):
     return columns, rows
 
 
+SCALE = (1, 2, 3, 4, 5)
+
+
+def score_distribution_table(artifacts):
+    """Raspodela ocena (runda 1, nastavnik koji odlučuje) po modelu i kriterijumu."""
+    dims = dimensions(artifacts)
+    groups = defaultdict(list)
+    for a in artifacts:
+        groups[group_key(a)].append(a)
+    columns = ["model", "kriterijum", "broj_ocena", *[f"ocena_{v}" for v in SCALE], "prosek"]
+    rows = []
+    for key, items in sorted(groups.items()):
+        for d in dims:
+            values = [num(a.get(f"r1_{d}")) for a in items if num(a.get(f"r1_{d}")) is not None]
+            counts = Counter(int(v) for v in values)
+            rows.append({"model": key, "kriterijum": d, "broj_ocena": len(values),
+                         **{f"ocena_{v}": counts.get(v, 0) for v in SCALE},
+                         "prosek": round(statistics.mean(values), 2) if values else None,
+                         "red": f"{key} · {d}"})
+    return columns, rows
+
+
 def agreement_table(artifacts, evaluations):
     """Saglasnost: (kolone, redovi, poruka ili None)."""
     dims = dimensions(artifacts)
@@ -209,9 +232,9 @@ def _escape(text):
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def svg_stacked(path, title, rows, segments, label="model"):
+def svg_stacked(path, title, rows, segments, label="model", left=260):
     """Horizontalni složeni stubci (udeo svakog segmenta u redu)."""
-    width, left, bar_h, gap = 760, 260, 22, 12
+    width, bar_h, gap = 500 + left, 22, 12
     height = 70 + len(rows) * (bar_h + gap) + 30
     parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" font-family="sans-serif" font-size="12">',
              f'<rect width="100%" height="100%" fill="white"/><text x="10" y="22" font-size="15" font-weight="bold">{_escape(title)}</text>']
@@ -294,6 +317,12 @@ def analyze(artifacts_path, runs_path=None, evaluations_path=None, out_dir="anal
     write_csv(os.path.join(out_dir, "tabela_ocene.csv"), columns, rows)
     svg_grouped(os.path.join(out_dir, "grafikon_ocene.svg"), "Prosečne ocene po kriterijumu (nastavnik)", columns, rows)
     report += ["## Prosečne ocene po kriterijumu (nastavnik koji odlučuje)", markdown(columns, rows), ""]
+
+    columns, rows = score_distribution_table(artifacts)
+    write_csv(os.path.join(out_dir, "tabela_raspodela_ocena.csv"), columns, rows)
+    svg_stacked(os.path.join(out_dir, "grafikon_raspodela_ocena.svg"), "Raspodela ocena po kriterijumu (nastavnik)",
+                rows, [f"ocena_{v}" for v in SCALE], label="red", left=430)
+    report += ["## Raspodela ocena po kriterijumu (broj ocena 1-5, nastavnik koji odlučuje)", markdown(columns, rows), ""]
 
     columns, rows, message = agreement_table(artifacts, evaluations)
     write_csv(os.path.join(out_dir, "tabela_saglasnost.csv"), columns, rows)

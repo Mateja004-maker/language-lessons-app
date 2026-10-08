@@ -158,7 +158,7 @@ Korisnici su u izvozu samo pseudonimi (`u_` + HMAC heš), bez imena i emailova. 
 run-ovi bez serije se ne izvoze.
 
 Isti pokazatelji se mogu dobiti i direktno u phpMyAdmin-u, upitima iz
-`db/queries/eksperiment_po_modelu.sql`. Red sa `-- FILTER_SERIJA` zamenite sa
+`db/queries/eksperiment_po_modelu.sql` (tri upita: pozivi, predlozi, raspodela ocena). U svakom upitu red sa `-- FILTER_SERIJA` zamenite sa
 `AND r.evaluation_batch_id = <id>`.
 
 ### 6. Analiza: `tools/analyze_experiment.py`
@@ -174,11 +174,12 @@ U folderu `analiza_serija_1/` nastaju:
 - `tabela_predlozi.csv`: odluke u %, razdaljina izmene, duplikati, raspodela težine i
   Blumovih nivoa (model i nastavnik);
 - `tabela_ocene.csv`: prosečna ocena po kriterijumu i modelu;
+- `tabela_raspodela_ocena.csv`: raspodela ocena po kriterijumu i modelu (broj ocena 1, 2, 3, 4, 5);
 - `tabela_saglasnost.csv`, sa tri vrste mera:
   - kvadratno težinska Koenova kapa (nastavnik vs. drugi ocenjivač, po kriterijumu);
   - nominalna kapa za težinu i Blumov nivo;
   - Kripendorfova alfa (ordinalna za ocene, nominalna za kategorije), uz saglasnost modela sa nastavnikom;
-- `grafikon_padovi.svg`, `grafikon_odluke.svg`, `grafikon_ocene.svg`.
+- `grafikon_padovi.svg`, `grafikon_odluke.svg`, `grafikon_ocene.svg`, `grafikon_raspodela_ocena.svg`.
 
 Ako druge ocene nema, skripta to jasno ispiše, a ostatak analize uradi. Skripta ne
 čita bazu, pa se brojevi u radu uvek reprodukuju iz istih CSV fajlova. Ne traži

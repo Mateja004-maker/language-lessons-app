@@ -1,6 +1,7 @@
 -- Eksperiment generisanja pitanja: pokazatelji po modelu i režimu (tačka G)
--- Pokreće se ručno (phpMyAdmin). Samo čitanje. Dva upita: (A) po pozivu modela,
--- (B) po predlogu. Režim: similar_question = jedno pitanje, similar_question_set = skup.
+-- Pokreće se ručno (phpMyAdmin). Samo čitanje. Tri upita: (A) po pozivu modela,
+-- (B) po predlogu, (C) ocene po kriterijumu (prosek i raspodela 1-5).
+-- Režim: similar_question = jedno pitanje, similar_question_set = skup.
 --
 -- Uključeni su SAMO run-ovi iz evaluacionih serija (evaluation_batch_id); probni
 -- run-ovi (bez serije) i razvojne probe se ne računaju.
@@ -103,3 +104,35 @@ SELECT
 FROM arts
 GROUP BY provider, model_name, purpose
 ORDER BY provider, model_name, purpose;
+
+-- (C) Ocene po kriterijumu rubrike: prosek i raspodela (broj ocena 1-5).
+-- Samo nastavnik koji odlučuje (runda 1, evaluator = reviewed_by), kao kolone
+-- r1_* u CSV izvozu; druga ocena (runda 2) se poredi u analizi saglasnosti.
+WITH scores AS (
+    SELECT m.provider, m.model_name, r.purpose, d.dimension_key, e.score
+    FROM ai_evaluations e
+    JOIN ai_rubric_definitions d ON d.id = e.rubric_definition_id
+    JOIN ai_generated_artifacts a ON a.id = e.artifact_id
+    JOIN ai_generation_runs r ON r.id = a.generation_run_id
+    JOIN ai_models m ON m.id = r.model_id
+    WHERE a.artifact_type = 'question'
+      AND d.evaluator_role = 'TEACHER'
+      AND e.evaluation_round = 1
+      AND e.evaluator_id = a.reviewed_by
+      AND r.evaluation_batch_id IS NOT NULL  -- FILTER_SERIJA
+)
+SELECT
+    provider,
+    model_name,
+    purpose                    AS rezim,
+    dimension_key              AS kriterijum,
+    COUNT(*)                   AS broj_ocena,
+    ROUND(AVG(score), 2)       AS prosek,
+    SUM(score = 1)             AS ocena_1,
+    SUM(score = 2)             AS ocena_2,
+    SUM(score = 3)             AS ocena_3,
+    SUM(score = 4)             AS ocena_4,
+    SUM(score = 5)             AS ocena_5
+FROM scores
+GROUP BY provider, model_name, purpose, dimension_key
+ORDER BY provider, model_name, purpose, dimension_key;
