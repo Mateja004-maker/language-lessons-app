@@ -132,8 +132,8 @@ onMounted(loadFavorites)
 
 <style scoped>
 .favorite-card {
-  border: none;
-  border-radius: 18px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
   box-shadow: var(--app-shadow);
 }
 

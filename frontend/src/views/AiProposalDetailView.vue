@@ -292,7 +292,7 @@ onMounted(loadArtifact)
         </div>
 
         <div class="col-12 col-lg-6">
-          <div class="card shadow-sm h-100 border-primary">
+          <div class="card shadow-sm h-100">
             <div class="card-header bg-primary bg-opacity-10">
               <i class="fa-solid fa-wand-magic-sparkles me-2 text-primary"></i>
               AI predlog
@@ -445,7 +445,7 @@ onMounted(loadArtifact)
         </div>
       </div>
 
-      <div v-if="showEditForm" class="card shadow-sm mb-4 border-warning">
+      <div v-if="showEditForm" class="card shadow-sm mb-4">
         <div class="card-header bg-warning bg-opacity-25">
           <i class="fa-solid fa-pen me-2"></i>
           Izmena pitanja pre prihvatanja
@@ -482,7 +482,7 @@ onMounted(loadArtifact)
         </div>
       </div>
 
-      <div v-if="showRejectForm" class="card shadow-sm mb-4 border-danger">
+      <div v-if="showRejectForm" class="card shadow-sm mb-4">
         <div class="card-header bg-danger bg-opacity-25">
           <i class="fa-solid fa-xmark me-2"></i>
           Razlog odbijanja

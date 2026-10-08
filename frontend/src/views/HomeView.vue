@@ -599,8 +599,9 @@ onMounted(loadAiCounts)
 <style scoped>
 /* Boje, zaobljenja i senke dolaze iz teme (src/assets/theme.css). */
 .hero-box {
-  background: linear-gradient(135deg, var(--app-surface) 0%, var(--app-primary-soft) 100%);
-  border-radius: var(--app-radius-lg);
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
   padding: 32px;
   box-shadow: var(--app-shadow);
 }
@@ -653,7 +654,8 @@ onMounted(loadAiCounts)
 
 .dashboard-card {
   background: var(--app-surface);
-  border-radius: var(--app-radius-lg);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
   box-shadow: var(--app-shadow);
 }
 
@@ -663,7 +665,6 @@ onMounted(loadAiCounts)
   color: var(--app-text);
   overflow: hidden;
   position: relative;
-  border-left: 4px solid var(--stat-color, var(--app-primary));
   transition: box-shadow 0.18s ease;
 }
 

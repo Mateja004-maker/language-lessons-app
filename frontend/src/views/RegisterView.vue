@@ -182,7 +182,7 @@ async function register() {
 <style scoped>
 .auth-card {
   max-width: 520px;
-  border-radius: 24px;
+  border-radius: var(--app-radius);
 }
 
 .auth-icon {

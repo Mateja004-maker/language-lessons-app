@@ -116,7 +116,7 @@ onMounted(load)
           </div>
         </div>
         <div class="col-12 col-lg-6">
-          <div class="card shadow-sm h-100 border-primary">
+          <div class="card shadow-sm h-100">
             <div class="card-header bg-primary bg-opacity-10">AI predlog</div>
             <div class="card-body">
               <p class="mb-3">{{ artifact.original_text?.question_text }}</p>

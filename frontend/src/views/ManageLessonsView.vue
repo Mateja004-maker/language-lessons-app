@@ -379,21 +379,22 @@ onMounted(loadAll)
 }
 .info-box {
   border: 1px solid var(--app-border);
-  border-radius: 18px;
+  border-radius: var(--app-radius);
   padding: 16px;
   background: var(--app-surface);
 }
 
+/* bez obojenih ivica: razlika samo u svetloj pozadini */
 .tips-box {
-  border-left: 5px solid var(--app-primary);
+  background: var(--app-primary-soft);
 }
 
 .important-box {
-  border-left: 5px solid var(--app-danger);
+  background: var(--app-danger-soft);
 }
 :deep(.ql-toolbar) {
   border: 1px solid var(--app-border);
-  border-radius: 16px 16px 0 0;
+  border-radius: var(--app-radius) var(--app-radius) 0 0;
   background: var(--app-bg);
   padding: 12px;
 }
@@ -401,7 +402,7 @@ onMounted(loadAll)
 :deep(.ql-container) {
   border: 1px solid var(--app-border);
   border-top: none;
-  border-radius: 0 0 16px 16px;
+  border-radius: 0 0 var(--app-radius) var(--app-radius);
   min-height: 280px;
   font-size: 16px;
 }

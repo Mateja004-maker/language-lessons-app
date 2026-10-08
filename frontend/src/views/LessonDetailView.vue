@@ -121,7 +121,7 @@ onMounted(async () => {
 
 .lesson-card {
   background: var(--app-surface);
-  border-radius: 24px;
+  border-radius: var(--app-radius);
   padding: 34px;
   box-shadow: var(--app-shadow);
 }
@@ -175,7 +175,7 @@ onMounted(async () => {
 }
 
 .extra-card {
-  border-radius: 18px;
+  border-radius: var(--app-radius);
   padding: 20px;
   background: var(--app-bg);
   border: 1px solid var(--app-border);
@@ -193,12 +193,13 @@ onMounted(async () => {
   white-space: pre-line;
 }
 
+/* bez obojenih ivica: razlika samo u svetloj pozadini */
 .tips-card {
-  border-left: 5px solid var(--app-primary);
+  background: var(--app-primary-soft);
 }
 
 .important-card {
-  border-left: 5px solid var(--app-danger);
+  background: var(--app-danger-soft);
 }
 
 @media (max-width: 768px) {
