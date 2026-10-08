@@ -286,7 +286,7 @@ onMounted(loadAiCounts)
             <template v-if="role === 'ADMIN'">
               <div class="mini-label">Zahtevi za registraciju</div>
 
-              <div class="mini-value text-warning mb-1">
+              <div class="mini-value pending-count mb-1">
                 {{ pendingUsers.length }}
               </div>
 
@@ -645,6 +645,11 @@ onMounted(loadAiCounts)
   font-size: 1.2rem;
   font-weight: 700;
   color: var(--app-text);
+}
+
+/* broj zahteva: tamna zlatna (6,6:1 na beloj); Bootstrap text-warning je ~1,6:1 */
+.pending-count {
+  color: var(--app-accent-text);
 }
 
 .dashboard-card {
