@@ -83,6 +83,11 @@
   --bs-secondary: var(--app-text-muted);
   --bs-secondary-rgb: 91, 96, 104;
   --bs-border-color: var(--app-border);
+  /* Bootstrap .text-dark i slično -> tamni tekst teme */
+  --bs-dark: var(--app-text);
+  --bs-dark-rgb: var(--app-text-rgb);
+  --bs-emphasis-color: var(--app-text);
+  --bs-emphasis-color-rgb: var(--app-text-rgb);
 
   --bs-primary: var(--app-primary);
   --bs-primary-rgb: var(--app-primary-rgb);

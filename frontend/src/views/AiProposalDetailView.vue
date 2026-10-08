@@ -340,7 +340,7 @@ onMounted(loadArtifact)
               <input type="radio" class="btn-check" id="dup-ne" value="ne" v-model="reviewedDuplicate" :disabled="submitting" />
               <label class="btn btn-outline-primary" for="dup-ne">Ne</label>
               <input type="radio" class="btn-check" id="dup-none" value="" v-model="reviewedDuplicate" :disabled="submitting" />
-              <label class="btn btn-outline-primary text-dark border" for="dup-none">Nije označeno</label>
+              <label class="btn btn-outline-primary" for="dup-none">Nije označeno</label>
             </div>
             <div class="form-text">Opciono; čuva se uz odluku.</div>
           </template>
