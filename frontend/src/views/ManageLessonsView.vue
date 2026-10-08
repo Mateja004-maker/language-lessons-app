@@ -17,6 +17,25 @@ const error = ref('')
 const msg = ref('')
 const editingLessonId = ref(null)
 
+// filter tabele po predmetu (predmeti iz /api/subjects: ADMIN sve, nastavnik svoje).
+// Lekcija je vezana za predmet preko language_id (isti id kao predmet - ista pretpostavka kao u backendu).
+const subjects = ref([])
+const selectedSubject = ref('')
+const filteredLessons = computed(() =>
+  selectedSubject.value
+    ? lessons.value.filter(l => Number(l.language_id) === Number(selectedSubject.value))
+    : lessons.value
+)
+
+async function loadSubjects() {
+  try {
+    const { data } = await api.get('/subjects')
+    subjects.value = data
+  } catch (e) {
+    subjects.value = []
+  }
+}
+
 const form = ref({
   language_id: '',
   level: 'A1',
@@ -72,7 +91,7 @@ async function imageHandler() {
 
       editor.setSelection(range.index + 1)
     } catch (e) {
-      error.value = e?.response?.data?.error || 'Failed to upload image.'
+      error.value = e?.response?.data?.error || 'Otpremanje slike nije uspelo.'
     }
   }
 }
@@ -89,7 +108,7 @@ async function loadAll() {
     lessons.value = lessonsRes.data
     languages.value = langsRes.data
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to load data.'
+    error.value = e?.response?.data?.error || 'Učitavanje podataka nije uspelo.'
   } finally {
     loading.value = false
   }
@@ -100,7 +119,7 @@ async function createLesson() {
   msg.value = ''
 
   if (!form.value.language_id || !form.value.title.trim() || !form.value.content) {
-    error.value = 'Please fill in the language, title, and content.'
+    error.value = 'Popuni predmet, naslov i sadržaj.'
     return
   }
 
@@ -113,14 +132,14 @@ async function createLesson() {
       tips: form.value.tips.trim(),
       important_info: form.value.important_info.trim()
     })
-    msg.value = 'Lesson added successfully.'
+    msg.value = 'Lekcija je dodata.'
     form.value.title = ''
     form.value.content = ''
     form.value.tips = ''
     form.value.important_info = ''
     await loadAll()
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to add the lesson.'
+    error.value = e?.response?.data?.error || 'Dodavanje lekcije nije uspelo.'
   }
 }
 
@@ -156,7 +175,7 @@ async function updateLesson() {
   msg.value = ''
 
   if (!form.value.language_id || !form.value.title.trim() || !form.value.content) {
-    error.value = 'Please fill in the language, title, and content.'
+    error.value = 'Popuni predmet, naslov i sadržaj.'
     return
   }
 
@@ -170,11 +189,11 @@ async function updateLesson() {
       important_info: form.value.important_info.trim()
     })
 
-    msg.value = 'Lesson updated successfully.'
+    msg.value = 'Lekcija je izmenjena.'
     cancelEdit()
     await loadAll()
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to update the lesson.'
+    error.value = e?.response?.data?.error || 'Izmena lekcije nije uspela.'
   }
 }
 
@@ -183,20 +202,26 @@ async function removeLesson(id) {
   msg.value = ''
   try {
     await api.delete(`/lessons/${id}`)
-    msg.value = 'Lesson deleted successfully.'
+    msg.value = 'Lekcija je obrisana.'
     await loadAll()
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to delete the lesson.'
+    error.value = e?.response?.data?.error || 'Brisanje lekcije nije uspelo.'
   }
 }
 
-onMounted(loadAll)
+onMounted(() => {
+  loadAll()
+  loadSubjects()
+})
 </script>
 
 <template>
   <div class="container py-4">
-    <PageHeader title="Manage Lessons">
-      <span v-if="role" class="badge text-bg-secondary">Role: {{ role }}</span>
+    <PageHeader title="Uređivanje lekcija">
+      <select v-model="selectedSubject" class="form-select" aria-label="Predmet">
+        <option value="">Svi predmeti</option>
+        <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+      </select>
     </PageHeader>
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
@@ -208,13 +233,13 @@ onMounted(loadAll)
         <div class="card shadow-sm">
           <div class="card-body">
             <h5 class="card-title mb-3">
-              {{ editingLessonId ? 'Edit lesson' : 'Create lesson' }}
+              {{ editingLessonId ? 'Izmena lekcije' : 'Nova lekcija' }}
             </h5>
 
             <div class="mb-3">
-              <label class="form-label">Language</label>
+              <label class="form-label">Predmet</label>
               <select v-model="form.language_id" class="form-select">
-                <option value="" disabled>Select language...</option>
+                <option value="" disabled>Izaberi predmet...</option>
                 <option v-for="l in languages" :key="l.id" :value="l.id">
                   {{ l.code }} — {{ l.name }}
                 </option>
@@ -222,49 +247,49 @@ onMounted(loadAll)
             </div>
 
             <div class="mb-3">
-              <label class="form-label">Level</label>
+              <label class="form-label">Nivo</label>
               <select v-model="form.level" class="form-select">
                 <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
               </select>
             </div>
 
             <div class="mb-3">
-              <label class="form-label">Title</label>
-              <input v-model="form.title" class="form-control" placeholder="Greetings" />
+              <label class="form-label">Naslov</label>
+              <input v-model="form.title" class="form-control" placeholder="Npr. Pozdravi" />
             </div>
 
             <div class="mb-3">
-              <label class="form-label">Content</label>
+              <label class="form-label">Sadržaj</label>
               <QuillEditor
                 ref="quillEditor"
                 v-model:content="form.content"
                 content-type="html"
                 theme="snow"
                 :toolbar="toolbarOptions"
-                placeholder="Write lesson content here..."
+                placeholder="Upiši sadržaj lekcije..."
               />
             </div>
             <div class="row g-3 mb-3">
               <div class="col-12 col-md-6">
                 <div class="info-box tips-box">
-                  <label class="form-label">Tips & Tricks</label>
+                  <label class="form-label">Saveti</label>
                   <textarea
                     v-model="form.tips"
                     class="form-control"
                     rows="4"
-                    placeholder="Add useful tips, shortcuts, or examples..."
+                    placeholder="Korisni saveti, prečice ili primeri..."
                   ></textarea>
                 </div>
               </div>
 
               <div class="col-12 col-md-6">
                 <div class="info-box important-box">
-                  <label class="form-label">Important Information</label>
+                  <label class="form-label">Važne informacije</label>
                   <textarea
                     v-model="form.important_info"
                     class="form-control"
                     rows="4"
-                    placeholder="Add key rules, warnings, or important notes..."
+                    placeholder="Ključna pravila, upozorenja ili važne napomene..."
                   ></textarea>
                 </div>
               </div>
@@ -277,7 +302,7 @@ onMounted(loadAll)
               :disabled="loading"
               @click="createLesson"
             >
-              Add lesson
+              Dodaj lekciju
             </button>
 
             <button
@@ -286,7 +311,7 @@ onMounted(loadAll)
               :disabled="loading"
               @click="updateLesson"
             >
-              Save changes
+              Sačuvaj izmene
             </button>
 
             <button
@@ -295,7 +320,7 @@ onMounted(loadAll)
               type="button"
               @click="cancelEdit"
             >
-              Cancel
+              Otkaži
             </button>
           </div>
       
@@ -308,16 +333,16 @@ onMounted(loadAll)
         <div class="card shadow-sm">
           <div class="card-body">
             <div class="d-flex align-items-center justify-content-between mb-2">
-              <h5 class="card-title m-0">All lessons</h5>
+              <h5 class="card-title m-0">Sve lekcije</h5>
               <button class="btn btn-outline-secondary btn-sm" :disabled="loading" @click="loadAll">
-                Refresh
+                Osveži
               </button>
             </div>
 
-            <div v-if="loading" class="text-muted">Loading...</div>
+            <div v-if="loading" class="text-muted">Učitavanje...</div>
 
-            <div v-else-if="lessons.length === 0" class="text-muted">
-              No lessons yet.
+            <div v-else-if="filteredLessons.length === 0" class="text-muted">
+              Nema lekcija.
             </div>
 
             <div v-else class="table-responsive">
@@ -325,14 +350,14 @@ onMounted(loadAll)
                 <thead class="table-light">
                   <tr>
                     <th>ID</th>
-                    <th>Lang</th>
-                    <th>Level</th>
-                    <th>Title</th>
-                    <th class="text-end">Action</th>
+                    <th>Predmet</th>
+                    <th>Nivo</th>
+                    <th>Naslov</th>
+                    <th class="text-end">Akcije</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(l, index) in lessons" :key="l.id">
+                  <tr v-for="(l, index) in filteredLessons" :key="l.id">
                     <td>{{ index + 1 }}</td>
                     <td><span class="badge text-bg-light border">{{ l.language_code }}</span></td>
                     <td><span class="badge text-bg-primary">{{ l.level }}</span></td>
@@ -342,14 +367,14 @@ onMounted(loadAll)
                         class="btn btn-outline-secondary btn-sm me-2"
                         @click="startEdit(l)"
                       >
-                        Edit
+                        Izmeni
                       </button>
 
                       <button
                         class="btn btn-outline-danger btn-sm"
                         @click="removeLesson(l.id)"
                       >
-                        Delete
+                        Obriši
                       </button>
                     </td>
                   </tr>
