@@ -10,7 +10,6 @@ zabeleženim id-jevima i porede se brojevi redova pre i posle.
 import io
 import json
 import os
-import subprocess
 import sys
 import uuid
 from contextlib import redirect_stdout
@@ -208,9 +207,11 @@ def main():
         missing = db_all("SELECT COALESCE(MAX(id), 0) + 1000 AS id FROM evaluation_batches")[0]["id"]
         code, _ = run_tool(missing)
         record("nepostojeca serija", 2, code, code == 2)
-        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-        cli = [subprocess.run([sys.executable, os.path.join(BACKEND, "tools", "validate_batch.py"), "--batch", str(b)],
-                              cwd=BACKEND, env=env, capture_output=True).returncode for b in (good, bad)]
+        # komandna linija u istom procesu (novi proces bi ponovo učitao .env - vidi tools/test_clean_db.py)
+        cli = []
+        for b in (good, bad):
+            with redirect_stdout(io.StringIO()):
+                cli.append(vb.main(["--batch", str(b)]))
         record("komandna linija: izlazni kodovi", [0, 1], cli, cli == [0, 1])
 
         # --- samo citanje ---
