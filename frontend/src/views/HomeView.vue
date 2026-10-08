@@ -70,6 +70,16 @@ const pendingUsers = computed(() =>
   )
 )
 
+// samo prikaz: uloga na srpskom i "Predmet"/"Predmeti" prema broju predmeta
+const ROLE_LABELS = { ADMIN: 'Administrator', TEACHER: 'Nastavnik', STUDENT: 'Student' }
+const roleLabel = ROLE_LABELS[role] || role
+const subjectLabel = computed(() =>
+  (profile.value?.subjects?.length || 0) === 1 ? 'Predmet' : 'Predmeti'
+)
+const mySubjectsTitle = computed(() =>
+  subjectLabel.value === 'Predmet' ? 'Moj predmet' : 'Moji predmeti'
+)
+
 const subjectNames = computed(() => {
   if (!profile.value?.subjects || !subjects.value.length) return ''
   return profile.value.subjects
@@ -125,14 +135,14 @@ async function loadData() {
 }
 const heroText = computed(() => {
   if (role === 'ADMIN') {
-    return 'Manage users, approve registrations and organize languages from one dashboard.'
+    return 'Upravljaj korisnicima, odobravaj registracije i uređuj jezike sa jednog mesta.'
   }
 
   if (role === 'TEACHER') {
-    return 'Create, organize and manage lessons for the language you teach.'
+    return 'Pravi i uređuj lekcije za predmete koje predaješ.'
   }
 
-  return 'Continue learning, open your lessons and follow content for your selected language.'
+  return 'Nastavi sa učenjem: otvori lekcije i prati sadržaj svojih predmeta.'
 })
 
 const progressPercent = computed(() => {
@@ -235,21 +245,17 @@ onMounted(loadAiCounts)
         <div class="col-12 col-lg-8">
           <!-- ADMIN: uloga se već vidi u navbaru, ne ponavlja se -->
           <div v-if="role !== 'ADMIN'" class="hero-badge mb-3">
-            {{ role }}
+            {{ roleLabel }}
           </div>
 
           <h1 class="hero-title mb-2">
-            Welcome back, {{ profile?.display_name || 'User' }}
+            Zdravo, {{ profile?.display_name || 'Korisnik' }}
           </h1>
           <div
             v-if="subjectNames && role !== 'ADMIN'"
             class="hero-language mb-3"
           >
-            {{
-              role === 'TEACHER'
-                ? `Teaching: ${subjectNames}`
-                : `Learning: ${subjectNames}`
-            }}
+            {{ subjectLabel }}: {{ subjectNames }}
           </div>
 
           <p class="hero-text mb-3">
@@ -259,12 +265,12 @@ onMounted(loadAiCounts)
           <div class="d-flex flex-wrap gap-2">
             <router-link to="/lessons" class="btn btn-primary btn-lg px-4">
               <i class="fa-solid fa-book-open me-2"></i>
-              Open Lessons
+              Otvori lekcije
             </router-link>
 
             <router-link to="/profile" class="btn btn-outline-dark btn-lg px-4">
               <i class="fa-solid fa-user me-2"></i>
-              My Profile
+              Moj profil
             </router-link>
           </div>
         </div>
@@ -272,9 +278,9 @@ onMounted(loadAiCounts)
         <div class="col-12 col-lg-4">
           <div class="hero-side-card">
             <template v-if="role !== 'ADMIN'">
-              <div class="mini-label">Current role</div>
+              <div class="mini-label">Uloga</div>
               <div class="mini-value mb-4">
-                {{ role }}
+                {{ roleLabel }}
               </div>
             </template>
 
@@ -301,14 +307,11 @@ onMounted(loadAiCounts)
 
             <template v-else>
               <div class="mini-label">
-                {{ role === 'TEACHER'
-                    ? 'Teaching language'
-                    : 'Learning language'
-                }}
+                {{ subjectLabel }}
               </div>
 
               <div class="mini-value">
-                {{ subjectNames || 'Not selected yet' }}
+                {{ subjectNames || 'Još nisu izabrani' }}
               </div>
             </template>
           </div>
@@ -316,7 +319,7 @@ onMounted(loadAiCounts)
       </div>
     </div>
 
-    <div v-if="loading" class="text-muted">Loading...</div>
+    <div v-if="loading" class="text-muted">Učitavanje...</div>
 
     <div v-else>
       <div v-if="aiCards.length" class="row g-4 mb-4">
@@ -333,7 +336,7 @@ onMounted(loadAiCounts)
       </div>
 
       <div class="dashboard-card p-4 mb-4">
-        <div class="section-title mb-3">Lessons by Level</div>
+        <div class="section-title mb-3">Lekcije po nivou</div>
 
         <div class="chart-box">
           <Pie
@@ -349,27 +352,27 @@ onMounted(loadAiCounts)
           <div class="col-12 col-md-4">
             <div class="dashboard-card stat-card stat-blue h-100">
               <div class="stat-icon"><i class="fa-solid fa-globe"></i></div>
-              <div class="stat-title">Languages</div>
+              <div class="stat-title">Jezici</div>
               <div class="stat-number">{{ languages.length }}</div>
-              <div class="stat-text">Registered languages</div>
+              <div class="stat-text">Registrovani jezici</div>
             </div>
           </div>
 
           <div class="col-12 col-md-4">
             <div class="dashboard-card stat-card stat-purple h-100">
               <div class="stat-icon"><i class="fa-solid fa-book-open"></i></div>
-              <div class="stat-title">Lessons</div>
+              <div class="stat-title">Lekcije</div>
               <div class="stat-number">{{ lessons.length }}</div>
-              <div class="stat-text">Available lessons</div>
+              <div class="stat-text">Dostupne lekcije</div>
             </div>
           </div>
 
           <div class="col-12 col-md-4">
             <div class="dashboard-card stat-card stat-green h-100">
               <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
-              <div class="stat-title">Users</div>
+              <div class="stat-title">Korisnici</div>
               <div class="stat-number">{{ users.length }}</div>
-              <div class="stat-text">Registered accounts</div>
+              <div class="stat-text">Registrovani nalozi</div>
             </div>
           </div>
 
@@ -377,30 +380,30 @@ onMounted(loadAiCounts)
         </div>
 
         <div class="dashboard-card p-4">
-          <div class="section-title mb-3">Quick actions</div>
+          <div class="section-title mb-3">Brze akcije</div>
 
           <div class="row g-3">
             <div class="col-12 col-md-4">
               <router-link to="/admin/languages" class="action-card text-decoration-none">
                 <div class="action-icon"><i class="fa-solid fa-globe"></i></div>
-                <div class="action-title">Manage Languages</div>
-                <div class="action-text">Add and organize languages</div>
+                <div class="action-title">Upravljanje jezicima</div>
+                <div class="action-text">Dodaj i uredi jezike</div>
               </router-link>
             </div>
 
             <div class="col-12 col-md-4">
               <router-link to="/admin/users" class="action-card text-decoration-none">
                 <div class="action-icon"><i class="fa-solid fa-users-gear"></i></div>
-                <div class="action-title">Manage Users</div>
-                <div class="action-text">Approve and manage accounts</div>
+                <div class="action-title">Upravljanje korisnicima</div>
+                <div class="action-text">Odobri i uredi naloge</div>
               </router-link>
             </div>
 
             <div class="col-12 col-md-4">
               <router-link to="/lessons" class="action-card text-decoration-none">
                 <div class="action-icon"><i class="fa-solid fa-file-lines"></i></div>
-                <div class="action-title">Open Lessons</div>
-                <div class="action-text">View all available lessons</div>
+                <div class="action-title">Otvori lekcije</div>
+                <div class="action-text">Pregled svih dostupnih lekcija</div>
               </router-link>
             </div>
           </div>
@@ -413,32 +416,32 @@ onMounted(loadAiCounts)
           <div class="col-12 col-md-6">
             <div class="dashboard-card stat-card stat-purple h-100">
               <div class="action-icon"><i class="fa-solid fa-book-open me-2"></i></div>
-              <div class="stat-title">Lessons</div>
+              <div class="stat-title">Lekcije</div>
               <div class="stat-number">{{ lessons.length }}</div>
-              <div class="stat-text">Current lesson count</div>
+              <div class="stat-text">Trenutan broj lekcija</div>
             </div>
           </div>
 
           <div class="col-12 col-md-6">
             <div class="dashboard-card stat-card stat-green h-100">
               <div class="stat-icon"><i class="fa-solid fa-chalkboard-user"></i></div>
-              <div class="stat-title">Role</div>
-              <div class="stat-number">TEACHER</div>
-              <div class="stat-text">Lesson management access</div>
+              <div class="stat-title">Uloga</div>
+              <div class="stat-number">Nastavnik</div>
+              <div class="stat-text">Pristup uređivanju lekcija</div>
             </div>
           </div>
         </div>
 
         <div class="dashboard-card p-4">
-          <div class="section-title mb-3">Quick actions</div>
+          <div class="section-title mb-3">Brze akcije</div>
 
           <div class="row g-3">
             <div class="col-12 col-md-6">
               <router-link to="/lessons" class="action-card text-decoration-none">
                 <div class="action-icon"><i class="fa-solid fa-book-open-reader"></i></div>
-                <div class="action-title">View Lessons</div>
+                <div class="action-title">Pregled lekcija</div>
                 <div class="action-text">
-                  View lessons for your language
+                  Lekcije iz tvojih predmeta
                 </div>
               </router-link>
             </div>
@@ -446,9 +449,9 @@ onMounted(loadAiCounts)
             <div class="col-12 col-md-6">
               <router-link to="/manage/lessons" class="action-card text-decoration-none">
                 <div class="action-icon"><i class="fa-solid fa-pen-to-square"></i></div>
-                <div class="action-title">Manage Lessons</div>
+                <div class="action-title">Uređivanje lekcija</div>
                 <div class="action-text">
-                  Manage lessons for your language
+                  Uredi lekcije za svoje predmete
                 </div>
               </router-link>
             </div>
@@ -462,31 +465,31 @@ onMounted(loadAiCounts)
           <div class="col-12 col-md-4">
             <div class="dashboard-card stat-card stat-blue h-100">
               <div class="stat-icon"><i class="fa-solid fa-globe"></i></div>
-              <div class="stat-title">My Language</div>
+              <div class="stat-title">{{ mySubjectsTitle }}</div>
               <div class="stat-number small-number">
-                {{ subjectNames || 'Not selected' }}
+                {{ subjectNames || 'Nisu izabrani' }}
               </div>
-              <div class="stat-text">Current learning language</div>
+              <div class="stat-text">Predmeti koje pratiš</div>
             </div>
           </div>
 
           <div class="col-12 col-md-4">
             <div class="dashboard-card stat-card stat-green h-100">
               <div class="stat-icon"><i class="fa-solid fa-book"></i></div>
-              <div class="stat-title">Lessons</div>
+              <div class="stat-title">Lekcije</div>
               <div class="stat-number">{{ lessons.length }}</div>
-              <div class="stat-text">Available lessons</div>
+              <div class="stat-text">Dostupne lekcije</div>
             </div>
           </div>
           <div class="col-12 col-md-4">
             <div class="dashboard-card stat-card stat-orange h-100">
               <div class="stat-icon"><i class="fa-solid fa-star"></i></div>
-              <div class="stat-title">Favorites</div>
+              <div class="stat-title">Omiljene lekcije</div>
               <div class="stat-number">
                 {{ favorites.length }}
               </div>
               <div class="stat-text">
-                Saved lessons
+                Sačuvane lekcije
               </div>
             </div>
           </div>
@@ -494,9 +497,9 @@ onMounted(loadAiCounts)
         <div class="dashboard-card p-4 mb-4">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div>
-              <div class="section-title">Learning Progress</div>
+              <div class="section-title">Napredak</div>
               <div class="text-muted small">
-                {{ progress.length }} of {{ lessons.length }} lessons viewed
+                Pregledano {{ progress.length }} od {{ lessons.length }} lekcija
               </div>
             </div>
 
@@ -519,32 +522,32 @@ onMounted(loadAiCounts)
         </div>
         
         <div class="dashboard-card p-4">
-          <div class="section-title mb-3">Quick actions</div>
+          <div class="section-title mb-3">Brze akcije</div>
 
           <div class="row g-3">
             <div class="col-12 col-md-4">
               <router-link to="/lessons" class="action-card text-decoration-none">
                 <div class="action-icon"><i class="fa-solid fa-book-open me-2"></i></div>
-                <div class="action-title">View Lessons</div>
-                <div class="action-text">Start learning now</div>
+                <div class="action-title">Pregled lekcija</div>
+                <div class="action-text">Počni sa učenjem</div>
               </router-link>
             </div>
 
             <div class="col-12 col-md-4">
               <router-link to="/profile" class="action-card text-decoration-none">
                 <div class="action-icon"><i class="fa-solid fa-gear"></i></div>
-                <div class="action-title">My Profile</div>
+                <div class="action-title">Moj profil</div>
                 <div class="action-text">
-                  View your account information
+                  Podaci o tvom nalogu
                 </div>
               </router-link>
             </div>
             <div class="col-12 col-md-4">
               <router-link to="/favorites" class="action-card text-decoration-none">
                 <div class="stat-icon"><i class="fa-solid fa-star"></i></div>
-                <div class="action-title">My Favorites</div>
+                <div class="action-title">Omiljene lekcije</div>
                 <div class="action-text">
-                  Open saved lessons
+                  Otvori sačuvane lekcije
                 </div>
               </router-link>
             </div>
@@ -558,7 +561,7 @@ onMounted(loadAiCounts)
       <div class="modal-icon"><i class="fa-solid fa-globe"></i></div>
 
       <h3 class="fw-bold mb-2">
-        Izbor jezika
+        Izbor predmeta
       </h3>
 
       <p class="text-muted mb-4">
@@ -589,7 +592,7 @@ onMounted(loadAiCounts)
         ></span>
 
         <i v-if="!savingLanguage" class="fa-solid fa-floppy-disk me-2"></i>
-        Save 
+        Sačuvaj
       </button>
     </div>
   </div>
