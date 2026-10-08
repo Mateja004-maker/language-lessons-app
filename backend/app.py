@@ -22,6 +22,9 @@ from flask import send_from_directory
 import uuid
 from datetime import date, timedelta
 import hashlib
+import hmac
+import csv
+from io import StringIO
 from io import BytesIO
 from flask import send_file
 from openpyxl import Workbook
@@ -5186,6 +5189,223 @@ def generate_similar_from_exam(exam_id):
         return jsonify(body), status
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# =====================================================================
+# CSV izvoz evaluacione serije (tačka G) - ulaz za tools/analyze_experiment.py.
+# kind=artifacts: jedan red po predlogu (model, prompt, oznake, ocene
+#   nastavnika (runda 1) i prve druge ocene (runda 2), odluka, razdaljina, duplikat);
+# kind=runs: jedan red po pozivu modela (vrsta pada, ponovni zahtev, vreme, tokeni);
+# kind=evaluations: jedan red po pojedinačnoj oceni (svi ocenjivači, za alfu).
+# Korisnici (nastavnici, drugi ocenjivači, studenti) su samo HMAC heš id-ja -
+# bez imena i email adresa. Samo run-ovi iz serije (probe bez serije ne ulaze).
+# =====================================================================
+
+EXPORT_KINDS = ("artifacts", "runs", "evaluations")
+EXPORT_REQUIRED_COLUMNS = {
+    "ai_generation_runs": FAILURE_COLUMNS,
+    "ai_generated_artifacts": ("model_difficulty", "reviewed_difficulty", "edit_distance", "max_similarity", "reviewed_duplicate"),
+    "ai_evaluations": ("evaluation_round",),
+    "ai_label_evaluations": ("difficulty",),
+}
+
+
+def anonymize_user(user_id):
+    """Stabilan pseudonim korisnika (HMAC-SHA256 sa tajnim ključem aplikacije)."""
+    if user_id is None:
+        return ""
+    key = str(app.config["JWT_SECRET_KEY"]).encode()
+    return "u_" + hmac.new(key, f"user:{user_id}".encode(), hashlib.sha256).hexdigest()[:12]
+
+
+def _export_artifacts(cursor, batch_id):
+    cursor.execute("""
+        SELECT a.id AS artifact_id, a.artifact_type, r.id AS run_id, r.purpose, m.provider, m.model_name,
+               p.version AS prompt_version, r.source_question_id, r.params_used, a.original_text, a.status,
+               a.reviewed_by, a.model_difficulty, a.model_bloom_level, a.reviewed_difficulty, a.reviewed_bloom_level,
+               a.edit_distance, a.edit_distance_norm, a.max_similarity, a.similar_source, a.reviewed_duplicate,
+               r.first_attempt_passed, r.format_retries, r.response_time_ms, r.tokens_used
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        JOIN ai_models m ON m.id = r.model_id
+        LEFT JOIN ai_prompts p ON p.id = r.prompt_id
+        WHERE r.evaluation_batch_id = %s
+        ORDER BY a.id
+    """, (batch_id,))
+    artifacts = cursor.fetchall()
+    ids = [a["artifact_id"] for a in artifacts]
+    scores, labels2, dims = {}, {}, []
+    if ids:
+        placeholders = ", ".join(["%s"] * len(ids))
+        cursor.execute(f"""
+            SELECT e.artifact_id, e.evaluator_id, e.evaluation_round, d.dimension_key, e.score
+            FROM ai_evaluations e JOIN ai_rubric_definitions d ON d.id = e.rubric_definition_id
+            WHERE e.artifact_id IN ({placeholders}) AND d.evaluator_role <> 'STUDENT'
+            ORDER BY e.evaluator_id
+        """, tuple(ids))
+        for row in cursor.fetchall():
+            scores.setdefault(row["artifact_id"], []).append(row)
+            if row["dimension_key"] not in dims:
+                dims.append(row["dimension_key"])
+        cursor.execute(f"""
+            SELECT artifact_id, evaluator_id, difficulty, bloom_level FROM ai_label_evaluations
+            WHERE artifact_id IN ({placeholders}) ORDER BY evaluator_id
+        """, tuple(ids))
+        for row in cursor.fetchall():
+            labels2.setdefault((row["artifact_id"], row["evaluator_id"]), row)
+
+    columns = ["batch_id", "artifact_id", "artifact_type", "run_id", "mode", "provider", "model_name", "prompt_version",
+               "source_question_id", "input_question_ids", "question_type", "status", "decider",
+               "model_difficulty", "model_bloom_level", "reviewed_difficulty", "reviewed_bloom_level",
+               "second_rater", "second_raters_count", "second_difficulty", "second_bloom_level",
+               "edit_distance", "edit_distance_norm", "max_similarity", "similar_source", "possible_duplicate",
+               "reviewed_duplicate", "first_attempt_passed", "format_retries", "response_time_ms", "tokens_used"]
+    columns += [f"r1_{d}" for d in dims] + [f"r2_{d}" for d in dims]
+    rows = []
+    for a in artifacts:
+        own = scores.get(a["artifact_id"], [])
+        round1 = {s["dimension_key"]: s["score"] for s in own if s["evaluation_round"] == 1 and s["evaluator_id"] == a["reviewed_by"]}
+        second_ids = sorted({s["evaluator_id"] for s in own if s["evaluation_round"] == 2})
+        first_second = second_ids[0] if second_ids else None
+        round2 = {s["dimension_key"]: s["score"] for s in own if s["evaluation_round"] == 2 and s["evaluator_id"] == first_second}
+        label2 = labels2.get((a["artifact_id"], first_second)) or {}
+        parsed = json.loads(a["original_text"]) if a["original_text"] else {}
+        row = {
+            "batch_id": batch_id, "artifact_id": a["artifact_id"], "artifact_type": a["artifact_type"], "run_id": a["run_id"],
+            "mode": "set" if a["purpose"] == prompt_templates.PURPOSE_SIMILAR_QUESTION_SET else
+                    ("single" if a["purpose"] == prompt_templates.PURPOSE_SIMILAR_QUESTION else a["purpose"]),
+            "provider": a["provider"], "model_name": a["model_name"], "prompt_version": a["prompt_version"],
+            "source_question_id": a["source_question_id"],
+            "input_question_ids": ";".join(str(q) for q in input_question_ids_of_run(a["params_used"])),
+            "question_type": ("mc" if isinstance(parsed, dict) and parsed.get("answers") else "open")
+                             if a["artifact_type"] == ARTIFACT_TYPE_QUESTION else "",
+            "status": a["status"], "decider": anonymize_user(a["reviewed_by"]),
+            "model_difficulty": a["model_difficulty"], "model_bloom_level": a["model_bloom_level"],
+            "reviewed_difficulty": a["reviewed_difficulty"], "reviewed_bloom_level": a["reviewed_bloom_level"],
+            "second_rater": anonymize_user(first_second), "second_raters_count": len(second_ids),
+            "second_difficulty": label2.get("difficulty"), "second_bloom_level": label2.get("bloom_level"),
+            "edit_distance": a["edit_distance"], "edit_distance_norm": a["edit_distance_norm"],
+            "max_similarity": a["max_similarity"], "similar_source": a["similar_source"],
+            "possible_duplicate": "" if a["max_similarity"] is None else int(question_similarity.is_possible_duplicate(a["max_similarity"])),
+            "reviewed_duplicate": a["reviewed_duplicate"], "first_attempt_passed": a["first_attempt_passed"],
+            "format_retries": a["format_retries"], "response_time_ms": a["response_time_ms"], "tokens_used": a["tokens_used"],
+        }
+        row.update({f"r1_{d}": round1.get(d) for d in dims})
+        row.update({f"r2_{d}": round2.get(d) for d in dims})
+        rows.append(row)
+    return columns, rows
+
+
+def _export_runs(cursor, batch_id):
+    cursor.execute("""
+        SELECT r.id AS run_id, r.purpose, m.provider, m.model_name, p.version AS prompt_version, r.source_question_id,
+               r.params_used, r.validation_passed, r.failure_type, r.first_attempt_passed, r.format_retries,
+               r.response_time_ms, r.tokens_used, r.created_at,
+               (SELECT COUNT(*) FROM ai_generated_artifacts a WHERE a.generation_run_id = r.id) AS artifacts
+        FROM ai_generation_runs r
+        JOIN ai_models m ON m.id = r.model_id
+        LEFT JOIN ai_prompts p ON p.id = r.prompt_id
+        WHERE r.evaluation_batch_id = %s
+        ORDER BY r.id
+    """, (batch_id,))
+    columns = ["batch_id", "run_id", "purpose", "provider", "model_name", "prompt_version", "source_question_id",
+               "input_question_ids", "validation_passed", "failure_type", "first_attempt_passed", "format_retries",
+               "attempts", "finish_reason", "response_time_ms", "tokens_used", "artifacts", "set_accepted",
+               "set_rejected", "created_at"]
+    rows = []
+    for r in cursor.fetchall():
+        params = json.loads(r["params_used"]) if r["params_used"] else {}
+        set_items = params.get("set_items") or {}
+        rows.append({
+            "batch_id": batch_id, "run_id": r["run_id"], "purpose": r["purpose"], "provider": r["provider"],
+            "model_name": r["model_name"], "prompt_version": r["prompt_version"], "source_question_id": r["source_question_id"],
+            "input_question_ids": ";".join(str(q) for q in input_question_ids_of_run(r["params_used"])),
+            "validation_passed": r["validation_passed"], "failure_type": r["failure_type"],
+            "first_attempt_passed": r["first_attempt_passed"], "format_retries": r["format_retries"],
+            "attempts": params.get("attempts"), "finish_reason": params.get("finish_reason"),
+            "response_time_ms": r["response_time_ms"], "tokens_used": r["tokens_used"], "artifacts": r["artifacts"],
+            "set_accepted": set_items.get("accepted", ""), "set_rejected": len(set_items.get("rejected") or []) if set_items else "",
+            "created_at": r["created_at"],
+        })
+    return columns, rows
+
+
+def _export_evaluations(cursor, batch_id):
+    cursor.execute("""
+        SELECT e.artifact_id, a.artifact_type, m.provider, m.model_name, e.evaluator_id, e.evaluator_role,
+               e.evaluation_round, d.dimension_key, d.evaluator_role AS rubric_role, e.score
+        FROM ai_evaluations e
+        JOIN ai_rubric_definitions d ON d.id = e.rubric_definition_id
+        JOIN ai_generated_artifacts a ON a.id = e.artifact_id
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id
+        JOIN ai_models m ON m.id = r.model_id
+        WHERE r.evaluation_batch_id = %s
+        ORDER BY e.artifact_id, e.evaluator_id, d.dimension_key
+    """, (batch_id,))
+    rows = [{**{k: v for k, v in r.items() if k != "evaluator_id"}, "evaluator": anonymize_user(r["evaluator_id"]),
+             "value": r["score"], "level": "ordinal"} for r in cursor.fetchall()]
+    # kategorije: nastavnik koji odlučuje (runda 1) i drugi ocenjivači (runda 2)
+    cursor.execute("""
+        SELECT a.id AS artifact_id, a.artifact_type, m.provider, m.model_name, a.reviewed_by AS evaluator_id,
+               a.reviewed_difficulty AS difficulty, a.reviewed_bloom_level AS bloom_level, 1 AS evaluation_round
+        FROM ai_generated_artifacts a
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id JOIN ai_models m ON m.id = r.model_id
+        WHERE r.evaluation_batch_id = %s AND a.reviewed_difficulty IS NOT NULL
+        UNION ALL
+        SELECT l.artifact_id, a.artifact_type, m.provider, m.model_name, l.evaluator_id, l.difficulty, l.bloom_level, 2
+        FROM ai_label_evaluations l
+        JOIN ai_generated_artifacts a ON a.id = l.artifact_id
+        JOIN ai_generation_runs r ON r.id = a.generation_run_id JOIN ai_models m ON m.id = r.model_id
+        WHERE r.evaluation_batch_id = %s
+    """, (batch_id, batch_id))
+    for r in cursor.fetchall():
+        for key in ("difficulty", "bloom_level"):
+            if r[key] is not None:
+                rows.append({"artifact_id": r["artifact_id"], "artifact_type": r["artifact_type"], "provider": r["provider"],
+                             "model_name": r["model_name"], "evaluator_role": "TEACHER",
+                             "evaluation_round": r["evaluation_round"], "dimension_key": f"label_{key}",
+                             "rubric_role": "TEACHER", "score": "", "evaluator": anonymize_user(r["evaluator_id"]),
+                             "value": r[key], "level": "nominal"})
+    columns = ["batch_id", "artifact_id", "artifact_type", "provider", "model_name", "evaluator", "evaluator_role",
+               "evaluation_round", "dimension_key", "rubric_role", "level", "value"]
+    for row in rows:
+        row["batch_id"] = batch_id
+    return columns, rows
+
+
+@app.get("/api/evaluation-batches/<int:batch_id>/export.csv")  # CSV izvoz serije za analizu (samo ADMIN)
+@role_required(["ADMIN"])
+def export_evaluation_batch(batch_id):
+    kind = request.args.get("kind", "artifacts")
+    if kind not in EXPORT_KINDS:
+        return jsonify({"error": f"kind mora biti jedno od: {', '.join(EXPORT_KINDS)}"}), 400
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        missing = [t for t, cols in EXPORT_REQUIRED_COLUMNS.items() if not table_columns_exist(cursor, t, cols)]
+        if missing:
+            return jsonify({"error": f"Za izvoz nedostaju kolone/tabele ({', '.join(missing)}) - pokrenite migracije iz db/"}), 409
+        cursor.execute("SELECT id FROM evaluation_batches WHERE id = %s", (batch_id,))
+        if not cursor.fetchone():
+            return jsonify({"error": "Batch not found"}), 404
+        builder = {"artifacts": _export_artifacts, "runs": _export_runs, "evaluations": _export_evaluations}[kind]
+        columns, rows = builder(cursor, batch_id)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore", lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({k: ("" if v is None else v) for k, v in row.items()})
+    return app.response_class(
+        "\ufeff" + buffer.getvalue(),  # BOM: Excel ispravno čita č/ć/š
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename=serija_{batch_id}_{kind}.csv"},
+    )
 
 
 if __name__ == "__main__":
