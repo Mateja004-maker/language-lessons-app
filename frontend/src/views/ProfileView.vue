@@ -163,9 +163,9 @@ onMounted(loadProfile)
           <label class="form-label">Role</label>
 
           <div>
-            <span v-if="profile.role === 'ADMIN'" class="badge text-bg-danger fs-6">ADMIN</span>
-            <span v-else-if="profile.role === 'TEACHER'" class="badge text-bg-warning fs-6">TEACHER</span>
-            <span v-else class="badge text-bg-success fs-6">STUDENT</span>
+            <span v-if="profile.role === 'ADMIN'" class="badge badge-soft fs-6">ADMIN</span>
+            <span v-else-if="profile.role === 'TEACHER'" class="badge badge-soft fs-6">TEACHER</span>
+            <span v-else class="badge badge-soft fs-6">STUDENT</span>
           </div>
         </div>
 

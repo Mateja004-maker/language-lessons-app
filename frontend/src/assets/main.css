@@ -132,6 +132,11 @@ body {
   border-color: var(--app-border);
 }
 
+/* dugmad u tabelama u jednom redu */
+.table .btn {
+  white-space: nowrap;
+}
+
 .table-container {
   background: var(--app-surface);
   border: 1px solid var(--app-border);

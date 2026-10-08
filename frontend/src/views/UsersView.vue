@@ -244,9 +244,9 @@ onMounted(loadAll)
                 <td>{{ u.display_name || '-' }}</td>
                 <td>{{ u.email }}</td>
                 <td>
-                  <span v-if="u.role === 'ADMIN'" class="badge text-bg-danger">ADMIN</span>
-                  <span v-else-if="u.role === 'TEACHER'" class="badge text-bg-warning">TEACHER</span>
-                  <span v-else class="badge text-bg-success">STUDENT</span>
+                  <span v-if="u.role === 'ADMIN'" class="badge badge-soft">ADMIN</span>
+                  <span v-else-if="u.role === 'TEACHER'" class="badge badge-soft">TEACHER</span>
+                  <span v-else class="badge badge-soft">STUDENT</span>
                 </td>
                 <td>
                   <span
