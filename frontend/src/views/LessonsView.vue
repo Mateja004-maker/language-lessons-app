@@ -43,7 +43,7 @@ async function load() {
     const { data } = await api.get('/lessons')
     lessons.value = data
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to load lessons'
+    error.value = e?.response?.data?.error || 'Učitavanje lekcija nije uspelo.'
   } finally {
     loading.value = false
   }
@@ -60,14 +60,14 @@ async function loadFavorites() {
 }
 
 async function deleteLesson(id) {
-  const confirmed = confirm('Are you sure you want to delete this lesson?')
+  const confirmed = confirm('Da li sigurno želiš da obrišeš ovu lekciju?')
   if (!confirmed) return
 
   try {
     await api.delete(`/lessons/${id}`)
     await load()
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Failed to delete the lesson.'
+    error.value = e?.response?.data?.error || 'Brisanje lekcije nije uspelo.'
   }
 }
 
@@ -100,9 +100,9 @@ onMounted(async () => {
 
     <div class="d-flex justify-content-between align-items-center mb-4">
       <div>
-        <div class="page-title">Lessons</div>
+        <div class="page-title">Lekcije</div>
         <div class="page-subtitle">
-          Explore available language learning lessons
+          Lekcije iz tvojih predmeta
         </div>
       </div>
 
@@ -111,7 +111,7 @@ onMounted(async () => {
         @click="load"
         :disabled="loading"
       >
-        Refresh
+        Osveži
       </button>
     </div>
 
@@ -120,14 +120,14 @@ onMounted(async () => {
     </div>
 
     <div v-if="loading" class="section-card section-padding text-muted">
-      Loading lessons...
+      Učitavanje lekcija...
     </div>
 
     <div v-else-if="lessons.length === 0" class="section-card section-padding text-center">
       <div class="empty-icon mb-2">📚</div>
-      <h5 class="mb-1">No lessons available.</h5>
+      <h5 class="mb-1">Nema dostupnih lekcija.</h5>
       <p class="text-muted mb-0">
-        When a teacher adds lessons, they will appear here.
+        Kada nastavnik doda lekcije, pojaviće se ovde.
       </p>
     </div>
 
@@ -148,7 +148,7 @@ onMounted(async () => {
               <div class="d-flex justify-content-between align-items-start mb-2">
                 <div>
                   <div class="lesson-kicker mb-1">
-                    {{ lesson.language_code?.toUpperCase() || 'LANGUAGE' }}
+                    {{ lesson.language_code?.toUpperCase() || 'LEKCIJA' }}
                   </div>
 
                   <h5 class="card-title mb-2">
@@ -164,7 +164,7 @@ onMounted(async () => {
                     </span>
 
                     <span class="badge text-bg-light border">
-                      Lesson #{{ index + 1 }}
+                      Lekcija #{{ index + 1 }}
                     </span>
                   </div>
                 </div>
@@ -175,12 +175,12 @@ onMounted(async () => {
               </div>
 
               <p class="lesson-preview mb-2">
-                {{ stripHtml(lesson.content).slice(0, 120) || 'No lesson description available.' }}
+                {{ stripHtml(lesson.content).slice(0, 120) || 'Lekcija nema opis.' }}
                 <span v-if="stripHtml(lesson.content).length > 120">...</span>
               </p>
 
               <div class="lesson-footer">
-                Open lesson →
+                Otvori lekciju →
               </div>
               <div
                 v-if="isStudent"
@@ -191,7 +191,7 @@ onMounted(async () => {
                   class="btn btn-outline-warning btn-sm"
                   @click.prevent="addFavorite(lesson.id)"
                 >
-                  ☆ Add to favorites
+                  ☆ Dodaj u omiljene
                 </button>
 
                 <button
@@ -199,7 +199,7 @@ onMounted(async () => {
                   class="btn btn-warning btn-sm"
                   @click.prevent="removeFavorite(lesson.id)"
                 >
-                  ★ Remove favorite
+                  ★ Ukloni iz omiljenih
                 </button>
               </div>
 
@@ -214,7 +214,7 @@ onMounted(async () => {
               class="btn btn-outline-danger btn-sm"
               @click.stop="deleteLesson(lesson.id)"
             >
-              Delete
+              Obriši
             </button>
           </div>
 

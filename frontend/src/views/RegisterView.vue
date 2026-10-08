@@ -15,7 +15,7 @@ async function register() {
   msg.value = ''
 
   if (!email.value.trim() || !password.value.trim()) {
-    error.value = 'Email and password are required.'
+    error.value = 'Email i lozinka su obavezni.'
     return
   }
 
@@ -27,14 +27,14 @@ async function register() {
       role: role.value
     })
 
-    msg.value = 'Registration submitted. Please wait for administrator approval.'
+    msg.value = 'Registracija je poslata. Sačekaj odobrenje administratora.'
 
     display_name.value = ''
     email.value = ''
     password.value = ''
     role.value = 'STUDENT'
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Registration failed.'
+    error.value = e?.response?.data?.error || 'Registracija nije uspela.'
   }
 }
 </script>
@@ -53,18 +53,18 @@ async function register() {
               </div>
 
               <h1 class="fw-bold mb-3 register-hero-title">
-                Create your learning account.
+                Napravi nalog.
               </h1>
 
               <p class="text-muted fs-5 mb-4">
-                Register for the platform, wait for administrator approval,
-                and then start learning your selected language.
+                Registruj se, sačekaj odobrenje administratora, a zatim pristupi
+                svojim predmetima, lekcijama i testovima.
               </p>
 
               <div class="d-flex gap-3 flex-wrap">
-                <span class="badge text-bg-primary px-3 py-2">Students</span>
-                <span class="badge text-bg-success px-3 py-2">Teachers</span>
-                <span class="badge text-bg-warning px-3 py-2">Admin approval</span>
+                <span class="badge text-bg-primary px-3 py-2">Studenti</span>
+                <span class="badge text-bg-success px-3 py-2">Nastavnici</span>
+                <span class="badge text-bg-warning px-3 py-2">Odobrenje administratora</span>
               </div>
             </div>
           </div>
@@ -78,17 +78,17 @@ async function register() {
                 </div>
 
                 <h2 class="fw-bold mb-1">
-                  Create Account
+                  Registracija
                 </h2>
 
                 <div class="text-muted">
-                  Start your language learning journey
+                  Nalog za studente i nastavnike
                 </div>
               </div>
 
               <div class="alert alert-warning py-2 small">
                 <i class="fa-solid fa-circle-info me-2"></i>
-                Administrator approval is required before login.
+                Pre prve prijave nalog mora da odobri administrator.
               </div>
 
               <div v-if="error" class="alert alert-danger">
@@ -104,13 +104,13 @@ async function register() {
               <div class="mb-3">
                 <label class="form-label fw-semibold">
                   <i class="fa-solid fa-user me-1"></i>
-                  Full Name
+                  Ime i prezime
                 </label>
 
                 <input
                   v-model="display_name"
                   class="form-control"
-                  placeholder="Enter your full name"
+                  placeholder="Unesi ime i prezime"
                 />
               </div>
 
@@ -124,45 +124,45 @@ async function register() {
                   v-model="email"
                   type="email"
                   class="form-control"
-                  placeholder="Enter your email"
+                  placeholder="Unesi email"
                 />
               </div>
 
               <div class="mb-3">
                 <label class="form-label fw-semibold">
                   <i class="fa-solid fa-lock me-1"></i>
-                  Password
+                  Lozinka
                 </label>
 
                 <input
                   v-model="password"
                   type="password"
                   class="form-control"
-                  placeholder="Enter your password"
+                  placeholder="Unesi lozinku"
                 />
               </div>
 
               <div class="mb-4">
                 <label class="form-label fw-semibold">
                   <i class="fa-solid fa-user-tag me-1"></i>
-                  Account Type
+                  Vrsta naloga
                 </label>
 
                 <select v-model="role" class="form-select">
                   <option value="STUDENT">Student</option>
-                  <option value="TEACHER">Teacher</option>
+                  <option value="TEACHER">Nastavnik</option>
                 </select>
               </div>
 
               <button class="btn btn-primary w-100 auth-btn" @click="register">
                 <i class="fa-solid fa-user-check me-2"></i>
-                Sign Up
+                Registruj se
               </button>
 
               <div class="text-center mt-4">
                 <RouterLink to="/login">
                   <i class="fa-solid fa-right-to-bracket me-1"></i>
-                  Already have an account? Sign in
+                  Već imaš nalog? Prijavi se
                 </RouterLink>
               </div>
             </div>

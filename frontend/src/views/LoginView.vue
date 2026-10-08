@@ -17,7 +17,7 @@ async function onSubmit() {
     await login(email.value, password.value)
     router.push('/')
   } catch (e) {
-    error.value = e?.response?.data?.error || 'Login failed'
+    error.value = e?.response?.data?.error || 'Prijava nije uspela.'
   } finally {
     loading.value = false
   }
@@ -33,23 +33,22 @@ async function onSubmit() {
           <div class="col-lg-6 d-none d-lg-block">
             <div class="pe-4">
               <div class="mb-3 icon-hero">
-                <i class="fa-solid fa-globe"></i>
+                <i class="fa-solid fa-clipboard-check"></i>
               </div>
 
               <h1 class="fw-bold mb-3" style="font-size: 3rem; line-height: 1.1;">
-                Learn languages smarter.
+                Onlajn testiranje, na jednom mestu.
               </h1>
 
               <p class="text-muted fs-5 mb-4">
-                Access interactive lessons, track your progress,
-                and learn languages through a modern online platform.
+                Pristupi testovima i lekcijama iz svojih predmeta
+                i prati rezultate i napredak.
               </p>
 
               <div class="d-flex gap-3 flex-wrap">
-                <span class="badge text-bg-primary px-3 py-2">English</span>
-                <span class="badge text-bg-success px-3 py-2">German</span>
-                <span class="badge text-bg-danger px-3 py-2">French</span>
-                <span class="badge text-bg-warning px-3 py-2">Spanish</span>
+                <span class="badge text-bg-primary px-3 py-2">Testovi</span>
+                <span class="badge text-bg-success px-3 py-2">Lekcije</span>
+                <span class="badge text-bg-danger px-3 py-2">Rezultati</span>
               </div>
             </div>
           </div>
@@ -63,16 +62,16 @@ async function onSubmit() {
                     <i class="fa-solid fa-book-open"></i>
                   </div>
 
-                  <h2 class="fw-bold mb-1">Welcome back</h2>
+                  <h2 class="fw-bold mb-1">Prijava</h2>
 
                   <div class="text-muted">
-                    Sign in to continue learning
+                    Prijavi se da nastaviš
                   </div>
                 </div>
 
                 <div class="alert alert-warning py-2 small" role="alert">
                   <i class="fa-solid fa-circle-info me-2"></i>
-                  New accounts require administrator approval.
+                  Novi nalozi moraju da budu odobreni od strane administratora.
                 </div>
 
                 <div v-if="error" class="alert alert-danger py-2">
@@ -91,7 +90,7 @@ async function onSubmit() {
                       v-model="email"
                       type="email"
                       class="form-control"
-                      placeholder="admin@test.com"
+                      placeholder="tvoj@email.com"
                       required
                       autocomplete="username"
                     />
@@ -100,14 +99,14 @@ async function onSubmit() {
                   <div class="mb-2">
                     <label class="form-label fw-semibold">
                       <i class="fa-solid fa-lock me-1"></i>
-                      Password
+                      Lozinka
                     </label>
 
                     <input
                       v-model="password"
                       type="password"
                       class="form-control"
-                      placeholder="Enter your password"
+                      placeholder="Unesi lozinku"
                       required
                       autocomplete="current-password"
                     />
@@ -125,13 +124,13 @@ async function onSubmit() {
                     ></span>
 
                     <i v-else class="fa-solid fa-right-to-bracket me-2"></i>
-                    Sign in
+                    Prijavi se
                   </button>
 
                   <div class="text-center mt-4">
                     <RouterLink to="/register">
                       <i class="fa-solid fa-user-plus me-1"></i>
-                      Don't have an account? Sign up
+                      Nemaš nalog? Registruj se
                     </RouterLink>
                   </div>
                 </form>
