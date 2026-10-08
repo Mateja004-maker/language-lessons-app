@@ -42,9 +42,8 @@ from collections import Counter, defaultdict
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BACKEND_DIR)
 
-import ai_provider  # noqa: E402
-import generation_failures  # noqa: E402
-import prompt_templates  # noqa: E402
+# app MORA da se učita pre ai_provider-a: app.py učitava backend/.env, a
+# ai_provider čita API ključeve iz okruženja u trenutku učitavanja (inače 401).
 from app import (  # noqa: E402
     FAILURE_COLUMNS,
     generate_similar_for_question,
@@ -52,6 +51,12 @@ from app import (  # noqa: E402
     reference_sets_enabled,
     table_columns_exist,
 )
+import ai_provider  # noqa: E402
+import generation_failures  # noqa: E402
+import prompt_templates  # noqa: E402
+
+API_KEY_NAMES = {"groq": "GROQ_API_KEY", "gemini": "GEMINI_API_KEY",
+                 "openrouter": "OPENROUTER_API_KEY", "mistral": "MISTRAL_API_KEY"}
 
 INFRA_STOP_AFTER = 3  # uzastopnih infrastrukturnih padova istog modela -> stani sa tim modelom
 
@@ -176,6 +181,9 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
     unknown = [p for p in providers if p not in ai_provider.DEFAULT_MODELS]
     if unknown:
         raise ExperimentError(f"Nepoznati modeli: {unknown} (dozvoljeno: {sorted(ai_provider.DEFAULT_MODELS)})")
+    missing_keys = [p for p in providers if not getattr(ai_provider, API_KEY_NAMES.get(p, ""), "")]
+    if missing_keys and not dry_run and generate is generate_similar_for_question:
+        raise ExperimentError(f"Nedostaje API ključ za: {missing_keys} (proveri backend/.env)")
     if per_question < 1:
         raise ExperimentError("--per-question mora biti bar 1")
     if not question_ids:
