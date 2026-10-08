@@ -296,7 +296,7 @@ onMounted(loadAiCounts)
 
               <router-link
                 to="/admin/users"
-                class="btn btn-warning btn-sm w-100"
+                class="btn btn-primary btn-sm w-100"
               >
                 <i class="fa-solid fa-user-check me-2"></i>
                 Pregledaj zahteve

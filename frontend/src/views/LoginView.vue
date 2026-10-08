@@ -47,9 +47,9 @@ async function onSubmit() {
               </p>
 
               <div class="d-flex gap-3 flex-wrap">
-                <span class="badge text-bg-primary px-3 py-2">Testovi</span>
-                <span class="badge text-bg-success px-3 py-2">Lekcije</span>
-                <span class="badge text-bg-danger px-3 py-2">Rezultati</span>
+                <span class="badge badge-soft px-3 py-2">Testovi</span>
+                <span class="badge badge-soft px-3 py-2">Lekcije</span>
+                <span class="badge badge-soft px-3 py-2">Rezultati</span>
               </div>
             </div>
           </div>

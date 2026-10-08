@@ -63,9 +63,9 @@ async function register() {
               </p>
 
               <div class="d-flex gap-3 flex-wrap">
-                <span class="badge text-bg-primary px-3 py-2">Studenti</span>
-                <span class="badge text-bg-success px-3 py-2">Nastavnici</span>
-                <span class="badge text-bg-warning px-3 py-2">Odobrenje administratora</span>
+                <span class="badge badge-soft px-3 py-2">Studenti</span>
+                <span class="badge badge-soft px-3 py-2">Nastavnici</span>
+                <span class="badge badge-soft px-3 py-2">Odobrenje administratora</span>
               </div>
             </div>
           </div>

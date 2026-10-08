@@ -254,7 +254,7 @@ export default {
             </div>
 
             <div class="modal-footer">
-              <button class="btn btn-warning" @click="closeWarningModal">
+              <button class="btn btn-primary" @click="closeWarningModal">
                 I understand
               </button>
             </div>

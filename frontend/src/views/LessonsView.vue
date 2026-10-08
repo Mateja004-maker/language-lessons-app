@@ -21,16 +21,9 @@ function stripHtml(html) {
   return div.textContent || div.innerText || ''
 }
 
-function levelClass(level) {
-  const l = String(level || '').toUpperCase()
-
-  if (l === 'A1') return 'text-bg-success'
-  if (l === 'A2') return 'text-bg-primary'
-  if (l === 'B1') return 'text-bg-warning'
-  if (l === 'B2') return 'text-bg-info'
-  if (l === 'C1' || l === 'C2') return 'text-bg-danger'
-
-  return 'text-bg-secondary'
+// nivo se čita iz teksta oznake; boja je ista za sve nivoe (zelena/crvena su samo za statuse)
+function levelClass() {
+  return 'badge-soft'
 }
 function isFavorite(id) {
   return favorites.value.includes(id)
@@ -189,7 +182,7 @@ onMounted(async () => {
               >
                 <button
                   v-if="!isFavorite(lesson.id)"
-                  class="btn btn-outline-warning btn-sm"
+                  class="btn btn-outline-primary btn-sm"
                   @click.prevent="addFavorite(lesson.id)"
                 >
                   ☆ Dodaj u omiljene
@@ -197,7 +190,7 @@ onMounted(async () => {
 
                 <button
                   v-else
-                  class="btn btn-warning btn-sm"
+                  class="btn btn-primary btn-sm"
                   @click.prevent="removeFavorite(lesson.id)"
                 >
                   ★ Ukloni iz omiljenih

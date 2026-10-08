@@ -332,7 +332,7 @@ onMounted(loadArtifact)
             <label class="form-label d-block">Da li je predlog duplikat ovog pitanja?</label>
             <div class="btn-group" role="group">
               <input type="radio" class="btn-check" id="dup-da" value="da" v-model="reviewedDuplicate" :disabled="submitting" />
-              <label class="btn btn-outline-warning" for="dup-da">Da, duplikat</label>
+              <label class="btn btn-outline-primary" for="dup-da">Da, duplikat</label>
               <input type="radio" class="btn-check" id="dup-ne" value="ne" v-model="reviewedDuplicate" :disabled="submitting" />
               <label class="btn btn-outline-secondary" for="dup-ne">Ne</label>
               <input type="radio" class="btn-check" id="dup-none" value="" v-model="reviewedDuplicate" :disabled="submitting" />
@@ -525,7 +525,7 @@ onMounted(loadArtifact)
 
             <button
               v-if="!showEditForm"
-              class="btn btn-outline-warning"
+              class="btn btn-outline-primary"
               :disabled="!canAccept || submitting"
               @click="openEditForm"
             >
@@ -535,7 +535,7 @@ onMounted(loadArtifact)
 
             <button
               v-else
-              class="btn btn-warning"
+              class="btn btn-primary"
               :disabled="!canAccept || submitting"
               @click="acceptWithChange"
             >
