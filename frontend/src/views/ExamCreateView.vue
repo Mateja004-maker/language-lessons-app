@@ -51,7 +51,7 @@ export default {
         }
       } catch (err) {
         console.error(err)
-        alert('Error loading exam form')
+        alert('Učitavanje forme nije uspelo.')
       }
     })
 
@@ -72,7 +72,7 @@ export default {
         router.push(`/exams/${res.data.exam_id}`)
       } catch (err) {
         console.error(err)
-        alert(err.response?.data?.error || 'Error creating exam')
+        alert(err.response?.data?.error || 'Pravljenje testa nije uspelo.')
       }
     }
 
@@ -98,19 +98,19 @@ export default {
 
 <template>
   <div class="container py-4">
-    <PageHeader title="Create Exam" />
+    <PageHeader title="Napravi test" />
 
     <div class="card border-0 shadow-sm">
       <div class="card-body">
         <h5 class="section-title mb-3">
           <i class="fa-solid fa-circle-info me-2"></i>
-          Basic information
+          Osnovni podaci
         </h5>
 
         <div class="mb-3">
           <label class="form-label">
             <i class="fa-solid fa-heading me-1"></i>
-            Title
+            Naziv
           </label>
           <input v-model="title" class="form-control" />
         </div>
@@ -140,7 +140,7 @@ export default {
             </option>
           </select>
           <small class="text-muted">
-            Exam se pravi samo za predmete koje predaješ.
+            Test možeš da napraviš samo za predmete koje predaješ.
           </small>
         </div>
 
@@ -148,10 +148,10 @@ export default {
           <div class="col-md-6 mb-3">
             <label class="form-label">
               <i class="fa-solid fa-layer-group me-1"></i>
-              Level
+              Nivo
             </label>
             <select v-model="level" class="form-select">
-              <option value="">Select level</option>
+              <option value="">Izaberi nivo</option>
               <option>A1</option>
               <option>A2</option>
               <option>B1</option>
@@ -164,7 +164,7 @@ export default {
           <div class="col-md-6 mb-3">
             <label class="form-label">
               <i class="fa-solid fa-clock me-1"></i>
-              Duration minutes
+              Trajanje (minuta)
             </label>
             <input v-model="duration_minutes" type="number" class="form-control" />
           </div>
@@ -174,14 +174,14 @@ export default {
 
         <h5 class="section-title mb-3">
           <i class="fa-solid fa-calendar-days me-2"></i>
-          Schedule and mode
+          Termin i režim
         </h5>
 
         <div class="row">
           <div class="col-md-6 mb-3">
             <label class="form-label">
               <i class="fa-solid fa-calendar-plus me-1"></i>
-              Open at
+              Otvara se
             </label>
             <input v-model="open_at" type="datetime-local" class="form-control" />
           </div>
@@ -189,7 +189,7 @@ export default {
           <div class="col-md-6 mb-3">
             <label class="form-label">
               <i class="fa-solid fa-calendar-xmark me-1"></i>
-              Close at
+              Zatvara se
             </label>
             <input v-model="close_at" type="datetime-local" class="form-control" />
           </div>
@@ -204,13 +204,13 @@ export default {
           />
           <label class="form-check-label" for="examMode">
             <i class="fa-solid fa-lock me-1"></i>
-            Enable exam mode
+            Uključi ispitni režim
           </label>
         </div>
 
         <button class="btn btn-primary px-4" @click="submit">
           <i class="fa-solid fa-plus me-2"></i>
-          Create Exam
+          Napravi test
         </button>
       </div>
     </div>
