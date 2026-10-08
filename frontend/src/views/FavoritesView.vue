@@ -141,7 +141,7 @@ onMounted(loadFavorites)
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--app-accent-text);
+  color: var(--app-primary);
 }
 
 .card-title {
@@ -155,7 +155,7 @@ onMounted(loadFavorites)
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: var(--app-accent-soft);
+  background: var(--app-primary-soft);
   font-size: 1.1rem;
 }
 

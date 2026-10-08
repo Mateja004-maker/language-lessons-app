@@ -4,7 +4,7 @@ html,
 body {
   background:
     radial-gradient(circle at top left, rgba(var(--app-primary-rgb), 0.06), transparent 25%),
-    radial-gradient(circle at top right, rgba(var(--app-accent-rgb), 0.05), transparent 25%),
+    radial-gradient(circle at top right, rgba(var(--app-primary-rgb), 0.04), transparent 25%),
     var(--app-bg);
   color: var(--app-text);
   min-height: 100vh;

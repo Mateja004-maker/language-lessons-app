@@ -603,7 +603,6 @@ onMounted(loadAiCounts)
   border-radius: var(--app-radius-lg);
   padding: 32px;
   box-shadow: var(--app-shadow);
-  border-top: 4px solid var(--app-accent);
 }
 
 .hero-badge {
@@ -647,9 +646,9 @@ onMounted(loadAiCounts)
   color: var(--app-text);
 }
 
-/* broj zahteva: tamna zlatna (6,6:1 na beloj); Bootstrap text-warning je ~1,6:1 */
+/* broj zahteva: tamni tekst (Bootstrap text-warning bi bio nečitljiv) */
 .pending-count {
-  color: var(--app-accent-text);
+  color: var(--app-text);
 }
 
 .dashboard-card {
@@ -681,7 +680,7 @@ a:hover > .stat-card {
 }
 
 .stat-orange {
-  --stat-color: var(--app-accent);
+  --stat-color: var(--app-primary);
 }
 
 .stat-green {

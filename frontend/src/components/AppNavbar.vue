@@ -221,10 +221,9 @@ function onLogout() {
   max-width: 1320px;
 }
 
-/* boje iz teme (src/assets/theme.css); zlatna linija je samo ukras */
+/* boje iz teme (src/assets/theme.css) */
 .app-navbar {
   background-color: var(--app-navbar);
-  border-bottom: 3px solid var(--app-accent);
 }
 
 .app-navbar .dropdown-menu-dark {
@@ -243,10 +242,12 @@ function onLogout() {
   white-space: nowrap;
 }
 
+/* aktivna stavka: beli tekst na svetlijoj pozadini (8,5:1) */
 .nav-link.router-link-active,
 .nav-link.dropdown-toggle.active {
   color: #FFFFFF !important;
-  box-shadow: inset 0 -2px 0 var(--app-accent);
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
 }
 
 .user-box {
@@ -276,8 +277,8 @@ function onLogout() {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: var(--app-accent-soft);
-  color: var(--app-accent-text);
+  background: var(--app-primary-soft);
+  color: var(--app-navbar);
   display: flex;
   align-items: center;
   justify-content: center;

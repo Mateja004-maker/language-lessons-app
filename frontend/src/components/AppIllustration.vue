@@ -99,7 +99,7 @@ defineProps({
 .soft { fill: var(--app-primary-soft); }
 .surface { fill: var(--app-surface); }
 .primary { fill: var(--app-primary); }
-.accent { fill: var(--app-accent); }
+.accent { fill: var(--app-navbar); }
 .success { fill: var(--app-success); }
 .border { fill: var(--app-border); }
 
