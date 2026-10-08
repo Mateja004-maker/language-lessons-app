@@ -75,7 +75,7 @@ onMounted(loadFavorites)
             <div class="d-flex justify-content-between align-items-start mb-2">
               <div>
                 <div class="lesson-kicker mb-1">
-                  {{ lesson.language_code?.toUpperCase() || 'LANGUAGE' }}
+                  {{ lesson.language_code?.toUpperCase() || 'LEKCIJA' }}
                 </div>
 
                 <h5 class="card-title mb-2">
