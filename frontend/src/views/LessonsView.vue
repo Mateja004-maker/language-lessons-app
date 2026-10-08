@@ -9,6 +9,25 @@ const error = ref('')
 const loading = ref(false)
 const favorites = ref([])
 
+// filter po predmetu (predmeti iz /api/subjects: ADMIN sve, nastavnik i student svoje).
+// Lekcija je vezana za predmet preko language_id (isti id kao predmet - ista pretpostavka kao u backendu).
+const subjects = ref([])
+const selectedSubject = ref('')
+const filteredLessons = computed(() =>
+  selectedSubject.value
+    ? lessons.value.filter(l => Number(l.language_id) === Number(selectedSubject.value))
+    : lessons.value
+)
+
+async function loadSubjects() {
+  try {
+    const { data } = await api.get('/subjects')
+    subjects.value = data
+  } catch (e) {
+    subjects.value = []
+  }
+}
+
 const role = computed(() => localStorage.getItem('user_role') || '')
 
 const isTeacherOrAdmin = computed(() =>
@@ -86,6 +105,7 @@ async function removeFavorite(id) {
 
 onMounted(async () => {
   await load()
+  await loadSubjects()
   await loadFavorites()
 })
 </script>
@@ -94,6 +114,10 @@ onMounted(async () => {
   <div class="container py-4">
 
     <PageHeader title="Lekcije">
+      <select v-model="selectedSubject" class="form-select" aria-label="Predmet">
+        <option value="">Svi predmeti</option>
+        <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+      </select>
       <button
         class="btn btn-outline-secondary"
         @click="load"
@@ -111,7 +135,7 @@ onMounted(async () => {
       Učitavanje lekcija...
     </div>
 
-    <div v-else-if="lessons.length === 0" class="section-card empty-state">
+    <div v-else-if="filteredLessons.length === 0" class="section-card empty-state">
       <AppIllustration kind="book" class="mb-2" />
       <h5 class="mb-1">Nema dostupnih lekcija.</h5>
       <p class="text-muted mb-0">
@@ -122,7 +146,7 @@ onMounted(async () => {
     <div v-else class="row g-3">
       <div
         class="col-12 col-lg-6"
-        v-for="(lesson, index) in lessons"
+        v-for="(lesson, index) in filteredLessons"
         :key="lesson.id"
       >
         <div class="card lesson-card">
