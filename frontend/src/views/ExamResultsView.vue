@@ -22,7 +22,7 @@ export default {
         results.value = res.data
       } catch (err) {
         console.error(err)
-        alert('Failed to load results')
+        alert('Učitavanje rezultata nije uspelo.')
       } finally {
         loading.value = false
       }
@@ -45,7 +45,7 @@ export default {
         window.URL.revokeObjectURL(url)
       } catch (err) {
         console.error(err)
-        alert('Failed to export results')
+        alert('Izvoz rezultata nije uspeo.')
       } finally {
         exporting.value = false
       }
@@ -66,28 +66,28 @@ export default {
 
 <template>
   <div class="container py-4">
-    <PageHeader :title="`Results for: ${exam?.title || 'Exam'}`">
+    <PageHeader :title="`Rezultati: ${exam?.title || 'Test'}`">
       <button
         class="btn btn-primary"
         :disabled="exporting || loading"
         @click="handleExport"
       >
         <i class="fa-solid fa-file-excel me-2"></i>
-        {{ exporting ? 'Exporting...' : 'Export Excel' }}
+        {{ exporting ? 'Izvoz u toku...' : 'Izvezi u Excel' }}
       </button>
     </PageHeader>
 
     <div v-if="loading" class="card border-0 shadow-sm">
       <div class="card-body">
         <i class="fa-solid fa-spinner fa-spin me-2"></i>
-        Loading...
+        Učitavanje...
       </div>
     </div>
 
     <div v-else>
       <div v-if="results.length === 0" class="alert alert-info">
         <i class="fa-solid fa-circle-info me-2"></i>
-        No results yet.
+        Još nema rezultata.
       </div>
 
       <div v-else class="table-container">
@@ -96,10 +96,10 @@ export default {
             <tr>
               <th><i class="fa-solid fa-user me-1"></i> Student</th>
               <th><i class="fa-solid fa-envelope me-1"></i> Email</th>
-              <th><i class="fa-solid fa-star me-1"></i> Score</th>
-              <th>Total</th>
-              <th><i class="fa-solid fa-triangle-exclamation me-1"></i> Warnings</th>
-              <th><i class="fa-solid fa-calendar-days me-1"></i> Date</th>
+              <th><i class="fa-solid fa-star me-1"></i> Poeni</th>
+              <th>Ukupno</th>
+              <th><i class="fa-solid fa-triangle-exclamation me-1"></i> Upozorenja</th>
+              <th><i class="fa-solid fa-calendar-days me-1"></i> Datum</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -131,7 +131,7 @@ export default {
                     class="me-1"
                     :class="r.total > 0 && r.score >= r.total * 0.5 ? 'fa-solid fa-check' : 'fa-solid fa-xmark'"
                   ></i>
-                  {{ r.total > 0 && r.score >= r.total * 0.5 ? 'Passed' : 'Failed' }}
+                  {{ r.total > 0 && r.score >= r.total * 0.5 ? 'Položeno' : 'Nije položeno' }}
                 </span>
               </td>
             </tr>
