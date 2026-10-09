@@ -156,14 +156,11 @@ const filteredLessons = computed(() => {
   return lessons.value
 })
 
-// Broj lekcija po predmetu. Lekcija je vezana za predmet preko language_id (isti id kao
-// predmet - ista pretpostavka kao filter na Lekcijama i backend); ako predmet nije
-// pronađen, prikazuje se oznaka jezika lekcije.
+// Broj lekcija po predmetu (lessons.subject_id; naziv iz subject_name koji vraca /api/lessons).
 const lessonsBySubject = computed(() => {
   const counts = new Map()
   filteredLessons.value.forEach(lesson => {
-    const subject = subjects.value.find(s => Number(s.id) === Number(lesson.language_id))
-    const label = subject ? subject.name : (lesson.language_code || '?').toUpperCase()
+    const label = lesson.subject_name || 'Bez predmeta'
     counts.set(label, (counts.get(label) || 0) + 1)
   })
   return counts

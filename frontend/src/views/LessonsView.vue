@@ -10,12 +10,12 @@ const loading = ref(false)
 const favorites = ref([])
 
 // filter po predmetu (predmeti iz /api/subjects: ADMIN sve, nastavnik i student svoje).
-// Lekcija je vezana za predmet preko language_id (isti id kao predmet - ista pretpostavka kao u backendu).
+// Lekcija je vezana za predmet preko subject_id.
 const subjects = ref([])
 const selectedSubject = ref('')
 const filteredLessons = computed(() =>
   selectedSubject.value
-    ? lessons.value.filter(l => Number(l.language_id) === Number(selectedSubject.value))
+    ? lessons.value.filter(l => Number(l.subject_id) === Number(selectedSubject.value))
     : lessons.value
 )
 
@@ -149,7 +149,7 @@ onMounted(async () => {
               <div class="d-flex justify-content-between align-items-start mb-2">
                 <div>
                   <div class="lesson-kicker mb-1">
-                    {{ lesson.language_code?.toUpperCase() || 'LEKCIJA' }}
+                    {{ lesson.subject_name?.toUpperCase() || 'LEKCIJA' }}
                   </div>
 
                   <h5 class="card-title mb-2">

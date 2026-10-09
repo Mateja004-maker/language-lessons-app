@@ -8,7 +8,6 @@ import '@vueup/vue-quill/dist/vue-quill.snow.css'
 const role = computed(() => localStorage.getItem('user_role') || '')
 
 const lessons = ref([])
-const languages = ref([])
 const quillEditor = ref(null)
 
 
@@ -18,12 +17,12 @@ const msg = ref('')
 const editingLessonId = ref(null)
 
 // filter tabele po predmetu (predmeti iz /api/subjects: ADMIN sve, nastavnik svoje).
-// Lekcija je vezana za predmet preko language_id (isti id kao predmet - ista pretpostavka kao u backendu).
+// Lekcija je vezana za predmet preko subject_id.
 const subjects = ref([])
 const selectedSubject = ref('')
 const filteredLessons = computed(() =>
   selectedSubject.value
-    ? lessons.value.filter(l => Number(l.language_id) === Number(selectedSubject.value))
+    ? lessons.value.filter(l => Number(l.subject_id) === Number(selectedSubject.value))
     : lessons.value
 )
 
@@ -37,7 +36,7 @@ async function loadSubjects() {
 }
 
 const form = ref({
-  language_id: '',
+  subject_id: '',
   title: '',
   content: '',
   tips: '',
@@ -100,12 +99,8 @@ async function loadAll() {
   msg.value = ''
   loading.value = true
   try {
-    const [lessonsRes, langsRes] = await Promise.all([
-      api.get('/lessons'),
-      api.get('/languages')
-    ])
+    const lessonsRes = await api.get('/lessons')
     lessons.value = lessonsRes.data
-    languages.value = langsRes.data
   } catch (e) {
     error.value = e?.response?.data?.error || 'Učitavanje podataka nije uspelo.'
   } finally {
@@ -117,14 +112,14 @@ async function createLesson() {
   error.value = ''
   msg.value = ''
 
-  if (!form.value.language_id || !form.value.title.trim() || !form.value.content) {
+  if (!form.value.subject_id || !form.value.title.trim() || !form.value.content) {
     error.value = 'Popuni predmet, naslov i sadržaj.'
     return
   }
 
   try {
     await api.post('/lessons', {
-      language_id: Number(form.value.language_id),
+      subject_id: Number(form.value.subject_id),
       title: form.value.title.trim(),
       content: form.value.content,
       tips: form.value.tips.trim(),
@@ -144,7 +139,7 @@ async function createLesson() {
 function startEdit(lesson) {
   editingLessonId.value = lesson.id
 
-  form.value.language_id = lesson.language_id
+  form.value.subject_id = lesson.subject_id || ''
   form.value.title = lesson.title
   form.value.content = lesson.content
   form.value.tips = lesson.tips || ''
@@ -159,7 +154,7 @@ function startEdit(lesson) {
 function cancelEdit() {
   editingLessonId.value = null
 
-  form.value.language_id = ''
+  form.value.subject_id = ''
   form.value.title = ''
   form.value.content = ''
   form.value.tips = ''
@@ -170,14 +165,14 @@ async function updateLesson() {
   error.value = ''
   msg.value = ''
 
-  if (!form.value.language_id || !form.value.title.trim() || !form.value.content) {
+  if (!form.value.subject_id || !form.value.title.trim() || !form.value.content) {
     error.value = 'Popuni predmet, naslov i sadržaj.'
     return
   }
 
   try {
     await api.put(`/lessons/${editingLessonId.value}`, {
-      language_id: Number(form.value.language_id),
+      subject_id: Number(form.value.subject_id),
       title: form.value.title.trim(),
       content: form.value.content,
       tips: form.value.tips.trim(),
@@ -228,10 +223,10 @@ onMounted(() => {
 
             <div class="mb-3">
               <label class="form-label">Predmet</label>
-              <select v-model="form.language_id" class="form-select">
+              <select v-model="form.subject_id" class="form-select">
                 <option value="" disabled>Izaberi predmet...</option>
-                <option v-for="l in languages" :key="l.id" :value="l.id">
-                  {{ l.code }} — {{ l.name }}
+                <option v-for="s in subjects" :key="s.id" :value="s.id">
+                  {{ s.code }} — {{ s.name }}
                 </option>
               </select>
             </div>
@@ -343,7 +338,7 @@ onMounted(() => {
                 <tbody>
                   <tr v-for="(l, index) in filteredLessons" :key="l.id">
                     <td>{{ index + 1 }}</td>
-                    <td><span class="badge text-bg-light border">{{ l.language_code }}</span></td>
+                    <td><span class="badge text-bg-light border">{{ l.subject_name || '—' }}</span></td>
                     <td class="fw-semibold">{{ l.title }}</td>
                     <td class="text-end">
                       <button
