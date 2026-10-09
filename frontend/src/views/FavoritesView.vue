@@ -79,9 +79,6 @@ onMounted(loadFavorites)
                 </h5>
 
                 <div class="d-flex gap-2 flex-wrap mb-2">
-                  <span class="badge text-bg-primary">
-                    {{ lesson.level }}
-                  </span>
 
                   <span class="badge text-bg-light border">
                     Omiljena

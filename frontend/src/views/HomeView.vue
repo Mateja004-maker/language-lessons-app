@@ -156,42 +156,38 @@ const filteredLessons = computed(() => {
   return lessons.value
 })
 
-const lessonsByLevel = computed(() => {
-  const levels = {
-    A1: 0,
-    A2: 0,
-    B1: 0,
-    B2: 0,
-    C1: 0,
-    C2: 0
-  }
-
+// Broj lekcija po predmetu. Lekcija je vezana za predmet preko language_id (isti id kao
+// predmet - ista pretpostavka kao filter na Lekcijama i backend); ako predmet nije
+// pronađen, prikazuje se oznaka jezika lekcije.
+const lessonsBySubject = computed(() => {
+  const counts = new Map()
   filteredLessons.value.forEach(lesson => {
-    const level = lesson.level?.toUpperCase()
-    if (levels[level] !== undefined) {
-      levels[level]++
-    }
+    const subject = subjects.value.find(s => Number(s.id) === Number(lesson.language_id))
+    const label = subject ? subject.name : (lesson.language_code || '?').toUpperCase()
+    counts.set(label, (counts.get(label) || 0) + 1)
   })
-
-  return levels
+  return counts
 })
 
 function themeColor(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
-const levelChartData = computed(() => ({
-  labels: Object.keys(lessonsByLevel.value),
-  datasets: [
-    {
-      data: Object.values(lessonsByLevel.value),
-      // boje iz teme (theme.css: --app-chart-1 ... --app-chart-6)
-      backgroundColor: [1, 2, 3, 4, 5, 6].map(i => themeColor(`--app-chart-${i}`))
-    }
-  ]
-}))
+const subjectChartData = computed(() => {
+  const labels = [...lessonsBySubject.value.keys()]
+  return {
+    labels,
+    datasets: [
+      {
+        data: [...lessonsBySubject.value.values()],
+        // boje iz teme (theme.css: --app-chart-1 ... --app-chart-6), redom
+        backgroundColor: labels.map((_, i) => themeColor(`--app-chart-${(i % 6) + 1}`))
+      }
+    ]
+  }
+})
 
-const levelChartOptions = {
+const subjectChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
@@ -335,12 +331,12 @@ onMounted(loadAiCounts)
       </div>
 
       <div class="dashboard-card p-4 mb-4">
-        <div class="section-title mb-3">Lekcije po nivou</div>
+        <div class="section-title mb-3">Lekcije po predmetu</div>
 
         <div class="chart-box">
           <Pie
-            :data="levelChartData"
-            :options="levelChartOptions"
+            :data="subjectChartData"
+            :options="subjectChartOptions"
           />
         </div>
       </div>

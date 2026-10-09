@@ -41,10 +41,6 @@ function stripHtml(html) {
   return div.textContent || div.innerText || ''
 }
 
-// nivo se čita iz teksta oznake; boja je ista za sve nivoe (zelena/crvena su samo za statuse)
-function levelClass() {
-  return 'badge-soft'
-}
 function isFavorite(id) {
   return favorites.value.includes(id)
 }
@@ -161,13 +157,6 @@ onMounted(async () => {
                   </h5>
 
                   <div class="d-flex gap-2 flex-wrap mb-2">
-                    <span
-                      class="badge"
-                      :class="levelClass(lesson.level)"
-                    >
-                      {{ lesson.level || 'Nivo' }}
-                    </span>
-
                     <span class="badge text-bg-light border">
                       Lekcija #{{ index + 1 }}
                     </span>
