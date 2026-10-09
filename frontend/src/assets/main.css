@@ -154,6 +154,24 @@ body {
   border-color: var(--app-border);
 }
 
+/* Traka neposredno iznad tabele: naslov tabele levo, filteri desno */
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.table-toolbar .form-select {
+  width: auto;
+  min-width: 200px;
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 /* dugmad u tabelama u jednom redu */
 .table .btn {
   white-space: nowrap;

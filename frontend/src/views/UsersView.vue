@@ -147,14 +147,7 @@ onMounted(loadAll)
 <template>
   <div class="container py-4">
 
-    <PageHeader title="Korisnici">
-      <select v-model="roleFilter" class="form-select" aria-label="Uloga">
-        <option value="">Svi</option>
-        <option value="STUDENT">Studenti</option>
-        <option value="TEACHER">Nastavnici</option>
-        <option value="ADMIN">Administratori</option>
-      </select>
-    </PageHeader>
+    <PageHeader title="Korisnici" />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>
@@ -206,11 +199,15 @@ onMounted(loadAll)
     </div>
 
     <div class="section-card section-padding">
-      <div class="d-flex justify-content-between align-items-center mb-3">
+      <!-- filter neposredno iznad tabele -->
+      <div class="table-toolbar">
         <h5 class="m-0">Svi korisnici</h5>
-        <button class="btn btn-outline-secondary btn-sm" @click="loadUsers">
-          Osveži
-        </button>
+        <select v-model="roleFilter" class="form-select" aria-label="Uloga">
+          <option value="">Svi</option>
+          <option value="STUDENT">Studenti</option>
+          <option value="TEACHER">Nastavnici</option>
+          <option value="ADMIN">Administratori</option>
+        </select>
       </div>
 
       <div class="table-responsive">

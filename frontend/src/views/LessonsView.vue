@@ -118,13 +118,6 @@ onMounted(async () => {
         <option value="">Svi predmeti</option>
         <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
       </select>
-      <button
-        class="btn btn-outline-secondary"
-        @click="load"
-        :disabled="loading"
-      >
-        Osveži
-      </button>
     </PageHeader>
 
     <div v-if="error" class="alert alert-danger">

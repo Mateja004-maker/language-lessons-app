@@ -70,11 +70,7 @@ onMounted(load)
 <template>
   
   <div class="container py-4">
-    <PageHeader title="Admin: Languages">
-      <button class="btn btn-outline-secondary" :disabled="loading" @click="load">
-        Refresh
-      </button>
-    </PageHeader>
+    <PageHeader title="Admin: Languages" />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>

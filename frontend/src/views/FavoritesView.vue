@@ -42,11 +42,7 @@ onMounted(loadFavorites)
 
 <template>
   <div class="container py-4">
-    <PageHeader title="Omiljene lekcije">
-      <button class="btn btn-outline-secondary" @click="loadFavorites">
-        Osveži
-      </button>
-    </PageHeader>
+    <PageHeader title="Omiljene lekcije" />
 
     <div v-if="error" class="alert alert-danger">
       {{ error }}

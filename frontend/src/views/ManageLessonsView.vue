@@ -217,12 +217,7 @@ onMounted(() => {
 
 <template>
   <div class="container py-4">
-    <PageHeader title="Uređivanje lekcija">
-      <select v-model="selectedSubject" class="form-select" aria-label="Predmet">
-        <option value="">Svi predmeti</option>
-        <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
-      </select>
-    </PageHeader>
+    <PageHeader title="Uređivanje lekcija" />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>
@@ -332,11 +327,13 @@ onMounted(() => {
       <div class="col-12">
         <div class="card shadow-sm">
           <div class="card-body">
-            <div class="d-flex align-items-center justify-content-between mb-2">
+            <!-- filter neposredno iznad tabele -->
+            <div class="table-toolbar">
               <h5 class="card-title m-0">Sve lekcije</h5>
-              <button class="btn btn-outline-secondary btn-sm" :disabled="loading" @click="loadAll">
-                Osveži
-              </button>
+              <select v-model="selectedSubject" class="form-select" aria-label="Predmet">
+                <option value="">Svi predmeti</option>
+                <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+              </select>
             </div>
 
             <div v-if="loading" class="text-muted">Učitavanje...</div>
