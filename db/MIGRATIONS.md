@@ -28,6 +28,10 @@ Provera (2026-10-08): `schema.sql` i `reference_data.sql` učitani su u praznu b
 i identična je: 28 tabela, 197 kolona, 76 indeksa, 41 strani ključ, 19 CHECK
 ograničenja. Probna baza je potom obrisana.
 
+Dopuna (2026-10-09): posle migracije 19 (`lessons.subject_id`) `schema.sql` je ponovo
+izvučen iz baze; razlika u odnosu na prethodnu verziju je samo u tabeli `lessons`
+(nova kolona, indeks i strani ključ).
+
 Kada se šema promeni, `schema.sql` se ponovo izvlači iz baze:
 `mysqldump --no-data --skip-comments --skip-dump-date --skip-add-drop-table`.
 Iz izlaza se uklanjaju vrednosti `AUTO_INCREMENT=N`, a zaglavlje fajla se zadržava.
@@ -67,6 +71,7 @@ Pravila:
 | 16 | `migration_duplicate_check.sql` | `max_similarity`, `similar_source`, `similar_question_id`, `similar_artifact_id`, `reviewed_duplicate` | 5 |
 | 17 | `migration_failure_type_retry.sql` | `ai_generation_runs.failure_type`, `first_attempt_passed`, `format_retries` | 5 |
 | 18 | `migration_second_rater.sql` | `ai_evaluations.evaluation_round` + UNIQUE, `ai_label_evaluations`, `evaluation_batches.closed_at` | 7, 13 |
+| 19 | `migration_lessons_subject.sql` | `lessons.subject_id` + FK na `subjects`, jednokratno popunjava iz `language_id` (samo gde predmet postoji); `language_id` ostaje; može da se pokrene ponovo | — |
 
 Redosled prati datume kada su fajlovi dodati u git, uz jedan izuzetak: broj 5
 (`ai_generation_base_VERIFIED`) je u git dodat tek 2026-09-02. Tada je zapisana

@@ -1,5 +1,5 @@
 -- =====================================================================
--- Šema baze: sistem za onlajn testiranje + AI modul (stanje 2026-10-08)
+-- Šema baze: sistem za onlajn testiranje + AI modul (stanje 2026-10-09)
 -- =====================================================================
 -- Kreira SVE tabele iz nule, bez podataka. Izvučeno komandom
 --   mysqldump --no-data --skip-comments language_learning
@@ -391,6 +391,7 @@ CREATE TABLE `lesson_progress` (
 CREATE TABLE `lessons` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `language_id` int(10) unsigned NOT NULL,
+  `subject_id` int(10) unsigned DEFAULT NULL,
   `level` varchar(10) NOT NULL,
   `title` varchar(200) NOT NULL,
   `content_html` mediumtext DEFAULT NULL,
@@ -404,8 +405,10 @@ CREATE TABLE `lessons` (
   KEY `fk_lessons_created_by` (`created_by`),
   KEY `idx_lessons_language_level` (`language_id`,`level`),
   KEY `idx_lessons_order` (`language_id`,`order_no`),
+  KEY `fk_lessons_subject` (`subject_id`),
   CONSTRAINT `fk_lessons_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `fk_lessons_language` FOREIGN KEY (`language_id`) REFERENCES `languages` (`id`)
+  CONSTRAINT `fk_lessons_language` FOREIGN KEY (`language_id`) REFERENCES `languages` (`id`),
+  CONSTRAINT `fk_lessons_subject` FOREIGN KEY (`subject_id`) REFERENCES `subjects` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
