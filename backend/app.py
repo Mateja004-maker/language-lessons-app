@@ -1542,6 +1542,8 @@ def list_lessons():
                         l.code AS language_code,
                         ls.subject_id,
                         s.name AS subject_name,
+                        ls.area_id,
+                        a.name AS area_name,
                         ls.level,
                         ls.title,
                         ls.content_html AS content,
@@ -1554,6 +1556,7 @@ def list_lessons():
                     FROM lessons ls
                     LEFT JOIN languages l ON l.id = ls.language_id
                     LEFT JOIN subjects s ON s.id = ls.subject_id
+                    LEFT JOIN areas a ON a.id = ls.area_id
                     WHERE (ls.language_id IS NULL OR l.is_active = 1)
                       AND ls.subject_id IN ({placeholders})
                     ORDER BY ls.order_no ASC, ls.id DESC
@@ -1569,6 +1572,8 @@ def list_lessons():
                         l.code AS language_code,
                         ls.subject_id,
                         s.name AS subject_name,
+                        ls.area_id,
+                        a.name AS area_name,
                         ls.level,
                         ls.title,
                         ls.content_html AS content,
@@ -1581,6 +1586,7 @@ def list_lessons():
                     FROM lessons ls
                     LEFT JOIN languages l ON l.id = ls.language_id
                     LEFT JOIN subjects s ON s.id = ls.subject_id
+                    LEFT JOIN areas a ON a.id = ls.area_id
                     WHERE ls.subject_id IN ({placeholders})
                     ORDER BY ls.order_no ASC, ls.id DESC
                     """,
@@ -1597,6 +1603,8 @@ def list_lessons():
                         l.code AS language_code,
                         ls.subject_id,
                         s.name AS subject_name,
+                        ls.area_id,
+                        a.name AS area_name,
                         ls.level,
                         ls.title,
                         ls.content_html AS content,
@@ -1609,6 +1617,7 @@ def list_lessons():
                     FROM lessons ls
                     LEFT JOIN languages l ON l.id = ls.language_id
                     LEFT JOIN subjects s ON s.id = ls.subject_id
+                    LEFT JOIN areas a ON a.id = ls.area_id
                     WHERE (ls.language_id IS NULL OR l.is_active = 1)
                     ORDER BY ls.order_no ASC, ls.id DESC
                     """
@@ -1622,6 +1631,8 @@ def list_lessons():
                         l.code AS language_code,
                         ls.subject_id,
                         s.name AS subject_name,
+                        ls.area_id,
+                        a.name AS area_name,
                         ls.level,
                         ls.title,
                         ls.content_html AS content,
@@ -1634,6 +1645,7 @@ def list_lessons():
                     FROM lessons ls
                     LEFT JOIN languages l ON l.id = ls.language_id
                     LEFT JOIN subjects s ON s.id = ls.subject_id
+                    LEFT JOIN areas a ON a.id = ls.area_id
                     ORDER BY ls.order_no ASC, ls.id DESC
                     """
                 )
@@ -1664,6 +1676,8 @@ def lesson_detail(lesson_id):
                 l.code AS language_code,
                 ls.subject_id,
                 s.name AS subject_name,
+                ls.area_id,
+                a.name AS area_name,
                 ls.level,
                 ls.title,
                 ls.content_html AS content,
@@ -1676,6 +1690,7 @@ def lesson_detail(lesson_id):
             FROM lessons ls
             LEFT JOIN languages l ON l.id = ls.language_id
             LEFT JOIN subjects s ON s.id = ls.subject_id
+            LEFT JOIN areas a ON a.id = ls.area_id
             WHERE ls.id = %s
             LIMIT 1
             """,
@@ -1728,6 +1743,31 @@ def _lesson_language_error(cur, language_id):
     return None
 
 
+def _lesson_area_error(cur, area_id, subject_id):
+    """area_id je neobavezan; ako je zadat, oblast mora da postoji i da pripada predmetu lekcije."""
+    if area_id is None:
+        return None
+    try:
+        area_id = int(area_id)
+    except (TypeError, ValueError):
+        return "Area not found", 400
+    cur.execute("SELECT subject_id FROM areas WHERE id = %s", (area_id,))
+    row = cur.fetchone()
+    if not row:
+        return "Area not found", 400
+    if int(row[0]) != int(subject_id):
+        return "Area does not belong to the selected subject", 400
+    return None
+
+
+def _lesson_area_name(cur, area_id):
+    if area_id is None:
+        return None
+    cur.execute("SELECT name FROM areas WHERE id = %s", (area_id,))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
 def _lesson_subject_name(cur, subject_id):
     cur.execute("SELECT name FROM subjects WHERE id = %s", (subject_id,))
     row = cur.fetchone()
@@ -1745,6 +1785,8 @@ def create_lesson():
     # Lekcija pripada predmetu (lessons.subject_id). Stari zahtevi salju samo
     # language_id, pa se tada on koristi kao predmet (rezerva, id-jevi se poklapaju).
     subject_id = data.get("subject_id") or language_id
+    # oblast predmeta je neobavezna
+    area_id = data.get("area_id") or None
     level = (data.get("level") or "").strip()
     title = (data.get("title") or "").strip()
     content_html = (data.get("content_html") or data.get("content") or "").strip()
@@ -1761,29 +1803,33 @@ def create_lesson():
         conn = get_db_connection()
         cur = conn.cursor()
 
-        error = _lesson_subject_error(cur, subject_id, role, created_by) or _lesson_language_error(cur, language_id)
+        error = (_lesson_subject_error(cur, subject_id, role, created_by) or _lesson_language_error(cur, language_id)
+                 or _lesson_area_error(cur, area_id, subject_id))
         if error:
             cur.close()
             conn.close()
             return jsonify({"error": error[0]}), error[1]
         subject_id = int(subject_id)
         language_id = int(language_id) if language_id is not None else None
+        area_id = int(area_id) if area_id is not None else None
 
         cur.execute(
             """
-            INSERT INTO lessons (language_id, subject_id, level, title, content_html, tips, important_info, order_no, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO lessons (language_id, subject_id, area_id, level, title, content_html, tips, important_info, order_no, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (language_id, subject_id, level, title, content_html, tips, important_info, order_no, created_by),
+            (language_id, subject_id, area_id, level, title, content_html, tips, important_info, order_no, created_by),
         )
         lesson_id = cur.lastrowid
         subject_name = _lesson_subject_name(cur, subject_id)
+        area_name = _lesson_area_name(cur, area_id)
         conn.commit()
 
         cur.close()
         conn.close()
         return jsonify({"message": "Lesson created", "id": lesson_id, "language_id": language_id,
-                        "subject_id": subject_id, "subject_name": subject_name}), 201
+                        "subject_id": subject_id, "subject_name": subject_name,
+                        "area_id": area_id, "area_name": area_name}), 201
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1799,6 +1845,9 @@ def update_lesson(lesson_id):
     language_id = data.get("language_id") or None
     # isto kao pri kreiranju: bez subject_id koristi se language_id, a bez oba ostaje postojeci predmet
     subject_id = data.get("subject_id") or language_id
+    # oblast: ako je kljuc poslat, upisuje se (null brise oblast); ako nije poslat, ostaje postojeca
+    area_sent = "area_id" in data
+    area_id = data.get("area_id") or None
     level = (data.get("level") or "").strip()
     title = (data.get("title") or "").strip()
     content_html = (data.get("content_html") or data.get("content") or "").strip()
@@ -1815,7 +1864,7 @@ def update_lesson(lesson_id):
 
         # postojanje lekcije se proverava ovde (ne preko broja promenjenih redova),
         # pa cuvanje bez ijedne promene vise ne vraca 404
-        cur.execute("SELECT subject_id, language_id FROM lessons WHERE id = %s", (lesson_id,))
+        cur.execute("SELECT subject_id, language_id, area_id FROM lessons WHERE id = %s", (lesson_id,))
         existing = cur.fetchone()
         if not existing:
             cur.close()
@@ -1829,7 +1878,10 @@ def update_lesson(lesson_id):
             conn.close()
             return jsonify({"error": "subject_id required"}), 400
 
-        error = _lesson_subject_error(cur, subject_id, role, user_id) or _lesson_language_error(cur, language_id)
+        if not area_sent:
+            area_id = existing[2]
+        error = (_lesson_subject_error(cur, subject_id, role, user_id) or _lesson_language_error(cur, language_id)
+                 or _lesson_area_error(cur, area_id, subject_id))
         # nastavnik ne sme da menja ni lekciju predmeta koji ne predaje (ni da je prebaci u svoj)
         if not error and role == "TEACHER" and not user_has_subject(int(user_id), existing[0], "TEACHER"):
             error = ("Teacher can edit lessons only for assigned subjects", 403)
@@ -1839,6 +1891,7 @@ def update_lesson(lesson_id):
             return jsonify({"error": error[0]}), error[1]
         subject_id = int(subject_id)
         language_id = int(language_id) if language_id is not None else existing[1]
+        area_id = int(area_id) if area_id is not None else None
 
         cur.execute(
             """
@@ -1846,6 +1899,7 @@ def update_lesson(lesson_id):
             SET
                 language_id = %s,
                 subject_id = %s,
+                area_id = %s,
                 level = COALESCE(%s, level),
                 title = %s,
                 content_html = %s,
@@ -1856,6 +1910,7 @@ def update_lesson(lesson_id):
             (
                 language_id,
                 subject_id,
+                area_id,
                 level or None,
                 title,
                 content_html,
@@ -1866,13 +1921,15 @@ def update_lesson(lesson_id):
         )
 
         subject_name = _lesson_subject_name(cur, subject_id)
+        area_name = _lesson_area_name(cur, area_id)
         conn.commit()
 
         cur.close()
         conn.close()
 
         return jsonify({"message": "Lesson updated", "id": lesson_id, "language_id": language_id,
-                        "subject_id": subject_id, "subject_name": subject_name}), 200
+                        "subject_id": subject_id, "subject_name": subject_name,
+                        "area_id": area_id, "area_name": area_name}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1979,6 +2036,8 @@ def list_favorite_lessons():
                 l.code AS language_code,
                 ls.subject_id,
                 s.name AS subject_name,
+                ls.area_id,
+                a.name AS area_name,
                 ls.level,
                 ls.title,
                 ls.content_html AS content,
@@ -1989,6 +2048,7 @@ def list_favorite_lessons():
             JOIN lessons ls ON ls.id = fl.lesson_id
             LEFT JOIN languages l ON l.id = ls.language_id
             LEFT JOIN subjects s ON s.id = ls.subject_id
+            LEFT JOIN areas a ON a.id = ls.area_id
             WHERE fl.user_id = %s
             ORDER BY fl.created_at DESC
             """,

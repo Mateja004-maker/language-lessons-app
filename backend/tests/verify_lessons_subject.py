@@ -22,7 +22,7 @@ from flask_jwt_extended import create_access_token  # noqa: E402
 
 TAG = uuid.uuid4().hex[:5]
 PREFIX = f"tmp-ls-{TAG}"
-COUNTED = ("lessons", "subjects", "languages", "users", "teacher_subjects", "student_subjects", "favorite_lessons")
+COUNTED = ("lessons", "subjects", "areas", "languages", "users", "teacher_subjects", "student_subjects", "favorite_lessons")
 MISSING_SUBJECT = 999999999
 results = []
 client = app.test_client()
@@ -97,6 +97,9 @@ def main():
         db_exec("INSERT INTO subjects (id, code, name) VALUES (%s, %s, %s)", (x, f"x{TAG}", f"{PREFIX} predmet X"))
         subj_a = db_exec("INSERT INTO subjects (code, name) VALUES (%s, %s)", (f"a{TAG}", f"{PREFIX} predmet A"))
         subj_b = db_exec("INSERT INTO subjects (code, name) VALUES (%s, %s)", (f"b{TAG}", f"{PREFIX} predmet B"))
+        area_a = db_exec("INSERT INTO areas (subject_id, name) VALUES (%s, %s)", (subj_a, f"{PREFIX} oblast A"))
+        area_a2 = db_exec("INSERT INTO areas (subject_id, name) VALUES (%s, %s)", (subj_a, f"{PREFIX} oblast A2"))
+        area_b = db_exec("INSERT INTO areas (subject_id, name) VALUES (%s, %s)", (subj_b, f"{PREFIX} oblast B"))
 
         _, admin = make_user("admin", "ADMIN")
         teacher_id, teacher = make_user("teacher", "TEACHER")
@@ -270,12 +273,76 @@ def main():
                f"{code}, lekcija: {'ostaje' if lesson_row(t7) else 'obrisana'}", code == 200 and lesson_row(t7) is None)
         code = client.delete("/api/lessons/999999999", headers=admin).status_code
         record("brisanje nepostojece lekcije", "404", code, code == 404)
+
+        # --- oblast lekcije (areas), neobavezna, mora da pripada predmetu ---
+        def area_of(title):
+            return db_all("SELECT area_id FROM lessons WHERE title = %s", (title,))[0]["area_id"]
+
+        t10 = f"{PREFIX}-10"
+        resp = client.post("/api/lessons", json={"subject_id": subj_a, "area_id": area_a, "title": t10, "content": "<p>o</p>"},
+                           headers=admin)
+        body = resp.get_json(silent=True) or {}
+        record("dodavanje sa oblascu svog predmeta", f"201, area_id={area_a}, naziv u odgovoru",
+               f"{resp.status_code}, area_id={area_of(t10) if lesson_row(t10) else '-'}, {body.get('area_name')!r}",
+               resp.status_code == 201 and area_of(t10) == area_a and body.get("area_name") == f"{PREFIX} oblast A")
+        t11 = f"{PREFIX}-11"
+        resp = client.post("/api/lessons", json={"subject_id": subj_a, "area_id": area_b, "title": t11, "content": "<p>o</p>"},
+                           headers=admin)
+        record("dodavanje sa oblascu drugog predmeta", "400, lekcija nije napravljena",
+               f"{resp.status_code} {(resp.get_json(silent=True) or {}).get('error')}, lekcija: {'DA' if lesson_row(t11) else 'ne'}",
+               resp.status_code == 400 and lesson_row(t11) is None)
+        resp = client.post("/api/lessons", json={"subject_id": subj_a, "area_id": MISSING_SUBJECT, "title": t11,
+                                                 "content": "<p>o</p>"}, headers=admin)
+        record("dodavanje sa nepostojecom oblascu", "400, lekcija nije napravljena",
+               f"{resp.status_code}, lekcija: {'DA' if lesson_row(t11) else 'ne'}",
+               resp.status_code == 400 and lesson_row(t11) is None)
+        resp = client.post("/api/lessons", json={"subject_id": subj_a, "title": t11, "content": "<p>o</p>"}, headers=admin)
+        record("dodavanje bez oblasti", "201, area_id NULL", f"{resp.status_code}, area_id={area_of(t11) if lesson_row(t11) else '-'}",
+               resp.status_code == 201 and lesson_row(t11) is not None and area_of(t11) is None)
+
+        id10 = lesson_row(t10)["id"]
+        base10 = {"subject_id": subj_a, "title": t10, "content": "<p>o</p>"}
+        resp = client.put(f"/api/lessons/{id10}", json={**base10, "area_id": area_a2}, headers=admin)
+        record("izmena: druga oblast istog predmeta", f"200, area_id={area_a2}", f"{resp.status_code}, area_id={area_of(t10)}",
+               resp.status_code == 200 and area_of(t10) == area_a2)
+        resp = client.put(f"/api/lessons/{id10}", json={**base10, "content": "<p>bez kljuca area_id</p>"}, headers=admin)
+        record("izmena bez kljuca area_id: oblast ostaje", f"200, area_id={area_a2}", f"{resp.status_code}, area_id={area_of(t10)}",
+               resp.status_code == 200 and area_of(t10) == area_a2)
+        resp = client.put(f"/api/lessons/{id10}", json={**base10, "area_id": area_b}, headers=admin)
+        record("izmena: oblast drugog predmeta", f"400, area_id ostaje {area_a2}", f"{resp.status_code}, area_id={area_of(t10)}",
+               resp.status_code == 400 and area_of(t10) == area_a2)
+        resp = client.put(f"/api/lessons/{id10}", json={**base10, "subject_id": subj_b}, headers=admin)
+        record("izmena: novi predmet, a stara oblast ostaje (ne pripada mu)", f"400, predmet ostaje {subj_a}",
+               f"{resp.status_code}, subject_id={lesson_row(t10)['subject_id']}",
+               resp.status_code == 400 and lesson_row(t10)["subject_id"] == subj_a)
+        resp = client.put(f"/api/lessons/{id10}", json={**base10, "subject_id": subj_b, "area_id": area_b}, headers=admin)
+        record("izmena: novi predmet zajedno sa njegovom oblascu", f"200, {subj_b} / {area_b}",
+               f"{resp.status_code}, {lesson_row(t10)['subject_id']} / {area_of(t10)}",
+               resp.status_code == 200 and lesson_row(t10)["subject_id"] == subj_b and area_of(t10) == area_b)
+        resp = client.put(f"/api/lessons/{id10}", json={**base10, "subject_id": subj_b, "area_id": None}, headers=admin)
+        record("izmena: area_id null brise oblast", "200, area_id NULL", f"{resp.status_code}, area_id={area_of(t10)}",
+               resp.status_code == 200 and area_of(t10) is None)
+
+        # oblast u listi, detalju i omiljenim
+        client.put(f"/api/lessons/{id1}", json={"subject_id": subj_a, "area_id": area_a, "title": t1, "content": "<p>o</p>"},
+                   headers=admin)
+        item_list = next((r for r in client.get("/api/lessons", headers=student_a).get_json() if r["id"] == id1), {})
+        item_detail = client.get(f"/api/lessons/{id1}", headers=student_a).get_json(silent=True) or {}
+        item_fav = next((r for r in client.get("/api/favorites", headers=student_a).get_json() if r["id"] == id1), {})
+        got = [(i.get("area_id"), i.get("area_name")) for i in (item_list, item_detail, item_fav)]
+        expected_area = (area_a, f"{PREFIX} oblast A")
+        record("lista / detalj / omiljene: area_id i area_name", [expected_area] * 3, got, got == [expected_area] * 3)
+        item_none = next((r for r in client.get("/api/lessons", headers=student_a).get_json() if r["id"] == lesson_row(t11)["id"]), {})
+        record("lekcija bez oblasti u listi", "area_id None, area_name None",
+               f"{item_none.get('area_id')}, {item_none.get('area_name')}",
+               "area_id" in item_none and item_none.get("area_id") is None and item_none.get("area_name") is None)
     finally:
         lesson_ids = [r["id"] for r in db_all("SELECT id FROM lessons WHERE title LIKE %s", (f"{PREFIX}-%",))]
         for lesson_id in lesson_ids:
             db_exec("DELETE FROM favorite_lessons WHERE lesson_id = %s", (lesson_id,))
             db_exec("DELETE FROM lessons WHERE id = %s", (lesson_id,))
         db_exec("DELETE FROM users WHERE email LIKE %s", (f"{PREFIX}-%",))
+        db_exec("DELETE FROM areas WHERE name LIKE %s", (f"{PREFIX} %",))
         db_exec("DELETE FROM subjects WHERE name LIKE %s", (f"{PREFIX} %",))
         db_exec("DELETE FROM languages WHERE name LIKE %s", (f"{PREFIX} %",))
     after = counts()
