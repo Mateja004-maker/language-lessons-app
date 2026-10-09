@@ -865,6 +865,35 @@ def delete_language(language_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# kolone liste predmeta: id, code, name + broj lekcija (lessons.subject_id)
+SUBJECT_LIST_COLUMNS = ("s.id, s.code, s.name, "
+                        "(SELECT COUNT(*) FROM lessons ls WHERE ls.subject_id = s.id) AS lesson_count")
+
+# sta sve koristi predmet (tabela, kolona, opis za poruku); brisanje je dozvoljeno samo ako nista
+SUBJECT_USAGE = (
+    ("teacher_subjects", "subject_id", "nastavnici"),
+    ("student_subjects", "subject_id", "studenti"),
+    ("areas", "subject_id", "oblasti"),
+    ("lessons", "subject_id", "lekcije"),
+    ("exam_questions", "subject_id", "pitanja"),
+    ("exams", "subject_id", "testovi"),
+    ("reference_sets", "subject_id", "referentni skupovi"),
+)
+SUBJECT_NAME_MAX = 80
+SUBJECT_CODE_MAX = 10
+
+
+def _subject_name_taken(cur, name, exclude_id=None):
+    """Naziv predmeta je jedinstven bez obzira na velika/mala slova (i razmake na krajevima)."""
+    sql = "SELECT id FROM subjects WHERE LOWER(TRIM(name)) = LOWER(%s)"
+    params = [name]
+    if exclude_id is not None:
+        sql += " AND id <> %s"
+        params.append(exclude_id)
+    cur.execute(sql + " LIMIT 1", tuple(params))
+    return cur.fetchone() is not None
+
+
 @app.get("/api/subjects") #Prikaz predmeta (many-to-many student/teacher_subjects)
 @jwt_required()
 def list_subjects():
@@ -877,7 +906,7 @@ def list_subjects():
         cur = conn.cursor(dictionary=True)
 
         if role == "ADMIN":
-            cur.execute("SELECT id, code, name FROM subjects ORDER BY name ASC")
+            cur.execute(f"SELECT {SUBJECT_LIST_COLUMNS} FROM subjects s ORDER BY s.name ASC")
             rows = cur.fetchall()
         else:
             subject_ids = get_user_subject_ids(int(user_id), role)
@@ -886,7 +915,7 @@ def list_subjects():
             else:
                 placeholders = ", ".join(["%s"] * len(subject_ids))
                 cur.execute(
-                    f"SELECT id, code, name FROM subjects WHERE id IN ({placeholders}) ORDER BY name ASC",
+                    f"SELECT {SUBJECT_LIST_COLUMNS} FROM subjects s WHERE s.id IN ({placeholders}) ORDER BY s.name ASC",
                     tuple(subject_ids),
                 )
                 rows = cur.fetchall()
@@ -894,6 +923,110 @@ def list_subjects():
         cur.close()
         conn.close()
         return jsonify(rows), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.post("/api/subjects") #Dodavanje predmeta (ADMIN)
+@role_required(["ADMIN"])
+def create_subject():
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    code = (data.get("code") or "").strip()
+
+    if not name:
+        return jsonify({"error": "Naziv predmeta je obavezan."}), 400
+    if not code:
+        return jsonify({"error": "Oznaka predmeta je obavezna."}), 400
+    if len(name) > SUBJECT_NAME_MAX:
+        return jsonify({"error": f"Naziv predmeta može da ima najviše {SUBJECT_NAME_MAX} znakova."}), 400
+    if len(code) > SUBJECT_CODE_MAX:
+        return jsonify({"error": f"Oznaka predmeta može da ima najviše {SUBJECT_CODE_MAX} znakova."}), 400
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+        try:
+            if _subject_name_taken(cur, name):
+                return jsonify({"error": f"Predmet sa nazivom \"{name}\" već postoji."}), 409
+            cur.execute("SELECT id FROM subjects WHERE LOWER(code) = LOWER(%s) LIMIT 1", (code,))
+            if cur.fetchone():
+                return jsonify({"error": f"Predmet sa oznakom \"{code}\" već postoji."}), 409
+            cur.execute("INSERT INTO subjects (code, name) VALUES (%s, %s)", (code, name))
+            subject_id = cur.lastrowid
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"message": "Predmet je dodat.", "id": subject_id, "code": code, "name": name,
+                        "lesson_count": 0}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.put("/api/subjects/<int:subject_id>") #Izmena naziva predmeta (ADMIN)
+@role_required(["ADMIN"])
+def update_subject(subject_id):
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+
+    if not name:
+        return jsonify({"error": "Naziv predmeta je obavezan."}), 400
+    if len(name) > SUBJECT_NAME_MAX:
+        return jsonify({"error": f"Naziv predmeta može da ima najviše {SUBJECT_NAME_MAX} znakova."}), 400
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+        try:
+            cur.execute("SELECT id, code FROM subjects WHERE id = %s", (subject_id,))
+            subject = cur.fetchone()
+            if not subject:
+                return jsonify({"error": "Predmet ne postoji."}), 404
+            if _subject_name_taken(cur, name, exclude_id=subject_id):
+                return jsonify({"error": f"Predmet sa nazivom \"{name}\" već postoji."}), 409
+            cur.execute("UPDATE subjects SET name = %s WHERE id = %s", (name, subject_id))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"message": "Naziv predmeta je izmenjen.", "id": subject_id, "code": subject["code"],
+                        "name": name}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.delete("/api/subjects/<int:subject_id>") #Brisanje predmeta (ADMIN), samo ako ga nista ne koristi
+@role_required(["ADMIN"])
+def delete_subject(subject_id):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(dictionary=True)
+        try:
+            cur.execute("SELECT id, name FROM subjects WHERE id = %s", (subject_id,))
+            subject = cur.fetchone()
+            if not subject:
+                return jsonify({"error": "Predmet ne postoji."}), 404
+
+            usage = []
+            for table, column, label in SUBJECT_USAGE:
+                cur.execute(f"SELECT COUNT(*) AS n FROM {table} WHERE {column} = %s", (subject_id,))
+                count = cur.fetchone()["n"]
+                if count:
+                    usage.append({"what": label, "count": count})
+            if usage:
+                details = ", ".join(f"{u['what']} ({u['count']})" for u in usage)
+                return jsonify({
+                    "error": f"Predmet \"{subject['name']}\" ne može da se obriše jer ga koriste: {details}.",
+                    "usage": usage,
+                }), 409
+
+            cur.execute("DELETE FROM subjects WHERE id = %s", (subject_id,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+        return jsonify({"message": "Predmet je obrisan."}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
