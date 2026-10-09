@@ -330,11 +330,15 @@ onMounted(loadAiCounts)
       <div class="dashboard-card p-4 mb-4">
         <div class="section-title mb-3">Lekcije po predmetu</div>
 
-        <div class="chart-box">
+        <div v-if="lessonsBySubject.size" class="chart-box">
           <Pie
             :data="subjectChartData"
             :options="subjectChartOptions"
           />
+        </div>
+        <!-- nema nijedne lekcije: kratka poruka umesto praznog grafika -->
+        <div v-else class="empty-state chart-empty">
+          {{ role === 'STUDENT' ? 'Još nema lekcija za tvoj predmet.' : 'Još nema lekcija.' }}
         </div>
       </div>
     
@@ -819,5 +823,10 @@ a:hover > .stat-card {
   height: 280px;
   max-width: 420px;
   margin: 0 auto;
+}
+
+/* prazan grafik: niži okvir, boje iz .empty-state (tema) */
+.chart-empty {
+  padding: 1.5rem 1rem;
 }
 </style>
