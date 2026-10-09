@@ -390,7 +390,7 @@ CREATE TABLE `lesson_progress` (
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `lessons` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-  `language_id` int(10) unsigned NOT NULL,
+  `language_id` int(10) unsigned DEFAULT NULL,
   `subject_id` int(10) unsigned DEFAULT NULL,
   `level` varchar(10) NOT NULL,
   `title` varchar(200) NOT NULL,
