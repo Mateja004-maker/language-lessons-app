@@ -96,7 +96,7 @@ onMounted(load)
 
 <template>
   <div class="container py-4">
-    <PageHeader title="Predmeti" />
+    <PageHeader title="Upravljanje predmetima" />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div v-if="msg" class="alert alert-success">{{ msg }}</div>

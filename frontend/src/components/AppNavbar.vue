@@ -145,7 +145,7 @@ function onLogout() {
             </a>
             <ul class="dropdown-menu dropdown-menu-dark">
               <li><router-link class="dropdown-item" to="/admin/users">Korisnici</router-link></li>
-              <li><router-link class="dropdown-item" to="/admin/predmeti">Predmeti</router-link></li>
+              <li><router-link class="dropdown-item" to="/admin/predmeti">Upravljanje predmetima</router-link></li>
             </ul>
           </li>
 

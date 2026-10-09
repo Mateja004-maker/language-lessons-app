@@ -348,7 +348,7 @@ onMounted(loadAiCounts)
           <div class="col-12 col-md-4">
             <div class="dashboard-card stat-card stat-solid stat-solid-1 h-100">
               <div class="stat-icon"><i class="fa-solid fa-globe"></i></div>
-              <div class="stat-title">Predmeti</div>
+              <div class="stat-title">Upravljanje predmetima</div>
               <div class="stat-number">{{ subjects.length }}</div>
               <div class="stat-text">Registrovani predmeti</div>
             </div>
