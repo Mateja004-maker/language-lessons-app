@@ -1523,6 +1523,7 @@ def list_lessons():
         cur = conn.cursor(dictionary=True)
 
         if role in ["STUDENT", "TEACHER"]:
+            # filtriranje po predmetu preko lessons.subject_id (ne preko language_id)
             subject_ids = get_user_subject_ids(user_id, role)
 
             if not subject_ids:
@@ -1539,6 +1540,8 @@ def list_lessons():
                         ls.id,
                         ls.language_id,
                         l.code AS language_code,
+                        ls.subject_id,
+                        s.name AS subject_name,
                         ls.level,
                         ls.title,
                         ls.content_html AS content,
@@ -1550,8 +1553,9 @@ def list_lessons():
                         ls.updated_at
                     FROM lessons ls
                     JOIN languages l ON l.id = ls.language_id
+                    LEFT JOIN subjects s ON s.id = ls.subject_id
                     WHERE l.is_active = 1
-                      AND ls.language_id IN ({placeholders})
+                      AND ls.subject_id IN ({placeholders})
                     ORDER BY ls.order_no ASC, ls.id DESC
                     """,
                     tuple(subject_ids),
@@ -1563,6 +1567,8 @@ def list_lessons():
                         ls.id,
                         ls.language_id,
                         l.code AS language_code,
+                        ls.subject_id,
+                        s.name AS subject_name,
                         ls.level,
                         ls.title,
                         ls.content_html AS content,
@@ -1574,7 +1580,8 @@ def list_lessons():
                         ls.updated_at
                     FROM lessons ls
                     JOIN languages l ON l.id = ls.language_id
-                    WHERE ls.language_id IN ({placeholders})
+                    LEFT JOIN subjects s ON s.id = ls.subject_id
+                    WHERE ls.subject_id IN ({placeholders})
                     ORDER BY ls.order_no ASC, ls.id DESC
                     """,
                     tuple(subject_ids),
@@ -1588,6 +1595,8 @@ def list_lessons():
                         ls.id,
                         ls.language_id,
                         l.code AS language_code,
+                        ls.subject_id,
+                        s.name AS subject_name,
                         ls.level,
                         ls.title,
                         ls.content_html AS content,
@@ -1599,6 +1608,7 @@ def list_lessons():
                         ls.updated_at
                     FROM lessons ls
                     JOIN languages l ON l.id = ls.language_id
+                    LEFT JOIN subjects s ON s.id = ls.subject_id
                     WHERE l.is_active = 1
                     ORDER BY ls.order_no ASC, ls.id DESC
                     """
@@ -1610,6 +1620,8 @@ def list_lessons():
                         ls.id,
                         ls.language_id,
                         l.code AS language_code,
+                        ls.subject_id,
+                        s.name AS subject_name,
                         ls.level,
                         ls.title,
                         ls.content_html AS content,
@@ -1621,6 +1633,7 @@ def list_lessons():
                         ls.updated_at
                     FROM lessons ls
                     JOIN languages l ON l.id = ls.language_id
+                    LEFT JOIN subjects s ON s.id = ls.subject_id
                     ORDER BY ls.order_no ASC, ls.id DESC
                     """
                 )
@@ -1646,6 +1659,8 @@ def lesson_detail(lesson_id):
                 ls.id,
                 ls.language_id,
                 l.code AS language_code,
+                ls.subject_id,
+                s.name AS subject_name,
                 ls.level,
                 ls.title,
                 ls.content_html AS content,
@@ -1657,6 +1672,7 @@ def lesson_detail(lesson_id):
                 ls.updated_at
             FROM lessons ls
             JOIN languages l ON l.id = ls.language_id
+            LEFT JOIN subjects s ON s.id = ls.subject_id
             WHERE ls.id = %s
             LIMIT 1
             """,
@@ -1676,12 +1692,37 @@ def lesson_detail(lesson_id):
         return jsonify({"error": str(e)}), 500
 
 
+def _lesson_subject_error(cur, subject_id, role, user_id):
+    """Provera predmeta lekcije -> None ili (poruka, status). Predmet mora da postoji,
+    a TEACHER mora da ga predaje (ADMIN moze za sve)."""
+    try:
+        subject_id = int(subject_id)
+    except (TypeError, ValueError):
+        return "Subject not found", 400
+    cur.execute("SELECT id FROM subjects WHERE id = %s", (subject_id,))
+    if not cur.fetchone():
+        return "Subject not found", 400
+    if role == "TEACHER" and not user_has_subject(int(user_id), subject_id, "TEACHER"):
+        return "Teacher can edit lessons only for assigned subjects", 403
+    return None
+
+
+def _lesson_subject_name(cur, subject_id):
+    cur.execute("SELECT name FROM subjects WHERE id = %s", (subject_id,))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
 @app.post("/api/lessons") #Kreiranje lekcije
 @role_required(["TEACHER", "ADMIN"])
 def create_lesson():
     data = request.get_json() or {}
+    role = get_jwt().get("role")
 
     language_id = data.get("language_id")
+    # Lekcija pripada predmetu (lessons.subject_id). Dok frontend ne salje subject_id,
+    # kao privremena rezerva koristi se language_id (id-jevi se za sada poklapaju).
+    subject_id = data.get("subject_id") or language_id
     level = (data.get("level") or "").strip()
     title = (data.get("title") or "").strip()
     content_html = (data.get("content_html") or data.get("content") or "").strip()
@@ -1698,18 +1739,28 @@ def create_lesson():
         conn = get_db_connection()
         cur = conn.cursor()
 
+        error = _lesson_subject_error(cur, subject_id, role, created_by)
+        if error:
+            cur.close()
+            conn.close()
+            return jsonify({"error": error[0]}), error[1]
+        subject_id = int(subject_id)
+
         cur.execute(
             """
-            INSERT INTO lessons (language_id, level, title, content_html, tips, important_info, order_no, created_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO lessons (language_id, subject_id, level, title, content_html, tips, important_info, order_no, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (language_id, level, title, content_html, tips, important_info, order_no, created_by),
+            (language_id, subject_id, level, title, content_html, tips, important_info, order_no, created_by),
         )
+        lesson_id = cur.lastrowid
+        subject_name = _lesson_subject_name(cur, subject_id)
         conn.commit()
 
         cur.close()
         conn.close()
-        return jsonify({"message": "Lesson created"}), 201
+        return jsonify({"message": "Lesson created", "id": lesson_id, "language_id": language_id,
+                        "subject_id": subject_id, "subject_name": subject_name}), 201
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1718,8 +1769,12 @@ def create_lesson():
 @role_required(["TEACHER", "ADMIN"])
 def update_lesson(lesson_id):
     data = request.get_json() or {}
+    role = get_jwt().get("role")
+    user_id = get_jwt_identity()
 
     language_id = data.get("language_id")
+    # isto kao pri kreiranju: bez subject_id privremeno se koristi language_id
+    subject_id = data.get("subject_id") or language_id
     level = (data.get("level") or "").strip()
     title = (data.get("title") or "").strip()
     content_html = (data.get("content_html") or data.get("content") or "").strip()
@@ -1734,11 +1789,29 @@ def update_lesson(lesson_id):
         conn = get_db_connection()
         cur = conn.cursor()
 
+        cur.execute("SELECT subject_id FROM lessons WHERE id = %s", (lesson_id,))
+        existing = cur.fetchone()
+        if not existing:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Lesson not found"}), 404
+
+        error = _lesson_subject_error(cur, subject_id, role, user_id)
+        # nastavnik ne sme da menja ni lekciju predmeta koji ne predaje (ni da je prebaci u svoj)
+        if not error and role == "TEACHER" and not user_has_subject(int(user_id), existing[0], "TEACHER"):
+            error = ("Teacher can edit lessons only for assigned subjects", 403)
+        if error:
+            cur.close()
+            conn.close()
+            return jsonify({"error": error[0]}), error[1]
+        subject_id = int(subject_id)
+
         cur.execute(
             """
             UPDATE lessons
             SET
                 language_id = %s,
+                subject_id = %s,
                 level = COALESCE(%s, level),
                 title = %s,
                 content_html = %s,
@@ -1748,6 +1821,7 @@ def update_lesson(lesson_id):
             """,
             (
                 language_id,
+                subject_id,
                 level or None,
                 title,
                 content_html,
@@ -1757,9 +1831,11 @@ def update_lesson(lesson_id):
             ),
         )
 
+        updated = cur.rowcount
+        subject_name = _lesson_subject_name(cur, subject_id)
         conn.commit()
 
-        if cur.rowcount == 0:
+        if updated == 0:
             cur.close()
             conn.close()
             return jsonify({"error": "Lesson not found"}), 404
@@ -1767,7 +1843,8 @@ def update_lesson(lesson_id):
         cur.close()
         conn.close()
 
-        return jsonify({"message": "Lesson updated"}), 200
+        return jsonify({"message": "Lesson updated", "id": lesson_id, "language_id": language_id,
+                        "subject_id": subject_id, "subject_name": subject_name}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1862,6 +1939,8 @@ def list_favorite_lessons():
                 ls.id,
                 ls.language_id,
                 l.code AS language_code,
+                ls.subject_id,
+                s.name AS subject_name,
                 ls.level,
                 ls.title,
                 ls.content_html AS content,
@@ -1871,6 +1950,7 @@ def list_favorite_lessons():
             FROM favorite_lessons fl
             JOIN lessons ls ON ls.id = fl.lesson_id
             JOIN languages l ON l.id = ls.language_id
+            LEFT JOIN subjects s ON s.id = ls.subject_id
             WHERE fl.user_id = %s
             ORDER BY fl.created_at DESC
             """,
