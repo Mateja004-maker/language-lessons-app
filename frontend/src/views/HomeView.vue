@@ -135,7 +135,7 @@ async function loadData() {
 }
 const heroText = computed(() => {
   if (role === 'ADMIN') {
-    return 'Upravljaj korisnicima, odobravaj registracije i uređuj jezike sa jednog mesta.'
+    return 'Upravljaj korisnicima, odobravaj registracije i uređuj predmete sa jednog mesta.'
   }
 
   if (role === 'TEACHER') {
@@ -348,9 +348,9 @@ onMounted(loadAiCounts)
           <div class="col-12 col-md-4">
             <div class="dashboard-card stat-card stat-solid stat-solid-1 h-100">
               <div class="stat-icon"><i class="fa-solid fa-globe"></i></div>
-              <div class="stat-title">Jezici</div>
-              <div class="stat-number">{{ languages.length }}</div>
-              <div class="stat-text">Registrovani jezici</div>
+              <div class="stat-title">Predmeti</div>
+              <div class="stat-number">{{ subjects.length }}</div>
+              <div class="stat-text">Registrovani predmeti</div>
             </div>
           </div>
 
@@ -380,10 +380,10 @@ onMounted(loadAiCounts)
 
           <div class="row g-3">
             <div class="col-12 col-md-4">
-              <router-link to="/admin/languages" class="action-card text-decoration-none">
+              <router-link to="/admin/predmeti" class="action-card text-decoration-none">
                 <div class="action-icon"><i class="fa-solid fa-globe"></i></div>
-                <div class="action-title">Upravljanje jezicima</div>
-                <div class="action-text">Dodaj i uredi jezike</div>
+                <div class="action-title">Upravljanje predmetima</div>
+                <div class="action-text">Dodaj i uredi predmete</div>
               </router-link>
             </div>
 

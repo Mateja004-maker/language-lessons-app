@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
 import LessonsView from '@/views/LessonsView.vue'
-import LanguagesView from '@/views/LanguagesView.vue'
+import AdminSubjectsView from '@/views/AdminSubjectsView.vue'
 import LessonDetailView from '@/views/LessonDetailView.vue'
 import ManageLessonsView from '@/views/ManageLessonsView.vue'
 import ProfileView from '@/views/ProfileView.vue'
@@ -47,7 +47,9 @@ const routes = [
 
     { path: '/manage/lessons', name: 'manage-lessons', component: ManageLessonsView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN'] } },
 
-    { path: '/admin/languages', name: 'admin-languages', component: LanguagesView, meta: { requiresAuth: true, roles: ['ADMIN'] } },
+    // administracija predmeta (nekadasnja stranica Jezici); stara adresa preusmerava ovde
+    { path: '/admin/predmeti', name: 'admin-subjects', component: AdminSubjectsView, meta: { requiresAuth: true, roles: ['ADMIN'] } },
+    { path: '/admin/languages', redirect: '/admin/predmeti' },
     
     { path: '/exams', name: 'exams', component: ExamsView, meta: { requiresAuth: true, roles: ['TEACHER', 'ADMIN', 'STUDENT'] } },
 
