@@ -39,8 +39,9 @@ u `README.md`, ponavljanje eksperimenta u `docs/PONAVLJANJE_EKSPERIMENTA.md`.
   - `languages`, `lessons.language_id`, `users.learning_language_id`
     (registracija, izmena i prikaz profila) i `exams.language_id` (više se ne upisuje).
   - Kreiranje testa još prima `language_id` kao rezervu za `subject_id`.
-  - Lekcije se filtriraju po predmetima korisnika preko `lessons.language_id`. To radi samo zato
-    što se id-jevi jezika i predmeta poklapaju. Ne brisati ovu logiku bez dogovora.
+  - Lekcije pripadaju predmetu preko `lessons.subject_id` (migracije 19 i 20); filtriranje, detalj,
+    izmena i brisanje proveravaju predmet korisnika. `lessons.language_id` je neobavezan (NULL);
+    rute lekcija ga još primaju kao rezervu za `subject_id` dok frontend ne pređe na `subject_id`.
 
 ## AI modul
 - Provajderi: groq `openai/gpt-oss-20b`, gemini `gemini-3.6-flash`,

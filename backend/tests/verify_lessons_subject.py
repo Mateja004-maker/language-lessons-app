@@ -205,6 +205,71 @@ def main():
                f"{resp.status_code}, {item.get('subject_id')}, {item.get('subject_name')!r}, {item.get('language_id')}",
                resp.status_code == 200 and item.get("subject_id") == subj_a
                and item.get("subject_name") == f"{PREFIX} predmet A" and item.get("language_id") == x)
+
+        # --- language_id nije obavezan ---
+        t8 = f"{PREFIX}-8"
+        resp = client.post("/api/lessons", json={"subject_id": subj_a, "title": t8, "content": "<p>proba</p>"}, headers=admin)
+        row = lesson_row(t8) or {}
+        record("dodavanje samo sa subject_id (bez jezika)", f"201, language_id NULL, subject_id={subj_a}",
+               f"{resp.status_code}, language_id={row.get('language_id')}, subject_id={row.get('subject_id')}",
+               resp.status_code == 201 and row.get("id") and row.get("language_id") is None and row.get("subject_id") == subj_a)
+        id8 = row.get("id")
+        code, ids_a = listed_ids(student_a)
+        resp = client.get(f"/api/lessons/{id8}", headers=student_a)
+        item = resp.get_json(silent=True) or {}
+        record("lekcija bez jezika: u listi i detalju studenta", f"u listi; detalj 200, language_id None, {PREFIX} predmet A",
+               f"{'u listi' if id8 in ids_a else 'NIJE u listi'}; {resp.status_code}, {item.get('language_id')}, {item.get('subject_name')!r}",
+               id8 in ids_a and resp.status_code == 200 and item.get("language_id") is None
+               and item.get("subject_name") == f"{PREFIX} predmet A")
+        t9 = f"{PREFIX}-9"
+        resp = client.post("/api/lessons", json=lesson_body(t9, MISSING_SUBJECT, subj_a), headers=admin)
+        record("dodavanje sa nepostojecim jezikom", "400 Language not found, lekcija nije napravljena",
+               f"{resp.status_code} {(resp.get_json(silent=True) or {}).get('error')}, lekcija: {'DA' if lesson_row(t9) else 'ne'}",
+               resp.status_code == 400 and lesson_row(t9) is None)
+        resp = client.post("/api/lessons", json={"title": t9, "content": "<p>proba</p>"}, headers=admin)
+        record("dodavanje bez predmeta i bez jezika", "400, lekcija nije napravljena",
+               f"{resp.status_code}, lekcija: {'DA' if lesson_row(t9) else 'ne'}",
+               resp.status_code == 400 and lesson_row(t9) is None)
+        resp = client.put(f"/api/lessons/{id1}", json={"subject_id": subj_a, "title": t1, "content": "<p>bez jezika</p>"}, headers=admin)
+        row = lesson_row(t1)
+        record("izmena samo sa subject_id: jezik ostaje stari", f"200, language_id={x}",
+               f"{resp.status_code}, language_id={row['language_id']}",
+               resp.status_code == 200 and row["language_id"] == x and row["subject_id"] == subj_a)
+
+        # --- cuvanje bez ijedne promene vise ne vraca 404 ---
+        same = {"subject_id": subj_a, "title": t1, "content": "<p>bez jezika</p>"}
+        codes = [client.put(f"/api/lessons/{id1}", json=same, headers=admin).status_code for _ in range(2)]
+        record("izmena bez ijedne promene (dvaput isto)", "200, 200", ", ".join(map(str, codes)), codes == [200, 200])
+
+        # --- detalj: STUDENT/TEACHER samo za svoje predmete, ADMIN sve ---
+        t7 = f"{PREFIX}-7"
+        client.post("/api/lessons", json=lesson_body(t7, x, subj_b), headers=admin)
+        id7 = lesson_row(t7)["id"]
+        detail = {name: client.get(f"/api/lessons/{lesson_id}", headers=h).status_code
+                  for name, lesson_id, h in (("student A -> lekcija A", id1, student_a),
+                                             ("student X -> lekcija A", id1, student_x),
+                                             ("student A -> lekcija B", id7, student_a),
+                                             ("nastavnik -> lekcija A", id1, teacher),
+                                             ("nastavnik -> lekcija B", id7, teacher),
+                                             ("ADMIN -> lekcija B", id7, admin),
+                                             ("ADMIN -> nepostojeca", 999999999, admin))}
+        expected = {"student A -> lekcija A": 200, "student X -> lekcija A": 403, "student A -> lekcija B": 403,
+                    "nastavnik -> lekcija A": 200, "nastavnik -> lekcija B": 403, "ADMIN -> lekcija B": 200,
+                    "ADMIN -> nepostojeca": 404}
+        record("detalj lekcije po predmetu", expected, detail, detail == expected)
+
+        # --- brisanje: TEACHER samo za svoje predmete, ADMIN sve ---
+        code = client.delete(f"/api/lessons/{id7}", headers=teacher).status_code
+        record("TEACHER: brisanje lekcije predmeta koji ne predaje", "403, lekcija ostaje",
+               f"{code}, lekcija: {'ostaje' if lesson_row(t7) else 'OBRISANA'}", code == 403 and lesson_row(t7) is not None)
+        code = client.delete(f"/api/lessons/{id5}", headers=teacher).status_code
+        record("TEACHER: brisanje lekcije svog predmeta", "200, obrisana",
+               f"{code}, lekcija: {'ostaje' if lesson_row(t5) else 'obrisana'}", code == 200 and lesson_row(t5) is None)
+        code = client.delete(f"/api/lessons/{id7}", headers=admin).status_code
+        record("ADMIN: brisanje bilo koje lekcije", "200, obrisana",
+               f"{code}, lekcija: {'ostaje' if lesson_row(t7) else 'obrisana'}", code == 200 and lesson_row(t7) is None)
+        code = client.delete("/api/lessons/999999999", headers=admin).status_code
+        record("brisanje nepostojece lekcije", "404", code, code == 404)
     finally:
         lesson_ids = [r["id"] for r in db_all("SELECT id FROM lessons WHERE title LIKE %s", (f"{PREFIX}-%",))]
         for lesson_id in lesson_ids:
