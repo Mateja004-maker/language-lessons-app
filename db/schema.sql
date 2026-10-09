@@ -392,6 +392,7 @@ CREATE TABLE `lessons` (
   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
   `language_id` int(10) unsigned DEFAULT NULL,
   `subject_id` int(10) unsigned DEFAULT NULL,
+  `area_id` int(10) unsigned DEFAULT NULL,
   `level` varchar(10) NOT NULL,
   `title` varchar(200) NOT NULL,
   `content_html` mediumtext DEFAULT NULL,
@@ -406,6 +407,8 @@ CREATE TABLE `lessons` (
   KEY `idx_lessons_language_level` (`language_id`,`level`),
   KEY `idx_lessons_order` (`language_id`,`order_no`),
   KEY `fk_lessons_subject` (`subject_id`),
+  KEY `fk_lessons_area` (`area_id`),
+  CONSTRAINT `fk_lessons_area` FOREIGN KEY (`area_id`) REFERENCES `areas` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_lessons_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_lessons_language` FOREIGN KEY (`language_id`) REFERENCES `languages` (`id`),
   CONSTRAINT `fk_lessons_subject` FOREIGN KEY (`subject_id`) REFERENCES `subjects` (`id`)

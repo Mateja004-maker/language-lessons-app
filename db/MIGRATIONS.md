@@ -32,6 +32,7 @@ Dopuna (2026-10-09): posle migracije 19 (`lessons.subject_id`) `schema.sql` je p
 izvučen iz baze; razlika u odnosu na prethodnu verziju je samo u tabeli `lessons`
 (nova kolona, indeks i strani ključ).
 Posle migracije 20 `schema.sql` je ponovo izvučen; razlika je samo `lessons.language_id` (NULL dozvoljen).
+Posle migracije 21 `schema.sql` je ponovo izvučen; razlika je samo `lessons.area_id` (kolona, indeks, strani ključ).
 
 Kada se šema promeni, `schema.sql` se ponovo izvlači iz baze:
 `mysqldump --no-data --skip-comments --skip-dump-date --skip-add-drop-table`.
@@ -74,6 +75,7 @@ Pravila:
 | 18 | `migration_second_rater.sql` | `ai_evaluations.evaluation_round` + UNIQUE, `ai_label_evaluations`, `evaluation_batches.closed_at` | 7, 13 |
 | 19 | `migration_lessons_subject.sql` | `lessons.subject_id` + FK na `subjects`, jednokratno popunjava iz `language_id` (samo gde predmet postoji); `language_id` ostaje; može da se pokrene ponovo | — |
 | 20 | `migration_lessons_language_nullable.sql` | `lessons.language_id` postaje NULL-dozvoljen (FK ostaje); može da se pokrene ponovo; rollback samo ako nema lekcija bez jezika (vidi komentar) | 19 |
+| 21 | `migration_lessons_area.sql` | `lessons.area_id` + FK na `areas` (ON DELETE SET NULL, kao `exam_questions.area_id`); postojeće lekcije ostaju bez oblasti; može da se pokrene ponovo | 1, 19 |
 
 Redosled prati datume kada su fajlovi dodati u git, uz jedan izuzetak: broj 5
 (`ai_generation_base_VERIFIED`) je u git dodat tek 2026-09-02. Tada je zapisana
