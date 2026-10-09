@@ -150,6 +150,7 @@ onMounted(async () => {
                 <div>
                   <div class="lesson-kicker mb-1">
                     {{ lesson.subject_name?.toUpperCase() || 'LEKCIJA' }}
+                    <span v-if="lesson.area_name" class="badge text-bg-light border area-badge">{{ lesson.area_name }}</span>
                   </div>
 
                   <h5 class="card-title mb-2">
@@ -241,6 +242,13 @@ onMounted(async () => {
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--app-primary);
+}
+
+/* oblast lekcije: sitna oznaka pored predmeta */
+.area-badge {
+  margin-left: 0.4rem;
+  letter-spacing: normal;
+  vertical-align: middle;
 }
 
 .lesson-icon {

@@ -1,7 +1,7 @@
 <script setup>
 import PageHeader from '@/components/PageHeader.vue'
-import { onMounted, ref, computed } from 'vue'
-import { api } from '@/services/api'
+import { onMounted, ref, computed, watch } from 'vue'
+import { api, getAreas } from '@/services/api'
 import { QuillEditor } from '@vueup/vue-quill'
 import '@vueup/vue-quill/dist/vue-quill.snow.css'
 
@@ -37,11 +37,34 @@ async function loadSubjects() {
 
 const form = ref({
   subject_id: '',
+  area_id: '',
   title: '',
   content: '',
   tips: '',
   important_info: ''
 })
+// oblasti izabranog predmeta (neobavezno); lista se menja kad se promeni predmet
+const areas = ref([])
+let areasRequest = 0
+watch(() => form.value.subject_id, async subjectId => {
+  const request = ++areasRequest
+  areas.value = []
+  if (!subjectId) {
+    form.value.area_id = ''
+    return
+  }
+  try {
+    const { data } = await getAreas(subjectId)
+    if (request !== areasRequest) return
+    areas.value = data
+  } catch (e) {
+    if (request !== areasRequest) return
+    areas.value = []
+  }
+  // oblast koja ne pripada novom predmetu se ponistava
+  if (!areas.value.some(a => Number(a.id) === Number(form.value.area_id))) form.value.area_id = ''
+})
+
 const toolbarOptions = {
   container: [
     [{ header: [1, 2, 3, false] }],
@@ -120,6 +143,7 @@ async function createLesson() {
   try {
     await api.post('/lessons', {
       subject_id: Number(form.value.subject_id),
+      area_id: form.value.area_id ? Number(form.value.area_id) : null,
       title: form.value.title.trim(),
       content: form.value.content,
       tips: form.value.tips.trim(),
@@ -140,6 +164,7 @@ function startEdit(lesson) {
   editingLessonId.value = lesson.id
 
   form.value.subject_id = lesson.subject_id || ''
+  form.value.area_id = lesson.area_id || ''
   form.value.title = lesson.title
   form.value.content = lesson.content
   form.value.tips = lesson.tips || ''
@@ -155,6 +180,7 @@ function cancelEdit() {
   editingLessonId.value = null
 
   form.value.subject_id = ''
+  form.value.area_id = ''
   form.value.title = ''
   form.value.content = ''
   form.value.tips = ''
@@ -173,6 +199,7 @@ async function updateLesson() {
   try {
     await api.put(`/lessons/${editingLessonId.value}`, {
       subject_id: Number(form.value.subject_id),
+      area_id: form.value.area_id ? Number(form.value.area_id) : null,
       title: form.value.title.trim(),
       content: form.value.content,
       tips: form.value.tips.trim(),
@@ -228,6 +255,14 @@ onMounted(() => {
                 <option v-for="s in subjects" :key="s.id" :value="s.id">
                   {{ s.code }} — {{ s.name }}
                 </option>
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Oblast <span class="text-muted">(neobavezno)</span></label>
+              <select v-model="form.area_id" class="form-select" :disabled="!form.subject_id || !areas.length">
+                <option value="">{{ !form.subject_id ? 'Prvo izaberi predmet' : areas.length ? 'Bez oblasti' : 'Predmet nema oblasti' }}</option>
+                <option v-for="a in areas" :key="a.id" :value="a.id">{{ a.name }}</option>
               </select>
             </div>
 
@@ -331,6 +366,7 @@ onMounted(() => {
                   <tr>
                     <th>ID</th>
                     <th>Predmet</th>
+                    <th>Oblast</th>
                     <th>Naslov</th>
                     <th class="text-end">Akcije</th>
                   </tr>
@@ -339,6 +375,10 @@ onMounted(() => {
                   <tr v-for="(l, index) in filteredLessons" :key="l.id">
                     <td>{{ index + 1 }}</td>
                     <td><span class="badge text-bg-light border">{{ l.subject_name || '—' }}</span></td>
+                    <td>
+                      <span v-if="l.area_name" class="badge text-bg-light border">{{ l.area_name }}</span>
+                      <span v-else class="text-muted">—</span>
+                    </td>
                     <td class="fw-semibold">{{ l.title }}</td>
                     <td class="text-end">
                       <button
