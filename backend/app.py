@@ -3219,7 +3219,7 @@ def list_ai_artifacts():
                 a.id, a.artifact_type, a.status, a.original_text, a.created_at,
                 r.id AS generation_run_id, r.source_question_id, r.purpose,
                 m.provider, m.model_name,
-                sq.subject_id, sq.area_id,
+                sq.subject_id, sq.area_id, sq.question_text AS source_question_text,
                 s.name AS subject_name, ar.name AS area_name
             FROM ai_generated_artifacts a
             JOIN ai_generation_runs r ON r.id = a.generation_run_id
@@ -3254,6 +3254,8 @@ def list_ai_artifacts():
             )
             hide_for_blind_review(row, batch_context.get(row["id"]),
                                   BLIND_REVIEW_MODEL_FIELDS + BLIND_REVIEW_ORDER_FIELDS + BLIND_REVIEW_LABEL_FIELDS)
+            # da li je TRENUTNI korisnik vec ocenio predlog (njegova sopstvena radnja, ne otkriva model)
+            row["rated_by_me"] = bool((batch_context.get(row["id"]) or {}).get("user_rated"))
 
         return jsonify(blind_review_order(rows, user_id)), 200
 
@@ -5159,6 +5161,7 @@ def list_second_rating():
             return jsonify({"error": SECOND_RATER_MIGRATION_ERROR}), 409
         cursor.execute(f"""
             SELECT a.id, a.original_text, r.evaluation_batch_id, NULL AS closed_at, sq.subject_id,
+                   r.source_question_id, sq.question_text AS source_question_text,
                    s.name AS subject_name, ar.name AS area_name
             FROM ai_generated_artifacts a
             JOIN ai_generation_runs r ON r.id = a.generation_run_id
@@ -5176,7 +5179,13 @@ def list_second_rating():
             rows = [row for row in rows if row["subject_id"] in allowed]
         rows = [row for row in rows if in_second_rating_sample(user_id, row["id"])]
         rows.sort(key=lambda row: _stable_fraction("second-rating-order", user_id, row["id"]))
-        return jsonify([_rating_view(row) for row in rows]), 200
+        views = []
+        for row in rows:
+            view = _rating_view(row)
+            view.update({"subject_id": row["subject_id"], "source_question_id": row["source_question_id"],
+                         "source_question_text": row["source_question_text"]})
+            views.append(view)
+        return jsonify(views), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:

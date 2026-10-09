@@ -162,6 +162,24 @@ def run():
 
     _, pending_admin = get("/api/ai/artifacts?status=predlog", admin)
     check_hidden("ADMIN lista pitanja 'predlog' bez ?reveal=1", pending_admin or [], all_fields)
+    # polja za filter i grupisanje (predmet, originalno pitanje, sopstvena ocena): tacna i bez modela
+    if pending_admin:
+        source_text = {r["id"]: r["question_text"] for r in db_all(
+            "SELECT id, question_text FROM exam_questions WHERE id IN ({})".format(
+                ", ".join(str(int(r["source_question_id"])) for r in pending_admin if r.get("source_question_id")) or "0"))}
+        rated = {r["artifact_id"] for r in db_all("SELECT DISTINCT artifact_id FROM ai_evaluations WHERE evaluator_id = %s",
+                                                    (admin_id,))}
+        wrong = [r["id"] for r in pending_admin
+                 if r.get("source_question_text") != source_text.get(r.get("source_question_id"))
+                 or r.get("rated_by_me") is not (r["id"] in rated)
+                 or "subject_id" not in r or "subject_name" not in r]
+        record("ADMIN lista 'predlog': originalno pitanje, predmet, rated_by_me", "tacno za svaki red",
+               f"{len(pending_admin)} redova, pogresno: {wrong or 'nista'}", not wrong)
+        # nasumican redosled ostaje; grupisanje na frontendu ga samo prati
+        _, again = get("/api/ai/artifacts?status=predlog", admin)
+        record("ADMIN lista 'predlog': isti nasumican redosled pri ponovnom ucitavanju", "isti",
+               "isti" if [r["id"] for r in again] == [r["id"] for r in pending_admin] else "RAZLICIT",
+               [r["id"] for r in again] == [r["id"] for r in pending_admin])
     _, revealed = get("/api/ai/artifacts?status=predlog&reveal=1", admin)
     check_shown("ADMIN lista pitanja 'predlog' sa ?reveal=1", revealed or [], all_fields)
     if pending_admin:
