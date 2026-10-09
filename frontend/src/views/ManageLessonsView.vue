@@ -38,7 +38,6 @@ async function loadSubjects() {
 
 const form = ref({
   language_id: '',
-  level: 'A1',
   title: '',
   content: '',
   tips: '',
@@ -126,7 +125,6 @@ async function createLesson() {
   try {
     await api.post('/lessons', {
       language_id: Number(form.value.language_id),
-      level: form.value.level,
       title: form.value.title.trim(),
       content: form.value.content,
       tips: form.value.tips.trim(),
@@ -147,7 +145,6 @@ function startEdit(lesson) {
   editingLessonId.value = lesson.id
 
   form.value.language_id = lesson.language_id
-  form.value.level = lesson.level
   form.value.title = lesson.title
   form.value.content = lesson.content
   form.value.tips = lesson.tips || ''
@@ -163,7 +160,6 @@ function cancelEdit() {
   editingLessonId.value = null
 
   form.value.language_id = ''
-  form.value.level = 'A1'
   form.value.title = ''
   form.value.content = ''
   form.value.tips = ''
@@ -182,7 +178,6 @@ async function updateLesson() {
   try {
     await api.put(`/lessons/${editingLessonId.value}`, {
       language_id: Number(form.value.language_id),
-      level: form.value.level,
       title: form.value.title.trim(),
       content: form.value.content,
       tips: form.value.tips.trim(),
@@ -238,13 +233,6 @@ onMounted(() => {
                 <option v-for="l in languages" :key="l.id" :value="l.id">
                   {{ l.code }} — {{ l.name }}
                 </option>
-              </select>
-            </div>
-
-            <div class="mb-3">
-              <label class="form-label">Nivo</label>
-              <select v-model="form.level" class="form-select">
-                <option>A1</option><option>A2</option><option>B1</option><option>B2</option><option>C1</option><option>C2</option>
               </select>
             </div>
 
@@ -348,7 +336,6 @@ onMounted(() => {
                   <tr>
                     <th>ID</th>
                     <th>Predmet</th>
-                    <th>Nivo</th>
                     <th>Naslov</th>
                     <th class="text-end">Akcije</th>
                   </tr>
@@ -357,7 +344,6 @@ onMounted(() => {
                   <tr v-for="(l, index) in filteredLessons" :key="l.id">
                     <td>{{ index + 1 }}</td>
                     <td><span class="badge text-bg-light border">{{ l.language_code }}</span></td>
-                    <td><span class="badge text-bg-primary">{{ l.level }}</span></td>
                     <td class="fw-semibold">{{ l.title }}</td>
                     <td class="text-end">
                       <button

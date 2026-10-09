@@ -1690,8 +1690,9 @@ def create_lesson():
     order_no = data.get("order_no", 0)
     created_by = get_jwt_identity()
 
-    if not language_id or not level or not title or not content_html:
-        return jsonify({"error": "language_id, level, title, content required"}), 400
+    # nivo lekcije je neobavezan; kolona je NOT NULL, pa se bez nivoa upisuje ''
+    if not language_id or not title or not content_html:
+        return jsonify({"error": "language_id, title, content required"}), 400
 
     try:
         conn = get_db_connection()
@@ -1725,8 +1726,9 @@ def update_lesson(lesson_id):
     tips = (data.get("tips") or "").strip()
     important_info = (data.get("important_info") or "").strip()
 
-    if not language_id or not level or not title or not content_html:
-        return jsonify({"error": "language_id, level, title, content required"}), 400
+    # nivo lekcije je neobavezan; ako nije poslat, ostaje postojeci
+    if not language_id or not title or not content_html:
+        return jsonify({"error": "language_id, title, content required"}), 400
 
     try:
         conn = get_db_connection()
@@ -1737,7 +1739,7 @@ def update_lesson(lesson_id):
             UPDATE lessons
             SET
                 language_id = %s,
-                level = %s,
+                level = COALESCE(%s, level),
                 title = %s,
                 content_html = %s,
                 tips = %s,
@@ -1746,7 +1748,7 @@ def update_lesson(lesson_id):
             """,
             (
                 language_id,
-                level,
+                level or None,
                 title,
                 content_html,
                 tips,
