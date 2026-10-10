@@ -40,8 +40,15 @@ u `README.md`, ponavljanje eksperimenta u `docs/PONAVLJANJE_EKSPERIMENTA.md`.
     (registracija, izmena i prikaz profila) i `exams.language_id` (više se ne upisuje).
   - Kreiranje testa još prima `language_id` kao rezervu za `subject_id`.
   - Lekcije pripadaju predmetu preko `lessons.subject_id` (migracije 19 i 20); filtriranje, detalj,
-    izmena i brisanje proveravaju predmet korisnika. `lessons.language_id` je neobavezan (NULL);
-    rute lekcija ga još primaju kao rezervu za `subject_id` dok frontend ne pređe na `subject_id`.
+    izmena i brisanje proveravaju predmet korisnika. Frontend šalje `subject_id`;
+    `lessons.language_id` je neobavezan (NULL) i rute ga primaju samo zbog starih zahteva
+    (tada se koristi kao `subject_id`).
+  - Lekcija može da ima oblast: `lessons.area_id` (migracija 21, FK na `areas`, ON DELETE SET NULL);
+    backend proverava da oblast pripada predmetu lekcije.
+- Predmete pravi ADMIN na stranici Upravljanje predmetima (`/admin/predmeti`; stara adresa
+  `/admin/languages` preusmerava ovde): `POST /api/subjects`, `PUT /api/subjects/<id>` (naziv),
+  `DELETE /api/subjects/<id>` (409 ako predmet nešto koristi). Glavni meni "Predmeti" (`/predmeti`)
+  je posebna stranica za oblasti i banku pitanja.
 
 ## AI modul
 - Provajderi: groq `openai/gpt-oss-20b`, gemini `gemini-3.6-flash`,

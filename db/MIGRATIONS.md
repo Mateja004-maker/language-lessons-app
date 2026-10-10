@@ -17,9 +17,9 @@ Opciono, samo za lokalni razvoj:
   Sadrži heševe lozinki probnih naloga, pa ga ne koristiti na javnom serveru.
 - `db/seed_sample_programming_task.sql`: jedan privremeni programski zadatak sa test primerima.
 
-Predmete (`subjects`) i veze nastavnik/student–predmet (`teacher_subjects`,
-`student_subjects`) aplikacija ne pravi preko API-ja. Unose se ručno
-(phpMyAdmin), a dodela predmeta korisnicima ide kroz admin stranicu
+Predmete (`subjects`) pravi admin u aplikaciji, na stranici Administracija →
+Upravljanje predmetima (`POST/PUT/DELETE /api/subjects`). Veze nastavnik/student–predmet
+(`teacher_subjects`, `student_subjects`) admin dodeljuje na stranici Korisnici
 (`PUT /api/users/<id>/subjects`).
 
 Provera (2026-10-08): `schema.sql` i `reference_data.sql` učitani su u praznu bazu

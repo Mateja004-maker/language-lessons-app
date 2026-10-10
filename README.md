@@ -62,16 +62,20 @@ Nova baza nema nijednog korisnika (`seed.sql` dodaje probne naloge, ali samo za 
 
 ### Predmeti
 
-Aplikacija nema ekran ni API za pravljenje predmeta, pa se predmeti unose SQL-om
-(phpMyAdmin ili `mysql`). `code` ima najviše 10 znakova, `name` najviše 80:
-
-```sql
-INSERT INTO subjects (code, name) VALUES ('OP', 'Osnove programiranja'), ('MAT', 'Matematika');
-```
+Predmete pravi admin na stranici **Administracija → Upravljanje predmetima** (`/admin/predmeti`,
+samo ADMIN): dodavanje (naziv i oznaka; `code` ima najviše 10 znakova, `name` najviše 80),
+izmena naziva i brisanje. Naziv je jedinstven bez obzira na velika i mala slova. Brisanje je
+zaštićeno: predmet koji koriste nastavnici, studenti, oblasti, lekcije, pitanja, testovi ili
+referentni skupovi se ne briše, nego aplikacija javlja šta ga koristi i koliko puta
+(API: `POST /api/subjects`, `PUT /api/subjects/<id>`, `DELETE /api/subjects/<id>`).
 
 Predmete nastavnicima i studentima dodeljuje admin na stranici **Administracija → Korisnici**
 (`/admin/users`): pri pravljenju korisnika ili kasnijom izmenom (`PUT /api/users/<id>/subjects`).
 Oblasti unutar predmeta i banku pitanja nastavnik pravi u aplikaciji.
+
+Lekcija pripada predmetu (`lessons.subject_id`) i može da ima oblast tog predmeta
+(`lessons.area_id`, neobavezno). Student i nastavnik vide samo lekcije svojih predmeta, a
+nastavnik dodaje, menja i briše samo lekcije predmeta koje predaje.
 
 ## 2. Backend
 
@@ -174,6 +178,8 @@ python tests/verify_set_generation.py
 python tests/verify_experiment_export.py
 python tests/verify_validate_batch.py
 python tests/verify_registration.py
+python tests/verify_lessons_subject.py
+python tests/verify_subjects_crud.py
 ```
 
 Svaki skript na kraju ispisuje zbir (`Ukupno: N, palo: 0` ili `N/N OK`). Ako nešto
