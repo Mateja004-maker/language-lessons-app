@@ -465,7 +465,7 @@ onMounted(() => {
                 {{ q.question_text }}
               </div>
               <div class="d-flex align-items-center gap-2">
-                <span class="badge bg-dark">{{ q.points }} pts</span>
+                <span class="badge bg-dark">{{ q.points }} poena</span>
                 <span class="badge bg-secondary">{{ questionTypeLabel(q) }}</span>
                 <button class="btn btn-outline-info btn-sm" @click="openGenerateModal(q)">
                   <i class="fa-solid fa-wand-magic-sparkles me-1"></i>

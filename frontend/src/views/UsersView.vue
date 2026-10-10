@@ -21,10 +21,14 @@ const editingSubjectIds = ref([])
 
 const currentRole = localStorage.getItem('user_role')
 
-// filter tabele po ulozi ('' = svi)
+// filteri tabele po ulozi i po predmetu ('' = svi); predmeti korisnika stizu u u.subjects (id-jevi)
 const roleFilter = ref('')
+const subjectFilter = ref('')
 const filteredUsers = computed(() =>
-  roleFilter.value ? users.value.filter(u => u.role === roleFilter.value) : users.value
+  users.value.filter(u =>
+    (!roleFilter.value || u.role === roleFilter.value) &&
+    (!subjectFilter.value || (u.subjects || []).some(sid => Number(sid) === Number(subjectFilter.value)))
+  )
 )
 
 async function loadSubjects() {
@@ -202,12 +206,18 @@ onMounted(loadAll)
       <!-- filter neposredno iznad tabele -->
       <div class="table-toolbar">
         <h5 class="m-0">Svi korisnici</h5>
-        <select v-model="roleFilter" class="form-select" aria-label="Uloga">
-          <option value="">Svi</option>
-          <option value="STUDENT">Studenti</option>
-          <option value="TEACHER">Nastavnici</option>
-          <option value="ADMIN">Administratori</option>
-        </select>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <select v-model="subjectFilter" class="form-select" aria-label="Predmet">
+            <option value="">Svi predmeti</option>
+            <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+          </select>
+          <select v-model="roleFilter" class="form-select" aria-label="Uloga">
+            <option value="">Svi</option>
+            <option value="STUDENT">Studenti</option>
+            <option value="TEACHER">Nastavnici</option>
+            <option value="ADMIN">Administratori</option>
+          </select>
+        </div>
       </div>
 
       <div class="table-responsive">

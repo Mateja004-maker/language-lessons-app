@@ -1,31 +1,30 @@
 <template>
   <div class="container py-4">
-    <PageHeader title="Testovi">
-      <select v-if="role === 'ADMIN'" v-model="selectedSubject" class="form-select" aria-label="Predmet">
-        <option value="">Svi predmeti</option>
-        <option
-          v-for="subject in subjects"
-          :key="subject"
-          :value="subject"
-        >
-          {{ subject }}
-        </option>
-      </select>
+    <PageHeader title="Testovi" />
 
-      <router-link
-        v-if="role === 'ADMIN' || role === 'TEACHER'"
-        to="/exams/create"
-        class="btn btn-primary"
-      >
-        Napravi test
-      </router-link>
-    </PageHeader>
+    <div v-if="error" class="alert alert-danger">{{ error }}</div>
 
     <div v-if="loading" class="card border-0 shadow-sm">
       <div class="card-body">Učitavanje...</div>
     </div>
 
     <div v-else>
+      <!-- filter i dugme neposredno iznad liste (ADMIN i nastavnik) -->
+      <div v-if="role === 'ADMIN' || role === 'TEACHER'" class="table-toolbar">
+        <h5 class="m-0">Svi testovi</h5>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <select v-model="selectedSubject" class="form-select" aria-label="Predmet">
+            <option value="">Svi predmeti</option>
+            <option v-for="subject in subjects" :key="subject.id" :value="subject.id">
+              {{ subject.name }}
+            </option>
+          </select>
+          <router-link to="/exams/create" class="btn btn-primary">
+            Napravi test
+          </router-link>
+        </div>
+      </div>
+
       <div v-if="exams.length === 0" class="section-card empty-state mb-4">
         <AppIllustration kind="clipboard" class="mb-2" />
         <div>Nema dostupnih testova.</div>
@@ -44,7 +43,7 @@
             >
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body">
-                  <h5 class="fw-bold fs-4 mb-2">{{ exam.title }}</h5>
+                  <h5 class="card-title mb-2">{{ exam.title }}</h5>
 
                   <div class="mb-2">
                     <span v-if="exam.exam_mode" class="badge bg-dark me-1">
@@ -96,7 +95,7 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body">
                   <div class="d-flex justify-content-between">
-                    <h5 class="fw-bold fs-4 mb-2">{{ exam.title }}</h5>
+                    <h5 class="card-title mb-2">{{ exam.title }}</h5>
                     <span class="badge bg-success status-badge">Završen</span>
                   </div>
 
@@ -135,6 +134,10 @@
 
       <!-- ADMIN / TEACHER VIEW -->
       <template v-else>
+        <div v-if="exams.length > 0 && filteredExams.length === 0" class="text-muted mb-4">
+          Nema testova za izabrani predmet.
+        </div>
+
         <section v-if="publishedExams.length > 0" class="mb-4">
           <h4 class="section-title mb-3">Objavljeni testovi</h4>
 
@@ -147,7 +150,7 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body">
                   <div class="d-flex justify-content-between">
-                    <h5 class="fw-bold fs-4 mb-2">{{ exam.title }}</h5>
+                    <h5 class="card-title mb-2">{{ exam.title }}</h5>
                     <span class="badge bg-success status-badge">Objavljen</span>
                   </div>
 
@@ -197,7 +200,7 @@
               <div class="card h-100 border-0 shadow-sm">
                 <div class="card-body">
                   <div class="d-flex justify-content-between">
-                    <h5 class="fw-bold fs-4 mb-2">{{ exam.title }}</h5>
+                    <h5 class="card-title mb-2">{{ exam.title }}</h5>
                     <span class="badge bg-secondary status-badge">Nacrt</span>
                   </div>
 
@@ -247,7 +250,8 @@
 
 <script>
 import PageHeader from '@/components/PageHeader.vue'
-import { getExams, deleteExam } from '@/services/api'
+import { getExams, deleteExam, getSubjects } from '@/services/api'
+import { formatDbDate } from '@/services/explanationHelpers'
 import AppIllustration from '@/components/AppIllustration.vue'
 
 export default {
@@ -257,21 +261,20 @@ export default {
       exams: [],
       loading: true,
       role: localStorage.getItem('user_role'),
+      error: '',
+      // filter po predmetu (iz /api/subjects: ADMIN svi, nastavnik samo svoji)
+      subjects: [],
       selectedSubject: ''
     }
   },
 
   computed: {
     filteredExams() {
-      if (this.role !== 'ADMIN' || !this.selectedSubject) {
+      if (this.role === 'STUDENT' || !this.selectedSubject) {
         return this.exams
       }
 
-      return this.exams.filter(e => e.subject_name === this.selectedSubject)
-    },
-
-    subjects() {
-      return [...new Set(this.exams.map(e => e.subject_name).filter(Boolean))]
+      return this.exams.filter(e => Number(e.subject_id) === Number(this.selectedSubject))
     },
 
     pendingExams() {
@@ -292,8 +295,9 @@ export default {
   },
 
   methods: {
+    // dd.mm.yyyy. hh:mm, vreme kako je upisano u bazi
     formatDate(dateString) {
-      return new Date(dateString).toLocaleString()
+      return formatDbDate(dateString)
     },
 
     isPassed(exam) {
@@ -304,23 +308,29 @@ export default {
         return
       }
 
+      this.error = ''
       try {
         await deleteExam(exam.id)
         this.exams = this.exams.filter(e => e.id !== exam.id)
       } catch (err) {
         console.error(err)
-        alert(err.response?.data?.error || 'Ne mogu da obrišem test.')
+        this.error = err.response?.data?.error || 'Ne mogu da obrišem test.'
       }
     }
   },
 
   async mounted() {
+    if (this.role === 'ADMIN' || this.role === 'TEACHER') {
+      getSubjects()
+        .then(res => { this.subjects = res.data })
+        .catch(() => { this.subjects = [] })
+    }
     try {
       const res = await getExams()
       this.exams = res.data
     } catch (err) {
       console.error(err)
-      alert('Učitavanje testova nije uspelo.')
+      this.error = 'Učitavanje testova nije uspelo.'
     } finally {
       this.loading = false
     }
