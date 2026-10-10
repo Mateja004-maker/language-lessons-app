@@ -1,12 +1,17 @@
 ﻿<script setup>
 import PageHeader from '@/components/PageHeader.vue'
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { getAiArtifacts, getSubjects } from '@/services/api'
 import AppIllustration from '@/components/AppIllustration.vue'
 import ProposalGroups from '@/components/ProposalGroups.vue'
 
 const router = useRouter()
+const route = useRoute()
+
+// grupe su zatvorene kad se stranica otvori; ?pitanje=<id originalnog pitanja> otvara samo tu grupu
+const openQuestion = route.query.pitanje ? String(route.query.pitanje) : null
+const groupsRef = ref(null)
 
 const artifacts = ref([])
 const loading = ref(false)
@@ -46,6 +51,12 @@ async function loadArtifacts() {
   } finally {
     loading.value = false
   }
+  // izabrano pitanje iz adrese: skrol do njegove (otvorene) grupe
+  if (openQuestion) {
+    await nextTick()
+    const group = document.querySelector(`[data-group-key="${CSS.escape(openQuestion)}"]`)
+    if (group) window.scrollTo({ top: group.getBoundingClientRect().top + window.scrollY - 16 })
+  }
 }
 
 function openArtifact(artifact) {
@@ -78,15 +89,19 @@ onMounted(() => {
       <!-- filter neposredno iznad liste -->
       <div class="table-toolbar">
         <h5 class="m-0">Predlozi na čekanju</h5>
-        <select v-model="selectedSubject" class="form-select" aria-label="Predmet">
-          <option value="">Svi predmeti</option>
-          <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" @click="groupsRef?.openAll()">Otvori sve</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" @click="groupsRef?.closeAll()">Zatvori sve</button>
+          <select v-model="selectedSubject" class="form-select" aria-label="Predmet">
+            <option value="">Svi predmeti</option>
+            <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+          </select>
+        </div>
       </div>
 
       <div v-if="!filteredArtifacts.length" class="text-muted">Nema predloga za izabrani predmet.</div>
 
-      <ProposalGroups :items="filteredArtifacts">
+      <ProposalGroups ref="groupsRef" :items="filteredArtifacts" :initially-open="false" :open-key="openQuestion">
         <template #item="{ item: artifact }">
           <div
             class="card shadow-sm mb-3 artifact-card"

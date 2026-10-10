@@ -8,7 +8,11 @@ import { computed, ref } from 'vue'
 const props = defineProps({
   items: { type: Array, required: true },
   // da li je trenutni korisnik vec ocenio predlog (za broj neocenjenih)
-  isRated: { type: Function, default: item => Boolean(item.rated_by_me) }
+  isRated: { type: Function, default: item => Boolean(item.rated_by_me) },
+  // da li su grupe otvorene kad se stranica otvori
+  initiallyOpen: { type: Boolean, default: true },
+  // id originalnog pitanja cija je grupa otvorena od pocetka (npr. iz adrese)
+  openKey: { type: [String, Number], default: null }
 })
 
 const PREVIEW_LENGTH = 140
@@ -27,13 +31,36 @@ const groups = computed(() => {
   return [...byKey.values()]
 })
 
-// grupe su podrazumevano otvorene (predlozi vidljivi kao ranije); pamti se samo sta je zatvoreno
-const closed = ref(new Set())
-function toggle(key) {
-  const next = new Set(closed.value)
-  next.has(key) ? next.delete(key) : next.add(key)
-  closed.value = next
+// Stanje grupe = podrazumevano stanje (sve otvorene ili sve zatvorene), osim grupa
+// koje su klikom prebacene na suprotno. "Otvori sve" / "Zatvori sve" menjaju
+// podrazumevano stanje i brisu pojedinacne izuzetke.
+const allOpen = ref(props.initiallyOpen)
+const toggled = ref(new Set(
+  props.openKey != null && props.openKey !== '' && !props.initiallyOpen ? [String(props.openKey)] : []
+))
+
+function isOpen(key) {
+  return allOpen.value !== toggled.value.has(String(key))
 }
+
+function toggle(key) {
+  const next = new Set(toggled.value)
+  const k = String(key)
+  next.has(k) ? next.delete(k) : next.add(k)
+  toggled.value = next
+}
+
+function openAll() {
+  allOpen.value = true
+  toggled.value = new Set()
+}
+
+function closeAll() {
+  allOpen.value = false
+  toggled.value = new Set()
+}
+
+defineExpose({ openAll, closeAll })
 
 function preview(text) {
   if (!text) return 'Originalno pitanje nije dostupno'
@@ -56,17 +83,17 @@ function unratedLabel(n) {
 </script>
 
 <template>
-  <div v-for="group in groups" :key="group.key" class="proposal-group mb-3">
+  <div v-for="group in groups" :key="group.key" class="proposal-group mb-3" :data-group-key="group.key">
     <button
       type="button"
       class="group-header"
-      :aria-expanded="!closed.has(group.key)"
+      :aria-expanded="isOpen(group.key)"
       :title="group.sourceText"
       @click="toggle(group.key)"
     >
       <i
         class="fa-solid me-2 group-chevron"
-        :class="closed.has(group.key) ? 'fa-chevron-right' : 'fa-chevron-down'"
+        :class="isOpen(group.key) ? 'fa-chevron-down' : 'fa-chevron-right'"
         aria-hidden="true"
       ></i>
       <span class="group-label">Originalno pitanje:</span>
@@ -77,7 +104,7 @@ function unratedLabel(n) {
       </span>
     </button>
 
-    <div v-if="!closed.has(group.key)" class="group-body">
+    <div v-if="isOpen(group.key)" class="group-body">
       <slot v-for="item in group.items" :key="item.id" name="item" :item="item" />
     </div>
   </div>
