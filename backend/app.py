@@ -4302,6 +4302,17 @@ EXPLANATION_DEFAULT_MODELS = {
     "openrouter": "nvidia/nemotron-3-super-120b-a12b:free",
 }
 
+# NIJE verzija iz API odgovora - takvo polje ensure_ai_model ne cita nigde
+# (ai_provider.py ne vraca "model"/"modelVersion" iz sirovog odgovora, vec
+# samo tekst/tokene/finish_reason). Ovo je dokumentovan identifikator modela
+# + datum rucne provere da je taj naziv jos aktuelan, upisan u ai_models.model_version.
+EXPLANATION_MODEL_VERSIONS = {
+    "groq": "openai/gpt-oss-20b - provereno 2026-10-21",
+    "gemini": "gemini-3.6-flash - provereno 2026-10-21",
+    "mistral": "mistral-small-latest - provereno 2026-10-21",
+    "openrouter": "nvidia/nemotron-3-super-120b-a12b:free - provereno 2026-10-21",
+}
+
 
 def resolve_explanation_source(cursor, question, mode):
     """Odredjuje tekst zadatka i poznato resenje koje model dobija. Samo cita.
@@ -4435,7 +4446,10 @@ def generate_explanation(question_id):
         )
 
         model_name = EXPLANATION_DEFAULT_MODELS[provider]
-        model_id = ensure_ai_model(conn, provider=provider, model_name=model_name)
+        model_id = ensure_ai_model(
+            conn, provider=provider, model_name=model_name,
+            model_version=EXPLANATION_MODEL_VERSIONS.get(provider),
+        )
 
         options = {"temperature": 0.7, "model": model_name}
         result = ai_provider.generate(prompt_text, provider=provider, options=options)
@@ -4487,7 +4501,7 @@ def generate_explanation(question_id):
              raw_response, parsed_result, validation_passed, validation_errors,
              accuracy_check_passed, accuracy_check_details, response_time_ms,
              tokens_used, retry_count, evaluation_batch_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 model_id,
@@ -4510,6 +4524,7 @@ def generate_explanation(question_id):
                 accuracy_check_details,
                 result.get("response_time_ms"),
                 result.get("tokens_used"),
+                result.get("attempts", 0),
                 evaluation_batch_id,
             ),
         )
