@@ -4319,9 +4319,14 @@ def resolve_explanation_source(cursor, question, mode):
     MC vs otvoreno pitanje se odredjuje isto kao u generate_similar_question
     (prompt_templates.detect_question_type nad exam_answers).
 
-    Vraca {"question_text", "known_solution", "solution_source"} ili
-    {"error": poruka} (ruta vraca 400, pre AI poziva).
-    - mode_b: MC pitanja nisu podrzana (rezim B trazi Python program).
+    Vraca {"question_text", "known_solution", "solution_source", "question_type"}
+    ili {"error": poruka} (ruta vraca 400, pre AI poziva).
+    - mode_b + programski/otvoreni zadatak: nepromenjeno, model sam pise kod.
+    - mode_b + MC: model dobija numerisanu listu ponudjenih odgovora BEZ
+      naznake koji je tacan (isti redosled, ORDER BY id ASC, kao sto ga
+      generate_explanation kasnije koristi za mehanicku proveru) i bira broj;
+      known_solution ostaje None (mode_b template ga ne koristi, isto kao za
+      programske zadatke).
     - mode_a: reference_solution ima prioritet (ponasanje za programska
       pitanja se ne menja); inace, za MC pitanje sa tacno jednim tacnim
       odgovorom, poznato resenje je taj odgovor, a ponudjeni odgovori se
@@ -4336,14 +4341,26 @@ def resolve_explanation_source(cursor, question, mode):
 
     if mode == "mode_b":
         if question_type == "mc":
-            return {"error": "Rezim B nije podrzan za MC pitanja"}
-        return {"question_text": question["question_text"], "known_solution": None, "solution_source": None}
+            options_text = "\n".join(f"{i}. {a['answer_text']}" for i, a in enumerate(answers, start=1))
+            return {
+                "question_text": f"{question['question_text']}\n\nPonuđeni odgovori:\n{options_text}",
+                "known_solution": None,
+                "solution_source": None,
+                "question_type": question_type,
+            }
+        return {
+            "question_text": question["question_text"],
+            "known_solution": None,
+            "solution_source": None,
+            "question_type": question_type,
+        }
 
     if question.get("reference_solution"):
         return {
             "question_text": question["question_text"],
             "known_solution": question["reference_solution"],
             "solution_source": "reference_solution",
+            "question_type": question_type,
         }
 
     if question_type != "mc":
@@ -4360,12 +4377,15 @@ def resolve_explanation_source(cursor, question, mode):
         "question_text": f"{question['question_text']}\n\nPonuđeni odgovori:\n{options_text}",
         "known_solution": f"Tačan odgovor: {correct[0]['answer_text']}",
         "solution_source": "mc_correct_answer",
+        "question_type": question_type,
     }
 
 
-def validate_explanation_payload(parsed, mode):
+def validate_explanation_payload(parsed, mode, question_type=None):
     """Vraca None ako je JSON iz AI odgovora ispravan za dati rezim, inace
-    string sa opisom greske."""
+    string sa opisom greske. question_type je relevantan samo za mode_b
+    (MC bira broj umesto da pise kod); granice izbora (1..broj ponudjenih
+    odgovora) se ne proveravaju ovde, vec u mehanickoj proveri."""
     if not isinstance(parsed, dict):
         return "Odgovor modela mora biti JSON objekat"
 
@@ -4373,7 +4393,15 @@ def validate_explanation_payload(parsed, mode):
     if not isinstance(explanation, str) or not explanation.strip():
         return "Nedostaje ili je prazno explanation"
 
-    if mode == "mode_b":
+    if mode == "mode_b" and question_type == "mc":
+        selected_option = parsed.get("selected_option")
+        if selected_option is None or isinstance(selected_option, bool):
+            return "Nedostaje ili je neispravno selected_option (obavezno za mode_b + MC)"
+        try:
+            int(selected_option)
+        except (TypeError, ValueError):
+            return "selected_option mora biti ceo broj (obavezno za mode_b + MC)"
+    elif mode == "mode_b":
         solution = parsed.get("solution")
         if not isinstance(solution, str) or not solution.strip():
             return "Nedostaje ili je prazno solution (obavezno za mode_b)"
@@ -4436,7 +4464,7 @@ def generate_explanation(question_id):
             if area_row:
                 area_name = area_row["name"]
 
-        prompt_id, template_text = explanation_prompts.ensure_prompt_synced(conn, mode)
+        prompt_id, template_text = explanation_prompts.ensure_prompt_synced(conn, mode, source.get("question_type"))
         prompt_text = explanation_prompts.build_explanation_prompt(
             template_text,
             question_text=source["question_text"],
@@ -4466,14 +4494,45 @@ def generate_explanation(question_id):
                 validation_errors = "Odgovor modela nije validan JSON"
 
             if parsed_result is not None:
-                validation_errors = validate_explanation_payload(parsed_result, mode)
+                validation_errors = validate_explanation_payload(parsed_result, mode, source.get("question_type"))
 
         validation_passed = validation_errors is None and parsed_result is not None
 
         accuracy_check_passed = None
         accuracy_check_details = None
 
-        if validation_passed and mode == "mode_b":
+        if validation_passed and mode == "mode_b" and source.get("question_type") == "mc":
+            # MC u rezimu B: model ne vidi tacan odgovor (resolve_explanation_source),
+            # samo bira broj. Isti redosled (ORDER BY id ASC) kao numerisanje liste
+            # ponudjenih odgovora u resolve_explanation_source, pa se selected_option
+            # (1-indeksirano) direktno mapira na poziciju u ovoj listi.
+            cursor.execute(
+                "SELECT answer_text, is_correct FROM exam_answers WHERE question_id = %s ORDER BY id ASC",
+                (question_id,),
+            )
+            mc_answers = cursor.fetchall()
+            try:
+                selected_index = int(parsed_result["selected_option"])
+            except (TypeError, ValueError, KeyError):
+                selected_index = None
+
+            if selected_index is None or not (1 <= selected_index <= len(mc_answers)):
+                accuracy_check_passed = 0
+                accuracy_check_details = (
+                    f"Nevalidan izbor selected_option={parsed_result.get('selected_option')!r} "
+                    f"(ocekivan ceo broj 1-{len(mc_answers)})"
+                )
+            else:
+                chosen = mc_answers[selected_index - 1]
+                correct = next((a for a in mc_answers if a["is_correct"] == 1), None)
+                accuracy_check_passed = 1 if chosen["is_correct"] == 1 else 0
+                accuracy_check_details = json.dumps({
+                    "selected_option": selected_index,
+                    "selected_answer": chosen["answer_text"],
+                    "correct_answer": correct["answer_text"] if correct else None,
+                }, ensure_ascii=False)
+
+        elif validation_passed and mode == "mode_b":
             cursor.execute(
                 """
                 SELECT order_no, input_data, expected_output
