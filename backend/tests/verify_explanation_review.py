@@ -1,5 +1,7 @@
-"""Provera nastavnicke odluke o predlogu objasnjenja: isti korisnik ne sme da
-bude i drugi ocenjivac i onaj koji odlucuje (Andrejev modul, explanation_review).
+"""Provera nastavnicke odluke o predlogu objasnjenja (Andrejev modul):
+- isti korisnik ne sme da bude i drugi ocenjivac i onaj koji odlucuje (explanation_review);
+- detalj i odluka samo za nastavnika predmeta izvornog pitanja (ADMIN bez ogranicenja);
+- odluka iz otvorene serije sakrivena od nastavnika koji predlog nije ocenio.
 
 Pokretanje (iz foldera backend/):
     python tests/verify_explanation_review.py
@@ -20,11 +22,12 @@ from flask_jwt_extended import create_access_token  # noqa: E402
 
 import explanation_review  # noqa: E402
 
-COUNT_TABLES = ("ai_generated_artifacts", "ai_generation_runs", "ai_evaluations", "users")
+COUNT_TABLES = ("ai_generated_artifacts", "ai_generation_runs", "ai_evaluations", "users",
+                "exam_questions", "teacher_subjects", "evaluation_batches")
 TAG = uuid.uuid4().hex[:6]
 
 results = []
-created = {"users": [], "runs": [], "artifacts": []}
+created = {"users": [], "runs": [], "artifacts": [], "questions": [], "batches": []}
 client = app.test_client()
 
 
@@ -72,11 +75,12 @@ def make_user(name):
     return uid
 
 
-def make_pending_explanation(model_id, prompt_id):
+def make_pending_explanation(model_id, prompt_id, question_id, batch_id=None):
     rid = db_exec("""
-        INSERT INTO ai_generation_runs (model_id, prompt_id, purpose, mode, params_used, validation_passed)
-        VALUES (%s, %s, 'explanation', 'mode_a', %s, 1)
-    """, (model_id, prompt_id, json.dumps({"attempts": 1})))
+        INSERT INTO ai_generation_runs (model_id, prompt_id, purpose, mode, source_question_id, params_used,
+               validation_passed, evaluation_batch_id)
+        VALUES (%s, %s, 'explanation', 'mode_a', %s, %s, 1, %s)
+    """, (model_id, prompt_id, question_id, json.dumps({"attempts": 1}), batch_id))
     created["runs"].append(rid)
     aid = db_exec("INSERT INTO ai_generated_artifacts (generation_run_id, artifact_type, status, original_text) "
                   "VALUES (%s, 'explanation', 'predlog', %s)", (rid, json.dumps({"explanation": f"Izmisljeno {TAG}"})))
@@ -99,7 +103,12 @@ def cleanup():
         db_exec(f"DELETE FROM ai_generated_artifacts WHERE id IN ({ph(arts)})", arts)
     if runs:
         db_exec(f"DELETE FROM ai_generation_runs WHERE id IN ({ph(runs)})", runs)
+    if created["batches"]:
+        db_exec(f"DELETE FROM evaluation_batches WHERE id IN ({ph(created['batches'])})", created["batches"])
+    if created["questions"]:
+        db_exec(f"DELETE FROM exam_questions WHERE id IN ({ph(created['questions'])})", created["questions"])
     if created["users"]:
+        # teacher_subjects se brise kaskadno (fk_ts_teacher ON DELETE CASCADE)
         db_exec(f"DELETE FROM users WHERE id IN ({ph(created['users'])})", created["users"])
 
 
@@ -139,12 +148,20 @@ def main():
     scores = [{"dimension_key": d["dimension_key"], "score": 4} for d in dims]
     tacnost = next(d["id"] for d in dims if d["dimension_key"] == "tacnost_objasnjenja")
 
+    admin = db_all("SELECT id FROM users WHERE role_id = 1 ORDER BY id LIMIT 1")[0]["id"]
+    subject = db_all("SELECT id FROM subjects ORDER BY id LIMIT 1")[0]["id"]
+
     before = row_counts()
     try:
-        rater, decider, racer = make_user("A"), make_user("B"), make_user("C")
+        rater, decider, racer, third, outsider = (make_user(n) for n in ("A", "B", "C", "D", "E"))
+        for uid in (rater, decider, racer, third):  # outsider nema nijedan predmet
+            db_exec("INSERT INTO teacher_subjects (teacher_id, subject_id) VALUES (%s, %s)", (uid, subject))
+        question = db_exec("INSERT INTO exam_questions (subject_id, question_text, points, order_no) VALUES (%s, %s, 1, 0)",
+                           (subject, f"Izmisljeno pitanje {TAG}"))
+        created["questions"].append(question)
 
         # 1) korisnik vec ima ocenu (runda 2) -> odluka 409, nista se ne menja
-        a1 = make_pending_explanation(model, prompt)
+        a1 = make_pending_explanation(model, prompt, question)
         db_exec("INSERT INTO ai_evaluations (artifact_id, rubric_definition_id, evaluator_id, evaluator_role, score, evaluation_round) "
                 "VALUES (%s, %s, %s, 'TEACHER', 3, 2)", (a1, tacnost, rater))
         state_before = artifact_state(a1)
@@ -166,7 +183,7 @@ def main():
                resp.status_code == 200 and state == ("prihvaceno", 1 + len(dims)))
 
         # 3) istovremeni zahtev: provera prodje, INSERT naleti na UNIQUE -> ArtifactStateError, rollback statusa
-        a2 = make_pending_explanation(model, prompt)
+        a2 = make_pending_explanation(model, prompt, question)
         db_exec("INSERT INTO ai_evaluations (artifact_id, rubric_definition_id, evaluator_id, evaluator_role, score, evaluation_round) "
                 "VALUES (%s, %s, %s, 'TEACHER', 3, 2)", (a2, tacnost, racer))
         conn = get_db_connection()
@@ -184,6 +201,54 @@ def main():
                got, got == "ArtifactStateError: Već ste ocenili ovaj predlog")
         state = artifact_state(a2)
         record("istovremeni zahtev -> rollback (status predlog, 1 ocena)", ("predlog", 1), state, state == ("predlog", 1))
+
+        # 4) predmet: nastavnik van predmeta ne vidi detalj i ne moze da odluci; ADMIN moze
+        a3 = make_pending_explanation(model, prompt, question)
+        resp = client.get(f"/api/ai-artifacts/explanation/{a3}", headers=headers(outsider, "TEACHER"))
+        record("van predmeta -> detalj", "403 Forbidden", f"{resp.status_code} {(resp.get_json() or {}).get('error')}",
+               resp.status_code == 403 and (resp.get_json() or {}).get("error") == "Forbidden")
+        resp = client.get(f"/api/ai-artifacts/explanation/{a3}", headers=headers(third, "TEACHER"))
+        record("u predmetu -> detalj", 200, resp.status_code, resp.status_code == 200)
+        resp = client.get(f"/api/ai-artifacts/explanation/{a3}", headers=headers(admin, "ADMIN"))
+        record("ADMIN -> detalj", 200, resp.status_code, resp.status_code == 200)
+        state_before = artifact_state(a3)
+        resp = client.post(f"/api/ai-artifacts/explanation/{a3}/review", headers=headers(outsider, "TEACHER"),
+                           json={"action": "approve", "scores": scores})
+        state_after = artifact_state(a3)
+        record("van predmeta -> odluka 403, bez upisa", f"403 {state_before}", f"{resp.status_code} {state_after}",
+               resp.status_code == 403 and state_after == state_before == ("predlog", 0))
+        resp = client.post(f"/api/ai-artifacts/explanation/999999999/review", headers=headers(outsider, "TEACHER"),
+                           json={"action": "approve", "scores": scores})
+        record("nepostojeci predlog -> 404 (i za nastavnika van predmeta)", 404, resp.status_code, resp.status_code == 404)
+
+        # 5) odluka iz otvorene serije: sakrivena od nastavnika koji nije ocenio, vidljiva
+        #    odlucivacu, drugom ocenjivacu i ADMIN-u; posle zatvaranja serije vidljiva svima u predmetu
+        batch = db_exec("INSERT INTO evaluation_batches (name) VALUES (%s)", (f"tmp-rev-{TAG}",))
+        created["batches"].append(batch)
+        a4 = make_pending_explanation(model, prompt, question, batch)
+        db_exec("INSERT INTO ai_evaluations (artifact_id, rubric_definition_id, evaluator_id, evaluator_role, score, evaluation_round) "
+                "VALUES (%s, %s, %s, 'TEACHER', 3, 2)", (a4, tacnost, rater))
+        resp = client.get(f"/api/ai-artifacts/explanation/{a4}", headers=headers(third, "TEACHER"))
+        record("serija, 'predlog' -> detalj vidljiv", 200, resp.status_code, resp.status_code == 200)
+        resp = client.post(f"/api/ai-artifacts/explanation/{a4}/review", headers=headers(decider, "TEACHER"),
+                           json={"action": "reject", "rejection_reason": "proba", "scores": scores})
+        record("serija: odluka odlucivaca", 200, resp.status_code, resp.status_code == 200)
+        resp = client.get(f"/api/ai-artifacts/explanation/{a4}", headers=headers(third, "TEACHER"))
+        body = resp.get_json() or {}
+        record("otvorena serija, odluceno -> treci nastavnik 403, bez odluke u odgovoru", "403, bez 'artifact'",
+               f"{resp.status_code}, {'artifact' in body}", resp.status_code == 403 and "artifact" not in body
+               and "odbaceno" not in json.dumps(body))
+        visible = {}
+        for name, uid, role in (("odlucivac", decider, "TEACHER"), ("drugi ocenjivac", rater, "TEACHER"), ("ADMIN", admin, "ADMIN")):
+            resp = client.get(f"/api/ai-artifacts/explanation/{a4}", headers=headers(uid, role))
+            visible[name] = f"{resp.status_code} {((resp.get_json() or {}).get('artifact') or {}).get('status')}"
+        record("otvorena serija, odluceno -> vidljivo", "200 odbaceno x3", visible,
+               all(v == "200 odbaceno" for v in visible.values()))
+        db_exec("UPDATE evaluation_batches SET closed_at = NOW() WHERE id = %s", (batch,))
+        resp = client.get(f"/api/ai-artifacts/explanation/{a4}", headers=headers(third, "TEACHER"))
+        record("zatvorena serija -> treci nastavnik vidi odluku", "200 odbaceno",
+               f"{resp.status_code} {((resp.get_json() or {}).get('artifact') or {}).get('status')}",
+               resp.status_code == 200 and (resp.get_json() or {}).get("artifact", {}).get("status") == "odbaceno")
     finally:
         cleanup()
     after = row_counts()

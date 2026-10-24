@@ -4695,6 +4695,8 @@ def list_explanation_artifacts():
 @app.get("/api/ai-artifacts/explanation/<int:artifact_id>")  # detalji jednog predloga + TEACHER rubrika za formu ocenjivanja
 @role_required(["TEACHER", "ADMIN"])
 def get_explanation_artifact(artifact_id):
+    user_id = get_jwt_identity()
+    role = get_jwt().get("role")
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
@@ -4702,7 +4704,7 @@ def get_explanation_artifact(artifact_id):
         SELECT a.id, a.status, a.original_text, a.edited_text,
                a.rejection_reason, a.reviewed_by, a.reviewed_at, a.created_at,
                r.mode, r.source_question_id, r.accuracy_check_passed,
-               r.accuracy_check_details, q.question_text
+               r.accuracy_check_details, q.question_text, q.subject_id
         FROM ai_generated_artifacts a
         JOIN ai_generation_runs r ON r.id = a.generation_run_id
         LEFT JOIN exam_questions q ON q.id = r.source_question_id
@@ -4715,6 +4717,23 @@ def get_explanation_artifact(artifact_id):
         cursor.close()
         conn.close()
         return jsonify({"error": "Artifact not found"}), 404
+
+    # isto kao get_ai_artifact za pitanja: nastavnik samo za svoje predmete ...
+    if role == "TEACHER" and not user_has_subject(int(user_id), artifact["subject_id"], "TEACHER"):
+        cursor.close()
+        conn.close()
+        return jsonify({"error": "Forbidden"}), 403
+
+    # ... i odluka iz otvorene serije se ne vidi dok je korisnik sam ne oceni
+    # (ADMIN je vidi i bez ?reveal=1, kao i do sada za objasnjenja)
+    batch_context = batch_review_context(cursor, [artifact_id], user_id).get(artifact_id)
+    if role != "ADMIN" and decision_hidden(artifact, batch_context):
+        cursor.close()
+        conn.close()
+        return jsonify({
+            "error": "Predlog je deo otvorene evaluacione serije i već je pregledan - "
+                     "odluka se vidi posle vaše ocene ili zatvaranja serije",
+        }), 403
 
     cursor.execute(
         """
@@ -4751,6 +4770,22 @@ def review_explanation_artifact_route(artifact_id):
 
         conn = get_db_connection()
         try:
+            # predmet se proverava ovde (explanation_review je bez Flask-a), kao u
+            # review_ai_artifact za pitanja; nepostojeci predlog -> 404 iz modula
+            if get_jwt().get("role") == "TEACHER":
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("""
+                    SELECT q.subject_id
+                    FROM ai_generated_artifacts a
+                    JOIN ai_generation_runs r ON r.id = a.generation_run_id
+                    LEFT JOIN exam_questions q ON q.id = r.source_question_id
+                    WHERE a.id = %s AND a.artifact_type = 'explanation'
+                """, (artifact_id,))
+                row = cursor.fetchone()
+                cursor.close()
+                if row and not user_has_subject(int(reviewer_id), row["subject_id"], "TEACHER"):
+                    return jsonify({"error": "Forbidden"}), 403
+
             result = explanation_review.review_explanation_artifact(
                 conn,
                 artifact_id=artifact_id,
