@@ -40,6 +40,9 @@ const proposal = computed(() => parseProposal(artifact.value?.original_text))
 const editedProposal = computed(() => parseProposal(artifact.value?.edited_text))
 const accuracy = computed(() => parseAccuracyDetails(artifact.value?.accuracy_check_details))
 const isModeB = computed(() => artifact.value?.mode === 'mode_b')
+// MC predlog iz rezima B: model je izabrao broj ponudjenog odgovora (selected_option),
+// nema resenja u obliku koda; nastavnik pri izmeni menja samo objasnjenje.
+const isMcModeB = computed(() => isModeB.value && !!proposal.value && 'selected_option' in proposal.value)
 const isPending = computed(() => artifact.value?.status === 'predlog')
 
 // Tacnost resenja u rezimu B je eliminacioni kriterijum: ako mehanicka provera
@@ -118,10 +121,10 @@ function cancelEdit() {
 function approveWithEdit() {
   // edited_text mora biti JSON string istog oblika kao original - studentska
   // ruta ga parsira; zato se oblik proverava ovde, pre slanja.
-  const built = buildEditedText(artifact.value.mode, {
-    explanation: editExplanation.value,
-    solution: editSolution.value
-  })
+  // MC: selected_option ide iz originala, nastavnik ga ne menja
+  const built = buildEditedText(artifact.value.mode, isMcModeB.value
+    ? { explanation: editExplanation.value, selectedOption: proposal.value.selected_option }
+    : { explanation: editExplanation.value, solution: editSolution.value })
   if (built.error) {
     submitError.value = built.error
     return
@@ -219,7 +222,11 @@ onMounted(loadArtifact)
               </div>
 
               <template v-else>
-                <template v-if="isModeB">
+                <template v-if="isMcModeB">
+                  <div class="fw-semibold mb-1">Izabrana opcija: {{ proposal.selected_option }}</div>
+                  <div class="fw-semibold mb-1">Objašnjenje</div>
+                </template>
+                <template v-else-if="isModeB">
                   <div class="fw-semibold mb-1">Rešenje</div>
                   <pre class="bg-light border rounded p-2 mb-3 code-block">{{ proposal.solution }}</pre>
                   <div class="fw-semibold mb-1">Objašnjenje</div>
@@ -341,7 +348,7 @@ onMounted(loadArtifact)
             Izmena predloga pre prihvatanja
           </div>
           <div class="card-body">
-            <div v-if="isModeB" class="mb-3">
+            <div v-if="isModeB && !isMcModeB" class="mb-3">
               <label class="form-label">Rešenje</label>
               <textarea v-model="editSolution" class="form-control code-block" rows="6"></textarea>
               <div class="form-text">Izmenjeno rešenje se ne proverava ponovo automatski.</div>

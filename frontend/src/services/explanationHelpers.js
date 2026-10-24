@@ -19,12 +19,24 @@ export function parseProposal(text) {
 }
 
 // Vraca { text } (JSON string spreman za edited_text) ili { error }.
-export function buildEditedText(mode, { explanation, solution } = {}) {
+// MC predlog iz rezima B ({"selected_option", "explanation"}): pozivalac prosledjuje
+// selectedOption iz originala; prenosi se nepromenjen, menja se samo objasnjenje.
+export function buildEditedText(mode, fields = {}) {
+  const { explanation, solution, selectedOption } = fields
   const exp = typeof explanation === 'string' ? explanation.trim() : ''
   if (!exp) return { error: 'Objašnjenje ne sme biti prazno.' }
 
+  const isMc = mode === 'mode_b' && 'selectedOption' in fields
   const payload = {}
-  if (mode === 'mode_b') {
+  if (isMc) {
+    // isti kriterijum kao backend (int(selected_option), bool odbijen)
+    const isNumber = (typeof selectedOption === 'number' || typeof selectedOption === 'string')
+      && String(selectedOption).trim() !== '' && Number.isInteger(Number(selectedOption))
+    if (!isNumber) {
+      return { error: 'Nedostaje izabrana opcija iz originalnog predloga.' }
+    }
+    payload.selected_option = selectedOption
+  } else if (mode === 'mode_b') {
     // resenje se ne trimuje (uvlacenje je deo koda), samo se proverava da nije prazno
     if (typeof solution !== 'string' || !solution.trim()) {
       return { error: 'Rešenje ne sme biti prazno.' }
@@ -35,7 +47,9 @@ export function buildEditedText(mode, { explanation, solution } = {}) {
 
   const text = JSON.stringify(payload)
   const back = parseProposal(text)
-  const expectedKeys = mode === 'mode_b' ? ['explanation', 'solution'] : ['explanation']
+  const expectedKeys = isMc
+    ? ['explanation', 'selected_option']
+    : mode === 'mode_b' ? ['explanation', 'solution'] : ['explanation']
   if (!back || JSON.stringify(Object.keys(back).sort()) !== JSON.stringify(expectedKeys)) {
     return { error: 'Izmena nije u ispravnom obliku.' }
   }
