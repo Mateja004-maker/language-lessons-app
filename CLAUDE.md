@@ -13,7 +13,7 @@ u `README.md`, ponavljanje eksperimenta u `docs/PONAVLJANJE_EKSPERIMENTA.md`.
   `generation_failures.py`, `question_similarity.py`, `edit_distance.py`, `agreement.py`,
   `explanation_*.py` i `code_executor.py` (Andrejev modul)
 - Baza: MariaDB 10.4 (XAMPP), baza `language_learning`, pristup preko phpMyAdmin-a
-  ili `C:/xampp/mysql/bin/mysql.exe`. `sql_mode` nije strict.
+  ili `D:/xaamp/mysql/bin/mysql.exe`. `sql_mode` nije strict.
 - Auth: JWT (flask-jwt-extended); uloge ADMIN (1), TEACHER (2), STUDENT (3), dekorator `role_required`
 - Konfiguracija: `backend/.env` (MYSQL_*, JWT_SECRET_KEY, *_API_KEY). Vrednosti se nikad ne ispisuju.
   `app` se importuje pre `ai_provider`, jer `app.py` učitava `.env`.
@@ -93,6 +93,6 @@ u `README.md`, ponavljanje eksperimenta u `docs/PONAVLJANJE_EKSPERIMENTA.md`.
 
 ## Komande
 - Baza od nule: vidi `README.md` (`schema.sql` + `reference_data.sql`)
-- Backend: `cd backend && venv\Scripts\activate && python app.py`
+- Backend: `cd backend && python app.py` (bez venv-a, sistemski Python 3.13)
 - Frontend: `cd frontend && npm run dev` (build: `npm run build`)
 - Testovi: vidi `README.md`, odeljak 4
