@@ -11,6 +11,8 @@ da bi mogla da se testira nezavisno od HTTP sloja (isti razlog kao za
 code_executor.run_against_test_cases).
 """
 
+import mysql.connector
+
 
 class ArtifactNotFoundError(Exception):
     """Artifact sa datim id-jem ne postoji (ruta treba da vrati 404)."""
@@ -99,6 +101,18 @@ def review_explanation_artifact(
             "- ponovni pregled kroz ovu rutu nije podrzan"
         )
 
+    # Isto pravilo kao za pitanja (review_ai_artifact u app.py): ko je predlog
+    # vec ocenio (npr. kao drugi ocenjivac), ne donosi i odluku.
+    cursor.execute(
+        "SELECT 1 FROM ai_evaluations WHERE artifact_id = %s AND evaluator_id = %s LIMIT 1",
+        (artifact_id, reviewer_id),
+    )
+    if cursor.fetchone():
+        cursor.close()
+        raise ArtifactStateError(
+            "Već ste ocenili ovaj predlog (kao drugi ocenjivač) - odluku donosi drugi nastavnik"
+        )
+
     if action in ("approve", "edit") and artifact["mode"] == "mode_b" \
             and artifact["accuracy_check_passed"] == 0:
         cursor.close()
@@ -177,18 +191,27 @@ def review_explanation_artifact(
     )
 
     evaluation_ids = []
-    for item in scores:
-        dim = valid_dims[item["dimension_key"]]
-        cursor.execute(
-            """
-            INSERT INTO ai_evaluations
-            (artifact_id, rubric_definition_id, evaluator_id, evaluator_role,
-             score, comment)
-            VALUES (%s, %s, %s, 'TEACHER', %s, %s)
-            """,
-            (artifact_id, dim["id"], reviewer_id, item["score"], item.get("comment")),
-        )
-        evaluation_ids.append(cursor.lastrowid)
+    try:
+        for item in scores:
+            dim = valid_dims[item["dimension_key"]]
+            cursor.execute(
+                """
+                INSERT INTO ai_evaluations
+                (artifact_id, rubric_definition_id, evaluator_id, evaluator_role,
+                 score, comment)
+                VALUES (%s, %s, %s, 'TEACHER', %s, %s)
+                """,
+                (artifact_id, dim["id"], reviewer_id, item["score"], item.get("comment")),
+            )
+            evaluation_ids.append(cursor.lastrowid)
+    except mysql.connector.IntegrityError as e:
+        # istovremeni zahtev istog korisnika: UNIQUE(artifact_id, rubric_definition_id,
+        # evaluator_id); rollback ponistava i UPDATE statusa iznad
+        conn.rollback()
+        cursor.close()
+        if e.errno == 1062:
+            raise ArtifactStateError("Već ste ocenili ovaj predlog")
+        raise
 
     conn.commit()
     cursor.close()
