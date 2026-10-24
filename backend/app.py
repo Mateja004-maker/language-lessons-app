@@ -4669,13 +4669,15 @@ def generate_explanation(question_id):
 @role_required(["TEACHER", "ADMIN"])
 def list_explanation_artifacts():
     status = request.args.get("status", "predlog")
+    user_id = get_jwt_identity()
+    role = get_jwt().get("role")
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
         """
         SELECT a.id, a.status, a.created_at, a.reviewed_at,
                r.mode, r.source_question_id, r.accuracy_check_passed,
-               q.question_text
+               q.question_text, q.subject_id
         FROM ai_generated_artifacts a
         JOIN ai_generation_runs r ON r.id = a.generation_run_id
         LEFT JOIN exam_questions q ON q.id = r.source_question_id
@@ -4685,11 +4687,22 @@ def list_explanation_artifacts():
         (status,),
     )
     rows = cursor.fetchall()
+    batch_context = batch_review_context(cursor, [row["id"] for row in rows], user_id)
     cursor.close()
     conn.close()
+
+    # isto kao list_ai_artifacts za pitanja: nastavnik vidi samo svoje predmete,
+    # a odlucen predlog iz otvorene serije koji nije ocenio se ne prikazuje
+    # (sam status bi otkrio odluku); ADMIN vidi sve, kao i u detalju
+    if role == "TEACHER":
+        allowed_subjects = set(get_user_subject_ids(int(user_id), "TEACHER"))
+        rows = [row for row in rows if row["subject_id"] in allowed_subjects]
+    if role != "ADMIN":
+        rows = [row for row in rows if not decision_hidden(row, batch_context.get(row["id"]))]
+
     for row in rows:
         hide_while_pending(row, BLIND_REVIEW_ORDER_FIELDS)
-    return jsonify(blind_review_order(rows, get_jwt_identity())), 200
+    return jsonify(blind_review_order(rows, user_id)), 200
 
 
 @app.get("/api/ai-artifacts/explanation/<int:artifact_id>")  # detalji jednog predloga + TEACHER rubrika za formu ocenjivanja

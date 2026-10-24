@@ -88,6 +88,11 @@ def make_pending_explanation(model_id, prompt_id, question_id, batch_id=None):
     return aid
 
 
+def list_ids(user_id, role, status="predlog"):
+    resp = client.get(f"/api/ai-artifacts/explanation?status={status}", headers=headers(user_id, role))
+    return {row["id"] for row in (resp.get_json() or [])} if resp.status_code == 200 else None
+
+
 def artifact_state(aid):
     row = db_all("SELECT status FROM ai_generated_artifacts WHERE id = %s", (aid,))[0]
     n = db_all("SELECT COUNT(*) AS n FROM ai_evaluations WHERE artifact_id = %s", (aid,))[0]["n"]
@@ -221,6 +226,25 @@ def main():
                            json={"action": "approve", "scores": scores})
         record("nepostojeci predlog -> 404 (i za nastavnika van predmeta)", 404, resp.status_code, resp.status_code == 404)
 
+        # 4b) lista: isti filter po predmetu kao detalj
+        seen = {name: a3 in (list_ids(uid, role) or set())
+                for name, uid, role in (("van predmeta", outsider, "TEACHER"), ("u predmetu", third, "TEACHER"), ("ADMIN", admin, "ADMIN"))}
+        record("lista: van predmeta ne vidi, u predmetu i ADMIN vide", {"van predmeta": False, "u predmetu": True, "ADMIN": True},
+               seen, seen == {"van predmeta": False, "u predmetu": True, "ADMIN": True})
+
+        # 4c) pitanje bez predmeta (kao #60): nastavnik ga ne vidi ni u listi ni u detalju, ADMIN vidi oba
+        orphan_q = db_exec("INSERT INTO exam_questions (subject_id, question_text, points, order_no) VALUES (NULL, %s, 1, 0)",
+                           (f"Izmisljeno bez predmeta {TAG}",))
+        created["questions"].append(orphan_q)
+        a5 = make_pending_explanation(model, prompt, orphan_q)
+        t_list = a5 in (list_ids(third, "TEACHER") or set())
+        t_detail = client.get(f"/api/ai-artifacts/explanation/{a5}", headers=headers(third, "TEACHER")).status_code
+        a_list = a5 in (list_ids(admin, "ADMIN") or set())
+        a_detail = client.get(f"/api/ai-artifacts/explanation/{a5}", headers=headers(admin, "ADMIN")).status_code
+        record("bez predmeta: TEACHER lista/detalj, ADMIN lista/detalj", "False/403, True/200",
+               f"{t_list}/{t_detail}, {a_list}/{a_detail}",
+               (t_list, t_detail, a_list, a_detail) == (False, 403, True, 200))
+
         # 5) odluka iz otvorene serije: sakrivena od nastavnika koji nije ocenio, vidljiva
         #    odlucivacu, drugom ocenjivacu i ADMIN-u; posle zatvaranja serije vidljiva svima u predmetu
         batch = db_exec("INSERT INTO evaluation_batches (name) VALUES (%s)", (f"tmp-rev-{TAG}",))
@@ -244,6 +268,24 @@ def main():
             visible[name] = f"{resp.status_code} {((resp.get_json() or {}).get('artifact') or {}).get('status')}"
         record("otvorena serija, odluceno -> vidljivo", "200 odbaceno x3", visible,
                all(v == "200 odbaceno" for v in visible.values()))
+        in_list = {name: a4 in (list_ids(uid, role, "odbaceno") or set())
+                   for name, uid, role in (("treci", third, "TEACHER"), ("odlucivac", decider, "TEACHER"),
+                                           ("drugi ocenjivac", rater, "TEACHER"), ("ADMIN", admin, "ADMIN"))}
+        record("otvorena serija, lista 'odbaceno': treci ne vidi, ostali vide",
+               {"treci": False, "odlucivac": True, "drugi ocenjivac": True, "ADMIN": True}, in_list,
+               in_list == {"treci": False, "odlucivac": True, "drugi ocenjivac": True, "ADMIN": True})
+
+        # lista i detalj se slazu: svaka stavka iz liste otvara se bez 403, za svakog nastavnika i status
+        mismatches, checked = [], 0
+        for uid in (third, outsider, decider, rater):
+            for status in ("predlog", "prihvaceno", "prihvaceno_izmena", "odbaceno"):
+                for aid in list_ids(uid, "TEACHER", status) or set():
+                    checked += 1
+                    code = client.get(f"/api/ai-artifacts/explanation/{aid}", headers=headers(uid, "TEACHER")).status_code
+                    if code != 200:
+                        mismatches.append((uid, status, aid, code))
+        record("lista i detalj se slazu (stavka iz liste -> detalj 200)", "0 neslaganja",
+               f"{len(mismatches)} od {checked} {mismatches[:3]}", checked > 0 and not mismatches)
         db_exec("UPDATE evaluation_batches SET closed_at = NOW() WHERE id = %s", (batch,))
         resp = client.get(f"/api/ai-artifacts/explanation/{a4}", headers=headers(third, "TEACHER"))
         record("zatvorena serija -> treci nastavnik vidi odluku", "200 odbaceno",
