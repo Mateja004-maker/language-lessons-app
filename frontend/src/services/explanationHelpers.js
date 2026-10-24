@@ -42,13 +42,21 @@ export function buildEditedText(mode, { explanation, solution } = {}) {
   return { text }
 }
 
-// accuracy_check_details je JSON lista rezultata po test primeru, ili obican
-// tekst (npr. "Nema definisanih test primera ..."). Vraca { rows } ili { message }.
+// accuracy_check_details je JSON lista rezultata po test primeru (programski
+// zadaci), JSON objekat sa selected_option (MC pitanja u rezimu B), ili obican
+// tekst (npr. "Nema definisanih test primera ..." ili "Nevalidan izbor...").
+// Vraca { rows } ili { message }.
 export function parseAccuracyDetails(text) {
   if (typeof text !== 'string' || !text.trim()) return { message: null }
   try {
     const value = JSON.parse(text)
     if (Array.isArray(value)) return { rows: value }
+    if (value && typeof value === 'object' && 'selected_option' in value) {
+      const correctAnswer = value.correct_answer ?? 'nepoznat'
+      return {
+        message: `Izabran odgovor: '${value.selected_answer}', tačan odgovor: '${correctAnswer}'`
+      }
+    }
   } catch {
     // nije JSON - prikazuje se kao tekst
   }

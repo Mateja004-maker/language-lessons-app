@@ -697,6 +697,7 @@ onMounted(() => {
             Mehanička provera rešenja:
             <strong v-if="explainResult.accuracy_check_passed === 1">prošla</strong>
             <strong v-else-if="explainResult.accuracy_check_passed === 0">nije prošla</strong>
+            <strong v-else-if="isMcQuestion(explainQuestion)">nije izvršena</strong>
             <strong v-else>nije izvršena (nema test primera)</strong>
           </div>
         </div>
@@ -714,12 +715,11 @@ onMounted(() => {
                 id="exp-mode-b"
                 value="mode_b"
                 v-model="explainMode"
-                :disabled="isMcQuestion(explainQuestion)"
               />
               <label class="btn btn-outline-secondary" for="exp-mode-b">B: model rešava sam</label>
             </div>
-            <div v-if="isMcQuestion(explainQuestion)" class="form-text">
-              Režim B nije dostupan za pitanja sa ponuđenim odgovorima.
+            <div v-if="explainMode === 'mode_b' && isMcQuestion(explainQuestion)" class="form-text">
+              U režimu B model bira jedan od ponuđenih odgovora, bez uvida u to koji je tačan.
             </div>
             <div v-else-if="explainMode === 'mode_b'" class="form-text">
               U režimu B rešenje modela se automatski izvršava nad test primerima pitanja.
