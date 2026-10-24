@@ -5659,7 +5659,8 @@ def _export_artifacts(cursor, batch_id):
                p.version AS prompt_version, r.source_question_id, r.params_used, a.original_text, a.status,
                a.reviewed_by, a.model_difficulty, a.model_bloom_level, a.reviewed_difficulty, a.reviewed_bloom_level,
                a.edit_distance, a.edit_distance_norm, a.max_similarity, a.similar_source, a.reviewed_duplicate,
-               r.first_attempt_passed, r.format_retries, r.response_time_ms, r.tokens_used
+               r.first_attempt_passed, r.format_retries, r.response_time_ms, r.tokens_used,
+               r.mode, r.accuracy_check_passed
         FROM ai_generated_artifacts a
         JOIN ai_generation_runs r ON r.id = a.generation_run_id
         JOIN ai_models m ON m.id = r.model_id
@@ -5694,7 +5695,8 @@ def _export_artifacts(cursor, batch_id):
                "model_difficulty", "model_bloom_level", "reviewed_difficulty", "reviewed_bloom_level",
                "second_rater", "second_raters_count", "second_difficulty", "second_bloom_level",
                "edit_distance", "edit_distance_norm", "max_similarity", "similar_source", "possible_duplicate",
-               "reviewed_duplicate", "first_attempt_passed", "format_retries", "response_time_ms", "tokens_used"]
+               "reviewed_duplicate", "first_attempt_passed", "format_retries", "response_time_ms", "tokens_used",
+               "accuracy_check_passed", "solution_source"]
     columns += [f"r1_{d}" for d in dims] + [f"r2_{d}" for d in dims]
     rows = []
     for a in artifacts:
@@ -5705,10 +5707,15 @@ def _export_artifacts(cursor, batch_id):
         round2 = {s["dimension_key"]: s["score"] for s in own if s["evaluation_round"] == 2 and s["evaluator_id"] == first_second}
         label2 = labels2.get((a["artifact_id"], first_second)) or {}
         parsed = json.loads(a["original_text"]) if a["original_text"] else {}
+        try:
+            params = json.loads(a["params_used"]) if a["params_used"] else {}
+        except ValueError:
+            params = {}
         row = {
             "batch_id": batch_id, "artifact_id": a["artifact_id"], "artifact_type": a["artifact_type"], "run_id": a["run_id"],
             "mode": "set" if a["purpose"] == prompt_templates.PURPOSE_SIMILAR_QUESTION_SET else
-                    ("single" if a["purpose"] == prompt_templates.PURPOSE_SIMILAR_QUESTION else a["purpose"]),
+                    ("single" if a["purpose"] == prompt_templates.PURPOSE_SIMILAR_QUESTION else
+                     (a["mode"] if a["purpose"] == explanation_prompts.PURPOSE_EXPLANATION else a["purpose"])),
             "provider": a["provider"], "model_name": a["model_name"], "prompt_version": a["prompt_version"],
             "source_question_id": a["source_question_id"],
             "input_question_ids": ";".join(str(q) for q in input_question_ids_of_run(a["params_used"])),
@@ -5724,6 +5731,8 @@ def _export_artifacts(cursor, batch_id):
             "possible_duplicate": "" if a["max_similarity"] is None else int(question_similarity.is_possible_duplicate(a["max_similarity"])),
             "reviewed_duplicate": a["reviewed_duplicate"], "first_attempt_passed": a["first_attempt_passed"],
             "format_retries": a["format_retries"], "response_time_ms": a["response_time_ms"], "tokens_used": a["tokens_used"],
+            "accuracy_check_passed": a["accuracy_check_passed"],
+            "solution_source": params.get("solution_source") if isinstance(params, dict) else None,
         }
         row.update({f"r1_{d}": round1.get(d) for d in dims})
         row.update({f"r2_{d}": round2.get(d) for d in dims})
@@ -5733,7 +5742,7 @@ def _export_artifacts(cursor, batch_id):
 
 def _export_runs(cursor, batch_id):
     cursor.execute("""
-        SELECT r.id AS run_id, r.purpose, m.provider, m.model_name, p.version AS prompt_version, r.source_question_id,
+        SELECT r.id AS run_id, r.purpose, r.mode, m.provider, m.model_name, p.version AS prompt_version, r.source_question_id,
                r.params_used, r.validation_passed, r.failure_type, r.first_attempt_passed, r.format_retries,
                r.response_time_ms, r.tokens_used, r.created_at,
                (SELECT COUNT(*) FROM ai_generated_artifacts a WHERE a.generation_run_id = r.id) AS artifacts
@@ -5743,7 +5752,7 @@ def _export_runs(cursor, batch_id):
         WHERE r.evaluation_batch_id = %s
         ORDER BY r.id
     """, (batch_id,))
-    columns = ["batch_id", "run_id", "purpose", "provider", "model_name", "prompt_version", "source_question_id",
+    columns = ["batch_id", "run_id", "purpose", "mode", "provider", "model_name", "prompt_version", "source_question_id",
                "input_question_ids", "validation_passed", "failure_type", "first_attempt_passed", "format_retries",
                "attempts", "finish_reason", "response_time_ms", "tokens_used", "artifacts", "set_accepted",
                "set_rejected", "created_at"]
@@ -5752,7 +5761,7 @@ def _export_runs(cursor, batch_id):
         params = json.loads(r["params_used"]) if r["params_used"] else {}
         set_items = params.get("set_items") or {}
         rows.append({
-            "batch_id": batch_id, "run_id": r["run_id"], "purpose": r["purpose"], "provider": r["provider"],
+            "batch_id": batch_id, "run_id": r["run_id"], "purpose": r["purpose"], "mode": r["mode"], "provider": r["provider"],
             "model_name": r["model_name"], "prompt_version": r["prompt_version"], "source_question_id": r["source_question_id"],
             "input_question_ids": ";".join(str(q) for q in input_question_ids_of_run(r["params_used"])),
             "validation_passed": r["validation_passed"], "failure_type": r["failure_type"],

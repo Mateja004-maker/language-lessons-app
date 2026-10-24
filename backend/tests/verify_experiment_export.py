@@ -116,6 +116,25 @@ def make_artifact(run_id, status, reviewer, md, mb, rd=None, rb=None, ed=None, e
     return aid
 
 
+def make_explanation_run(model_id, prompt_id, batch_id, mode, accuracy, solution_source):
+    rid = db_exec("""
+        INSERT INTO ai_generation_runs (model_id, prompt_id, purpose, mode, params_used, validation_passed,
+               accuracy_check_passed, failure_type, first_attempt_passed, format_retries, response_time_ms,
+               tokens_used, evaluation_batch_id)
+        VALUES (%s, %s, 'explanation', %s, %s, 1, %s, NULL, 1, 0, 700, 100, %s)
+    """, (model_id, prompt_id, mode, json.dumps({"attempts": 1, "solution_source": solution_source}), accuracy, batch_id))
+    created["runs"].append(rid)
+    return rid
+
+
+def make_explanation_artifact(run_id, status):
+    aid = db_exec("INSERT INTO ai_generated_artifacts (generation_run_id, artifact_type, status, original_text) "
+                  "VALUES (%s, 'explanation', %s, %s)",
+                  (run_id, status, json.dumps({"solution": "print(1)", "explanation": f"Izmisljeno {TAG}"})))
+    created["artifacts"].append(aid)
+    return aid
+
+
 def score(artifact_id, rubric, evaluator, rnd, value):
     db_exec("INSERT INTO ai_evaluations (artifact_id, rubric_definition_id, evaluator_id, evaluator_role, score, evaluation_round) "
             "VALUES (%s, %s, %s, 'TEACHER', %s, %s)", (artifact_id, rubric, evaluator, value, rnd))
@@ -332,6 +351,44 @@ def main():
                same and len(dist_rows) == 4)
         record("analiza izvoza: izvestaj", "postoji", "postoji" if os.path.exists(os.path.join(tmp_dir, "izlaz", "izvestaj.md")) else "nema",
                os.path.exists(os.path.join(tmp_dir, "izlaz", "izvestaj.md")))
+
+        # --- objasnjenja (Andrejev modul): posebna privremena serija, da se gornji brojevi ne menjaju ---
+        p_expl = lookup_id("SELECT id FROM ai_prompts WHERE purpose = %s AND version = %s", ("explanation", "mode_b-v1"))
+        batch_e = db_exec("INSERT INTO evaluation_batches (name) VALUES (%s)", (f"tmp-export-expl-{TAG}",))
+        created["batches"].append(batch_e)
+        eb = make_explanation_run(groq, p_expl, batch_e, "mode_b", 0, None)
+        ea = make_explanation_run(groq, p_expl, batch_e, "mode_a", None, "mc_correct_answer")
+        xb = make_explanation_artifact(eb, "odbaceno")
+        xa = make_explanation_artifact(ea, "predlog")
+        _, text_xa, x_arts = get_csv(batch_e, "artifacts", user_id=admin)
+        xa_by = {int(r["artifact_id"]): r for r in x_arts}
+        got = {k: (xa_by[xb][k], xa_by[xa][k]) for k in ("mode", "accuracy_check_passed", "solution_source")} if len(xa_by) == 2 else {}
+        record("objasnjenja artifacts: mode/accuracy/solution_source (B, A)",
+               "mode_b/mode_a, 0/'', ''/mc_correct_answer", got,
+               got == {"mode": ("mode_b", "mode_a"), "accuracy_check_passed": ("0", ""),
+                       "solution_source": ("", "mc_correct_answer")})
+        _, text_xr, x_runs = get_csv(batch_e, "runs", user_id=admin)
+        xr_by = {int(r["run_id"]): r for r in x_runs}
+        got = (xr_by.get(eb, {}).get("mode"), xr_by.get(ea, {}).get("mode"))
+        record("objasnjenja runs: mode (B, A)", ("mode_b", "mode_a"), got, got == ("mode_b", "mode_a"))
+        record("pitanja: nove kolone prazne, mode single/set nepromenjen",
+               "accuracy/solution_source '', runs.mode ''",
+               f"{r1['accuracy_check_passed']!r} {r1['solution_source']!r} {sorted({r['mode'] for r in runs})}",
+               r1["accuracy_check_passed"] == "" and r1["solution_source"] == "" and {r["mode"] for r in runs} == {""}
+               and r1["mode"] == "single" and by_id[a3]["mode"] == "set")
+        resp_xe, text_xe, _ = get_csv(batch_e, "evaluations", user_id=admin)
+        leaked = [s for s in ("example.invalid", "tmp-exp-", "TmpIme", "@") if s in text_xa + text_xr + text_xe]
+        record("objasnjenja: evaluations 200 i bez emailova", "200 []", f"{resp_xe.status_code} {leaked}",
+               resp_xe.status_code == 200 and not leaked)
+        x_paths = {}
+        for kind, text in (("artifacts", text_xa), ("runs", text_xr)):
+            x_paths[kind] = os.path.join(tmp_dir, f"serija_expl_{kind}.csv")
+            with open(x_paths[kind], "w", encoding="utf-8", newline="") as f:
+                f.write(text)
+        groups = {ax.group_key(r) for r in ax.read_csv(x_paths["artifacts"]) + ax.read_csv(x_paths["runs"])}
+        record("analiza: objasnjenja grupisana po rezimu", "[mode_a] i [mode_b]", sorted(groups),
+               any(g.endswith("[mode_a]") for g in groups) and any(g.endswith("[mode_b]") for g in groups)
+               and not any(g.endswith("[explanation]") for g in groups))
     finally:
         cleanup()
         shutil.rmtree(tmp_dir, ignore_errors=True)
