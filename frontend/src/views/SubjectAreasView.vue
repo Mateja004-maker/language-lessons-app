@@ -345,7 +345,8 @@ function canExplain(question) {
   return question.answer_count > 0 || question.has_reference_solution
 }
 
-// Rezim B (model sam pise Python resenje) backend odbija za MC pitanja.
+// MC pitanje: u rezimu B model bira jedan od ponudjenih odgovora (bez uvida u tacan),
+// umesto da pise Python resenje koje se izvrsava nad test primerima.
 function isMcQuestion(question) {
   return question?.answer_count > 0
 }
