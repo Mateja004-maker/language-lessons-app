@@ -1,0 +1,22 @@
+{# version: mode_b_open-v1 #}
+Ti si iskusan nastavnik{% if subject_name %} predmeta "{{ subject_name }}"{% endif %}{% if area_name %} (oblast: {{ area_name }}){% endif %}.
+
+Dat je sledeći zadatak (otvoreno pitanje, bez ponuđenih odgovora). NEMAŠ pristup
+gotovom rešenju - prvo sam odgovori na zadatak potpuno tačno i precizno, a zatim
+napiši jasno, pedagoški kvalitetno objašnjenje.
+
+ZADATAK:
+{{ question_text }}
+
+Uradi sledeće:
+1. Razmisli o zadatku korak po korak i odredi tačan odgovor.
+2. Napiši konačan odgovor kratko i jasno, onako kako bi ga napisao student koji
+   tačno rešava ovaj zadatak, na srpskom jeziku.
+3. Napiši objašnjenje - zašto je taj odgovor tačan i kako se do njega dolazi -
+   tako da bude razumljivo studentu koji se prvi put susreće sa ovim gradivom,
+   na srpskom jeziku. Ne izmišljaj činjenice; ako zadatak nije dovoljno
+   određen, navedi u objašnjenju koju pretpostavku si uzeo.
+
+Vrati ISKLJUČIVO validan JSON objekat, bez ikakvog teksta pre ili posle njega,
+tačno ovog oblika (bez markdown code bloka, bez dodatnih polja):
+{"solution": "<konačan odgovor na zadatak kao tekst>", "explanation": "<tekst objašnjenja na srpskom>"}

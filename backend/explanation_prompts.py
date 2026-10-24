@@ -30,24 +30,35 @@ MODE_FILES = {
 # vazi nepromenjeno za programske/otvorene zadatke.
 MODE_B_MC_FILE = PROMPTS_DIR / "explanation_mode_b_mc_v1.txt"
 
+# mode_b za otvoreno pitanje bez test primera (npr. pitanje iz istorije ili
+# jezika): generican template bez Python koda. Programski zadatak (ima test
+# primere) i dalje dobija explanation_mode_b_v1.txt.
+MODE_B_OPEN_FILE = PROMPTS_DIR / "explanation_mode_b_open_v1.txt"
+
 _VERSION_COMMENT_RE = re.compile(r"{#\s*version:\s*(\S+?)\s*#}")
 
 
-def _template_path(mode: str, question_type: str | None) -> Path:
-    """Bira .txt fajl za dati mode. mode_b + MC ima poseban template; sve
-    ostalo (mode_a, i mode_b za programske/otvorene zadatke) kao do sad."""
+def _template_path(mode: str, question_type: str | None, has_test_cases: bool | None = None) -> Path:
+    """Bira .txt fajl za dati mode. mode_b + MC ima poseban template;
+    mode_b + otvoreno pitanje bez test primera (has_test_cases nije tacno)
+    dobija generican template; mode_a i mode_b za programske zadatke (sa
+    test primerima) kao do sad."""
     if mode == "mode_b" and question_type == "mc":
         return MODE_B_MC_FILE
+    if mode == "mode_b" and not has_test_cases:
+        return MODE_B_OPEN_FILE
     path = MODE_FILES.get(mode)
     if path is None:
         raise ValueError(f"Nepoznat mode: {mode}")
     return path
 
 
-def _read_template_file(mode: str, question_type: str | None = None) -> tuple[str, str]:
+def _read_template_file(mode: str, question_type: str | None = None,
+                        has_test_cases: bool | None = None) -> tuple[str, str]:
     """Vraća (version, sadržaj_fajla) za dati režim ('mode_a' | 'mode_b';
-    question_type='mc' bira mode_b MC template)."""
-    path = _template_path(mode, question_type)
+    question_type='mc' bira mode_b MC template, has_test_cases bira izmedju
+    programskog i genericnog mode_b template-a)."""
+    path = _template_path(mode, question_type, has_test_cases)
 
     content = path.read_text(encoding="utf-8")
     match = _VERSION_COMMENT_RE.search(content)
@@ -59,13 +70,14 @@ def _read_template_file(mode: str, question_type: str | None = None) -> tuple[st
     return match.group(1), content
 
 
-def ensure_prompt_synced(conn, mode: str, question_type: str | None = None) -> tuple[int, str]:
+def ensure_prompt_synced(conn, mode: str, question_type: str | None = None,
+                         has_test_cases: bool | None = None) -> tuple[int, str]:
     """
-    Učitava .txt fajl za dati mode (i question_type, relevantno samo za
-    mode_b MC) i osigurava da postoji odgovarajući red u ai_prompts
-    (purpose='explanation', version iz fajla). Vraća (prompt_id, template_text).
+    Učitava .txt fajl za dati mode (question_type i has_test_cases su
+    relevantni samo za mode_b) i osigurava da postoji odgovarajući red u
+    ai_prompts (purpose='explanation', version iz fajla). Vraća (prompt_id, template_text).
     """
-    version, template_text = _read_template_file(mode, question_type)
+    version, template_text = _read_template_file(mode, question_type, has_test_cases)
 
     cursor = conn.cursor()
     cursor.execute(

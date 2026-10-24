@@ -4340,6 +4340,13 @@ def resolve_explanation_source(cursor, question, mode):
     question_type = prompt_templates.detect_question_type(answers)
 
     if mode == "mode_b":
+        # programski zadatak (ima test primere) dobija Python template, otvoreno
+        # pitanje bez test primera generican (explanation_prompts._template_path)
+        cursor.execute(
+            "SELECT EXISTS(SELECT 1 FROM exam_question_test_cases WHERE question_id = %s) AS has_test_cases",
+            (question["id"],),
+        )
+        has_test_cases = bool(cursor.fetchone()["has_test_cases"])
         if question_type == "mc":
             options_text = "\n".join(f"{i}. {a['answer_text']}" for i, a in enumerate(answers, start=1))
             return {
@@ -4347,12 +4354,14 @@ def resolve_explanation_source(cursor, question, mode):
                 "known_solution": None,
                 "solution_source": None,
                 "question_type": question_type,
+                "has_test_cases": has_test_cases,
             }
         return {
             "question_text": question["question_text"],
             "known_solution": None,
             "solution_source": None,
             "question_type": question_type,
+            "has_test_cases": has_test_cases,
         }
 
     if question.get("reference_solution"):
@@ -4464,7 +4473,8 @@ def generate_explanation(question_id):
             if area_row:
                 area_name = area_row["name"]
 
-        prompt_id, template_text = explanation_prompts.ensure_prompt_synced(conn, mode, source.get("question_type"))
+        prompt_id, template_text = explanation_prompts.ensure_prompt_synced(
+            conn, mode, source.get("question_type"), source.get("has_test_cases"))
         prompt_text = explanation_prompts.build_explanation_prompt(
             template_text,
             question_text=source["question_text"],
