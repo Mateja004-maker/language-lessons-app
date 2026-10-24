@@ -4508,6 +4508,17 @@ def generate_explanation(question_id):
 
         validation_passed = validation_errors is None and parsed_result is not None
 
+        # Vrsta pada, isti nazivi kao za pitanja (generation_failures). Ponovnog
+        # zahteva posle loseg formata ovde nema, pa je format_retries uvek 0.
+        if validation_passed:
+            failure_type = None
+        elif not result.get("success"):
+            failure_type = generation_failures.classify_provider_error(validation_errors)
+        elif parsed_result is None:
+            failure_type = "invalid_json"
+        else:
+            failure_type = "schema"
+
         accuracy_check_passed = None
         accuracy_check_details = None
 
@@ -4599,6 +4610,13 @@ def generate_explanation(question_id):
         )
         conn.commit()
         generation_run_id = cursor.lastrowid
+        if table_columns_exist(cursor, "ai_generation_runs", FAILURE_COLUMNS):
+            cursor.execute("""
+                UPDATE ai_generation_runs
+                SET failure_type = %s, first_attempt_passed = %s, format_retries = 0
+                WHERE id = %s
+            """, (failure_type, 1 if failure_type is None else 0, generation_run_id))
+            conn.commit()
 
         if not validation_passed:
             cursor.close()
