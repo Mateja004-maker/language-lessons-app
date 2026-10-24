@@ -339,9 +339,9 @@ async function submitGenerate() {
   }
 }
 
-// Objasnjenje ima smisla samo kad postoji poznato tacno resenje (rezim A):
-// MC pitanje (tacan odgovor iz exam_answers) ili pitanje sa reference_solution.
-function canExplain(question) {
+// Rezim A zahteva poznato tacno resenje: MC pitanje (tacan odgovor iz
+// exam_answers) ili pitanje sa reference_solution. Rezim B radi za svako pitanje.
+function hasKnownSolution(question) {
   return question.answer_count > 0 || question.has_reference_solution
 }
 
@@ -353,7 +353,7 @@ function isMcQuestion(question) {
 
 async function openExplainModal(question) {
   explainQuestion.value = question
-  explainMode.value = 'mode_a'
+  explainMode.value = hasKnownSolution(question) ? 'mode_a' : 'mode_b'
   explainProvider.value = 'groq'
   explainError.value = ''
   explainResult.value = null
@@ -472,7 +472,7 @@ onMounted(() => {
                   <i class="fa-solid fa-wand-magic-sparkles me-1"></i>
                   Generiši slično
                 </button>
-                <button v-if="canExplain(q)" class="btn btn-outline-success btn-sm" @click="openExplainModal(q)">
+                <button class="btn btn-outline-success btn-sm" @click="openExplainModal(q)">
                   <i class="fa-solid fa-lightbulb me-1"></i>
                   Generiši objašnjenje
                 </button>
@@ -707,7 +707,14 @@ onMounted(() => {
           <div class="mb-3">
             <label class="form-label d-block">Režim</label>
             <div class="btn-group" role="group">
-              <input type="radio" class="btn-check" id="exp-mode-a" value="mode_a" v-model="explainMode" />
+              <input
+                type="radio"
+                class="btn-check"
+                id="exp-mode-a"
+                value="mode_a"
+                v-model="explainMode"
+                :disabled="!hasKnownSolution(explainQuestion)"
+              />
               <label class="btn btn-outline-secondary" for="exp-mode-a">A: uz poznato rešenje</label>
 
               <input
@@ -719,11 +726,14 @@ onMounted(() => {
               />
               <label class="btn btn-outline-secondary" for="exp-mode-b">B: model rešava sam</label>
             </div>
+            <div v-if="!hasKnownSolution(explainQuestion)" class="form-text">
+              Režim A nije dostupan jer pitanje nema poznato tačno rešenje (ni ponuđene odgovore, ni referentno rešenje).
+            </div>
             <div v-if="explainMode === 'mode_b' && isMcQuestion(explainQuestion)" class="form-text">
               U režimu B model bira jedan od ponuđenih odgovora, bez uvida u to koji je tačan.
             </div>
             <div v-else-if="explainMode === 'mode_b'" class="form-text">
-              U režimu B rešenje modela se automatski izvršava nad test primerima pitanja.
+              U režimu B rešenje modela se izvršava nad test primerima pitanja, ako ih pitanje ima; inače ga pregleda nastavnik.
             </div>
           </div>
 
