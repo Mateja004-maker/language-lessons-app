@@ -210,6 +210,7 @@ def ensure_ai_model(conn, provider, model_name, model_version=None):
 # Pomoćne funkcije/konstante za pregled i odobravanje AI predloga
 # (ai_generated_artifacts.status / ai_rubric_definitions / ai_evaluations).
 ARTIFACT_TYPE_QUESTION = "question"
+ARTIFACT_TYPE_EXPLANATION = "explanation"
 ARTIFACT_STATUS_PENDING = "predlog"
 ARTIFACT_STATUS_ACCEPTED = "prihvaceno"
 ARTIFACT_STATUS_ACCEPTED_EDITED = "prihvaceno_izmena"
@@ -5200,10 +5201,12 @@ def get_reference_set(set_id):
 # radi saglasnosti ocenjivača. Tabele/kolone iz db/migration_second_rater.sql;
 # pre migracije rute vraćaju 409. Drugi ocenjivač vidi samo original_text,
 # izvorno pitanje, rubriku i sličnost - ne vidi model, status/odluku, izmenu,
-# razlog odbacivanja ni tuđe ocene.
+# razlog odbacivanja ni tuđe ocene. Isto važi i za predloge objašnjenja
+# (Andrejev modul): umesto sličnosti i oznaka vidi režim i mehaničku proveru.
 # =====================================================================
 
 SECOND_RATING_SAMPLE = 0.30  # udeo predloga iz serije koji se nudi svakom ocenjivaču
+SECOND_RATING_ARTIFACT_TYPES = (ARTIFACT_TYPE_QUESTION, ARTIFACT_TYPE_EXPLANATION)
 
 SECOND_RATER_MIGRATION_ERROR = (
     "Druga ocena nije dostupna - pokrenite migraciju db/migration_second_rater.sql"
@@ -5228,9 +5231,10 @@ def in_second_rating_sample(user_id, artifact_id):
 
 def _load_rating_artifact(cursor, artifact_id):
     cursor.execute("""
-        SELECT a.id, a.original_text, r.evaluation_batch_id, b.closed_at, p.version AS prompt_version,
+        SELECT a.id, a.artifact_type, a.original_text, r.evaluation_batch_id, b.closed_at, p.version AS prompt_version,
                r.source_question_id, sq.subject_id, sq.area_id, sq.question_text AS source_question_text,
-               s.name AS subject_name, ar.name AS area_name
+               s.name AS subject_name, ar.name AS area_name,
+               r.mode, r.accuracy_check_passed, r.accuracy_check_details
         FROM ai_generated_artifacts a
         JOIN ai_generation_runs r ON r.id = a.generation_run_id
         LEFT JOIN evaluation_batches b ON b.id = r.evaluation_batch_id
@@ -5238,8 +5242,8 @@ def _load_rating_artifact(cursor, artifact_id):
         LEFT JOIN exam_questions sq ON sq.id = r.source_question_id
         LEFT JOIN subjects s ON s.id = sq.subject_id
         LEFT JOIN areas ar ON ar.id = sq.area_id
-        WHERE a.id = %s AND a.artifact_type = %s
-    """, (artifact_id, ARTIFACT_TYPE_QUESTION))
+        WHERE a.id = %s AND a.artifact_type IN (%s, %s)
+    """, (artifact_id, *SECOND_RATING_ARTIFACT_TYPES))
     return cursor.fetchone()
 
 
@@ -5263,7 +5267,20 @@ def _second_rating_access_error(cursor, artifact, user_id, role):
 def _rating_view(artifact):
     """Ono što drugi ocenjivač sme da vidi o predlogu."""
     parsed = json.loads(artifact["original_text"]) if artifact["original_text"] else None
-    view = {"id": artifact["id"], "batch_id": artifact["evaluation_batch_id"]}
+    view = {"id": artifact["id"], "batch_id": artifact["evaluation_batch_id"], "artifact_type": artifact["artifact_type"]}
+    if artifact["artifact_type"] == ARTIFACT_TYPE_EXPLANATION:
+        # predlog objašnjenja: rešenje ili izabrana opcija + objašnjenje, režim i
+        # mehanička provera; bez modela, statusa/odluke i izmene
+        view.update({
+            "original_text": parsed,
+            "question_type": None,
+            "mode": artifact["mode"],
+            "accuracy_check_passed": artifact["accuracy_check_passed"],
+            "accuracy_check_details": artifact["accuracy_check_details"],
+            "subject_name": artifact["subject_name"],
+            "area_name": artifact["area_name"],
+        })
+        return view
     move_model_labels(view, parsed)          # oznake modela se izdvajaju ...
     view.pop("model_difficulty", None)       # ... i ne vraćaju
     view.pop("model_bloom_level", None)
@@ -5276,11 +5293,27 @@ def _rating_view(artifact):
     return view
 
 
-def validate_rubric_scores(cursor, question_type, scores):
+def rating_rubric_definitions(cursor, view):
+    """Kriterijumi za drugu ocenu: za objašnjenja TEACHER kriterijumi objašnjenja
+    (isti kao pri odluci), za pitanja kao pri pregledu pitanja."""
+    if view.get("artifact_type") == ARTIFACT_TYPE_EXPLANATION:
+        cursor.execute("""
+            SELECT id, applies_to, dimension_key, dimension_label, scale_min, scale_max
+            FROM ai_rubric_definitions
+            WHERE applies_to = %s AND evaluator_role = 'TEACHER'
+            ORDER BY id ASC
+        """, (ARTIFACT_TYPE_EXPLANATION,))
+        return cursor.fetchall()
+    return get_applicable_rubric_definitions(cursor, view["question_type"])
+
+
+def validate_rubric_scores(cursor, question_type, scores, rubric_rows=None):
     """(score_by_id, None) ili (None, poruka) - ista pravila kao pri pregledu."""
     if not isinstance(scores, list) or not scores:
         return None, "scores je obavezno i mora biti neprazan niz"
-    rubric_by_id = {row["id"]: row for row in get_applicable_rubric_definitions(cursor, question_type)}
+    if rubric_rows is None:
+        rubric_rows = get_applicable_rubric_definitions(cursor, question_type)
+    rubric_by_id = {row["id"]: row for row in rubric_rows}
     score_by_id = {}
     for item in scores:
         if not isinstance(item, dict):
@@ -5310,19 +5343,20 @@ def list_second_rating():
         if not second_rater_enabled(cursor):
             return jsonify({"error": SECOND_RATER_MIGRATION_ERROR}), 409
         cursor.execute(f"""
-            SELECT a.id, a.original_text, r.evaluation_batch_id, NULL AS closed_at, sq.subject_id,
+            SELECT a.id, a.artifact_type, a.original_text, r.evaluation_batch_id, NULL AS closed_at, sq.subject_id,
                    r.source_question_id, sq.question_text AS source_question_text,
-                   s.name AS subject_name, ar.name AS area_name
+                   s.name AS subject_name, ar.name AS area_name,
+                   r.mode, r.accuracy_check_passed, r.accuracy_check_details
             FROM ai_generated_artifacts a
             JOIN ai_generation_runs r ON r.id = a.generation_run_id
             JOIN evaluation_batches b ON b.id = r.evaluation_batch_id AND b.closed_at IS NULL
             LEFT JOIN exam_questions sq ON sq.id = r.source_question_id
             LEFT JOIN subjects s ON s.id = sq.subject_id
             LEFT JOIN areas ar ON ar.id = sq.area_id
-            WHERE a.artifact_type = %s
+            WHERE a.artifact_type IN (%s, %s)
               {"AND r.evaluation_batch_id = %s" if batch_id is not None else ""}
               AND NOT EXISTS (SELECT 1 FROM ai_evaluations e WHERE e.artifact_id = a.id AND e.evaluator_id = %s)
-        """, (ARTIFACT_TYPE_QUESTION, *([batch_id] if batch_id is not None else []), user_id))
+        """, (*SECOND_RATING_ARTIFACT_TYPES, *([batch_id] if batch_id is not None else []), user_id))
         rows = cursor.fetchall()
         if role == "TEACHER":
             allowed = set(get_user_subject_ids(int(user_id), "TEACHER"))
@@ -5363,7 +5397,9 @@ def get_second_rating(artifact_id):
                        (artifact["source_question_id"],))
         view["source_question_text"] = artifact["source_question_text"]
         view["source_answers"] = cursor.fetchall()
-        view["rubric_criteria"] = get_applicable_rubric_definitions(cursor, view["question_type"])
+        view["rubric_criteria"] = rating_rubric_definitions(cursor, view)
+        if artifact["artifact_type"] == ARTIFACT_TYPE_EXPLANATION:
+            return jsonify(view), 200  # ulazni skup i sličnost postoje samo za predloge pitanja
         input_questions = load_input_questions(cursor, artifact_id)
         if input_questions:
             view["input_questions"] = input_questions
@@ -5399,11 +5435,16 @@ def submit_second_rating(artifact_id):
             return jsonify({"error": denied[0]}), denied[1]
 
         view = _rating_view(artifact)
-        score_by_id, error = validate_rubric_scores(cursor, view["question_type"], data.get("scores"))
+        score_by_id, error = validate_rubric_scores(cursor, view["question_type"], data.get("scores"),
+                                                    rating_rubric_definitions(cursor, view))
         if error:
             return jsonify({"error": error}), 400
 
-        if question_validation.strict_fields_enabled(artifact["prompt_version"]) and None in labels.values():
+        if artifact["artifact_type"] == ARTIFACT_TYPE_EXPLANATION:
+            # objašnjenje nema težinu/Blumov nivo - oznake se ne primaju
+            if any(value is not None for value in labels.values()):
+                return jsonify({"error": "difficulty i bloom_level ne postoje za predlog objašnjenja"}), 400
+        elif question_validation.strict_fields_enabled(artifact["prompt_version"]) and None in labels.values():
             return jsonify({"error": "difficulty i bloom_level su obavezni za ovaj predlog"}), 400
         for field_name, value in labels.items():
             allowed = question_validation.LABEL_FIELDS[field_name]
