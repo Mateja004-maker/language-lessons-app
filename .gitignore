@@ -16,3 +16,5 @@ dist/
 .vscode/
 # ID-jevi probnih run-ova (tools/probe_v3.py) - lokalni, za brisanje po ID-jevima
 backend/probe_v3_ids.json
+# Lokalni izlazi Claude sesija (ne commituju se)
+Claude outputs/
