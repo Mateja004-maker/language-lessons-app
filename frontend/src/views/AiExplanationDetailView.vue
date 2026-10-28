@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getExplanationArtifact, getQuestionAnswers, reviewExplanationArtifact } from '@/services/api'
@@ -176,7 +177,7 @@ onMounted(loadArtifact)
     </div>
 
     <div v-else-if="artifact">
-      <h2 class="page-title mb-2">AI objašnjenje #{{ artifact.id }}</h2>
+      <PageHeader :title="`AI objašnjenje #${artifact.id}`" />
 
       <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
         <span class="badge bg-info text-dark">{{ isModeB ? 'Režim B' : 'Režim A' }}</span>
@@ -457,11 +458,6 @@ onMounted(loadArtifact)
 </template>
 
 <style scoped>
-.page-title {
-  font-size: 2rem;
-  font-weight: 800;
-}
-
 .pre-wrap {
   white-space: pre-wrap;
 }

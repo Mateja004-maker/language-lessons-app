@@ -468,11 +468,11 @@ onMounted(() => {
               <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-dark">{{ q.points }} poena</span>
                 <span class="badge bg-secondary">{{ questionTypeLabel(q) }}</span>
-                <button class="btn btn-outline-info btn-sm" @click="openGenerateModal(q)">
+                <button class="btn btn-outline-secondary btn-sm" @click="openGenerateModal(q)">
                   <i class="fa-solid fa-wand-magic-sparkles me-1"></i>
                   Generiši slično
                 </button>
-                <button class="btn btn-outline-success btn-sm" @click="openExplainModal(q)">
+                <button class="btn btn-outline-secondary btn-sm" @click="openExplainModal(q)">
                   <i class="fa-solid fa-lightbulb me-1"></i>
                   Generiši objašnjenje
                 </button>

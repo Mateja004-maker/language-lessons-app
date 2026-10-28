@@ -1,4 +1,5 @@
 <script setup>
+import PageHeader from '@/components/PageHeader.vue'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getExplanationArtifacts } from '@/services/api'
@@ -50,7 +51,7 @@ onMounted(loadArtifacts)
 
 <template>
   <div class="container py-4">
-    <h2 class="page-title mb-4">AI objašnjenja</h2>
+    <PageHeader title="AI objašnjenja" />
 
     <div class="btn-group flex-wrap mb-4" role="group">
       <template v-for="s in STATUSES" :key="s.value">
@@ -112,11 +113,6 @@ onMounted(loadArtifacts)
 </template>
 
 <style scoped>
-.page-title {
-  font-size: 2rem;
-  font-weight: 800;
-}
-
 .artifact-card {
   cursor: pointer;
   transition: box-shadow 0.15s ease, transform 0.15s ease;
@@ -125,10 +121,5 @@ onMounted(loadArtifacts)
 .artifact-card:hover {
   box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1) !important;
   transform: translateY(-1px);
-}
-
-.empty-state {
-  border: 1px dashed rgba(0, 0, 0, 0.15);
-  border-radius: 0.75rem;
 }
 </style>
