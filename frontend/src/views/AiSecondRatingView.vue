@@ -3,6 +3,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSecondRatingArtifact, submitSecondRating } from '@/services/api'
+import { parseAccuracyDetails, parseProposal } from '@/services/explanationHelpers'
 
 // Režim "samo ocena": ista rubrika kao pri pregledu, bez dugmadi za odluku.
 // Ruta ne vraća model, status/odluku, izmenu ni tuđe ocene.
@@ -40,6 +41,22 @@ const allScored = computed(() =>
   artifact.value.rubric_criteria.every((c) => scores[c.id] !== null && scores[c.id] !== undefined)
 )
 const labelsOk = computed(() => !artifact.value?.labels_required || (!!difficulty.value && !!bloomLevel.value))
+
+// Predlog objasnjenja (Andrejev modul): rubrika objasnjenja sa servera, bez
+// tezine/Blumovog nivoa; umesto slicnosti se vidi rezim i mehanicka provera.
+const isExplanation = computed(() => artifact.value?.artifact_type === 'explanation')
+const isModeB = computed(() => artifact.value?.mode === 'mode_b')
+// ruta vraca original_text vec parsiran (objekat); string se parsira za svaki slucaj
+const proposal = computed(() => {
+  const text = artifact.value?.original_text
+  if (typeof text === 'string') return parseProposal(text)
+  return text && typeof text === 'object' && !Array.isArray(text) ? text : null
+})
+const isMcModeB = computed(() => isModeB.value && !!proposal.value && 'selected_option' in proposal.value)
+const accuracy = computed(() => parseAccuracyDetails(artifact.value?.accuracy_check_details))
+const showAccuracy = computed(() =>
+  isModeB.value || artifact.value?.accuracy_check_passed != null || !!artifact.value?.accuracy_check_details
+)
 
 async function load() {
   loading.value = true
@@ -95,7 +112,11 @@ onMounted(load)
       <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
         <span class="badge bg-dark">{{ artifact.subject_name || 'Nepoznat predmet' }}</span>
         <span v-if="artifact.area_name" class="badge bg-secondary">{{ artifact.area_name }}</span>
-        <span class="badge bg-info text-dark">{{ artifact.question_type === 'mc' ? 'MC' : 'Otvoreno pitanje' }}</span>
+        <template v-if="isExplanation">
+          <span class="badge bg-info text-dark">Objašnjenje</span>
+          <span class="badge bg-light text-dark border">{{ isModeB ? 'Režim B' : 'Režim A' }}</span>
+        </template>
+        <span v-else class="badge bg-info text-dark">{{ artifact.question_type === 'mc' ? 'MC' : 'Otvoreno pitanje' }}</span>
         <span class="badge bg-light text-dark border">samo ocena, bez odluke</span>
       </div>
 
@@ -119,7 +140,25 @@ onMounted(load)
         <div class="col-12 col-lg-6">
           <div class="card shadow-sm h-100">
             <div class="card-header bg-primary bg-opacity-10">AI predlog</div>
-            <div class="card-body">
+            <div v-if="isExplanation" class="card-body">
+              <div v-if="!proposal" class="alert alert-warning mb-0">
+                Predlog nije u očekivanom JSON obliku i ne može da se prikaže.
+              </div>
+              <template v-else>
+                <!-- rezim A: pitanje nosi tacan odgovor, predlog je samo objasnjenje -->
+                <template v-if="isMcModeB">
+                  <div class="fw-semibold mb-1">Izabrana opcija: {{ proposal.selected_option }}</div>
+                  <div class="fw-semibold mb-1">Objašnjenje</div>
+                </template>
+                <template v-else-if="isModeB">
+                  <div class="fw-semibold mb-1">Rešenje</div>
+                  <pre class="bg-light border rounded p-2 mb-3 code-block">{{ proposal.solution }}</pre>
+                  <div class="fw-semibold mb-1">Objašnjenje</div>
+                </template>
+                <p class="mb-0 pre-wrap">{{ proposal.explanation }}</p>
+              </template>
+            </div>
+            <div v-else class="card-body">
               <p class="mb-3">{{ artifact.original_text?.question_text }}</p>
               <div v-for="(a, idx) in artifact.original_text?.answers || []" :key="idx"
                    class="d-flex justify-content-between align-items-center border rounded p-2 mb-2">
@@ -128,6 +167,47 @@ onMounted(load)
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div v-if="isExplanation && showAccuracy" class="card shadow-sm mb-4">
+        <div class="card-header bg-white">
+          Mehanička provera rešenja
+          <span v-if="artifact.accuracy_check_passed === 1" class="badge bg-success ms-2">prošla</span>
+          <span v-else-if="artifact.accuracy_check_passed === 0" class="badge bg-danger ms-2">nije prošla</span>
+          <span v-else class="badge bg-warning text-dark ms-2">nije izvršena</span>
+        </div>
+        <div class="card-body">
+          <div v-if="accuracy.rows" class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Ulaz</th>
+                  <th>Očekivano</th>
+                  <th>Dobijeno</th>
+                  <th>Rezultat</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in accuracy.rows" :key="row.order_no">
+                  <td>{{ row.order_no }}</td>
+                  <td><pre class="mb-0 code-cell">{{ row.input_data }}</pre></td>
+                  <td><pre class="mb-0 code-cell">{{ row.expected_output }}</pre></td>
+                  <td><pre class="mb-0 code-cell">{{ row.actual_output ?? '—' }}</pre></td>
+                  <td>
+                    <span v-if="row.passed" class="badge bg-success">tačno</span>
+                    <template v-else>
+                      <span class="badge bg-danger">{{ row.timed_out ? 'isteklo vreme' : 'netačno' }}</span>
+                      <pre v-if="row.error" class="mb-0 mt-1 small text-danger code-cell">{{ row.error }}</pre>
+                    </template>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else-if="accuracy.message" class="text-muted">{{ accuracy.message }}</div>
+          <div v-else class="text-muted">Nema podataka o proveri.</div>
         </div>
       </div>
 
@@ -201,4 +281,20 @@ onMounted(load)
 </template>
 
 <style scoped>
+.pre-wrap {
+  white-space: pre-wrap;
+}
+
+.code-block {
+  font-family: var(--bs-font-monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.code-cell {
+  font-family: var(--bs-font-monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85em;
+}
 </style>

@@ -49,7 +49,18 @@ async function load() {
 }
 
 function questionTypeLabel(item) {
+  if (item.artifact_type === 'explanation') return 'Objašnjenje'
   return item.question_type === 'mc' ? 'MC' : 'Otvoreno pitanje'
+}
+
+// predlog objasnjenja nema question_text: prikazuje se pocetak objasnjenja
+// (izvorno pitanje je vec u zaglavlju grupe)
+const PREVIEW_LENGTH = 160
+function itemText(item) {
+  if (item.artifact_type !== 'explanation') return item.original_text?.question_text
+  const text = (item.original_text?.explanation || '').trim()
+  if (!text) return 'Predlog objašnjenja'
+  return text.length > PREVIEW_LENGTH ? `${text.slice(0, PREVIEW_LENGTH)}…` : text
 }
 
 onMounted(() => {
@@ -98,12 +109,15 @@ onMounted(() => {
             <div class="card-body">
               <div>
                 <i class="fa-solid fa-scale-balanced me-2 text-muted"></i>
-                {{ item.original_text?.question_text }}
+                {{ itemText(item) }}
               </div>
               <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
                 <span class="badge bg-dark">{{ item.subject_name || 'Nepoznat predmet' }}</span>
                 <span v-if="item.area_name" class="badge bg-secondary">{{ item.area_name }}</span>
                 <span class="badge bg-info text-dark">{{ questionTypeLabel(item) }}</span>
+                <span v-if="item.artifact_type === 'explanation'" class="badge bg-light text-dark border">
+                  {{ item.mode === 'mode_b' ? 'Režim B' : 'Režim A' }}
+                </span>
                 <span class="badge bg-light text-dark border">serija #{{ item.batch_id }}</span>
               </div>
             </div>
