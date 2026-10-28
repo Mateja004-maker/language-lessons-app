@@ -38,6 +38,13 @@ odbija da nastavi (mešanje bi pokvarilo poređenje).
 --dry-run ispisuje plan (urađeno / čeka) bez poziva modela i bez upisa.
 --max-calls K zaustavlja posle K poziva modela (kontrolisana potrošnja limita).
 --reference-set ID vezuje skup za seriju koja još nema skup ni run-ove.
+
+--task explanation --explain-mode mode_a|mode_b: isti pokretač za objašnjenja
+(Andrejev modul, generate_explanation_for_question). Jedna serija = jedan režim
+objašnjenja; serija ne sme da ima run-ove pitanja ni drugog režima. U režimu A
+pitanja bez poznatog rešenja (resolve_explanation_source) se izbacuju iz plana i
+ispisuju kao preskočena; u režimu B izveštaj broji i ishod mehaničke provere.
+--mode set, --group-size i --k ne važe za objašnjenja.
 """
 import argparse
 import json
@@ -51,16 +58,20 @@ sys.path.insert(0, BACKEND_DIR)
 # app MORA da se učita pre ai_provider-a: app.py učitava backend/.env, a
 # ai_provider čita API ključeve iz okruženja u trenutku učitavanja (inače 401).
 from app import (  # noqa: E402
+    EXPLANATION_DEFAULT_MODELS,
     FAILURE_COLUMNS,
     SET_MAX_K,
+    generate_explanation_for_question,
     generate_similar_for_question,
     generate_similar_set,
     get_db_connection,
     input_question_ids_of_run,
     reference_sets_enabled,
+    resolve_explanation_source,
     table_columns_exist,
 )
 import ai_provider  # noqa: E402
+import explanation_prompts  # noqa: E402
 import generation_failures  # noqa: E402
 import prompt_templates  # noqa: E402
 
@@ -77,6 +88,8 @@ class ExperimentError(Exception):
 # ---------- plan ----------
 
 MODES = ("single", "set")
+TASKS = ("question", "explanation")
+EXPLAIN_MODES = ("mode_a", "mode_b")
 
 
 def build_plan(units, providers, per_question):
@@ -95,7 +108,9 @@ def make_groups(question_ids, group_size):
     return [tuple(question_ids[i:i + group_size]) for i in range(0, len(question_ids), group_size)]
 
 
-def _purpose(mode):
+def _purpose(mode, task="question"):
+    if task == "explanation":
+        return explanation_prompts.PURPOSE_EXPLANATION
     return prompt_templates.PURPOSE_SIMILAR_QUESTION_SET if mode == "set" else prompt_templates.PURPOSE_SIMILAR_QUESTION
 
 
@@ -124,13 +139,19 @@ def _failure_columns_exist():
         conn.close()
 
 
-def answered_counts(batch_id, mode="single"):
+def answered_counts(batch_id, mode="single", explain_mode=None):
     """{(unit, provider): broj run-ova serije u kojima je model odgovorio}.
     unit = id pitanja (single) ili grupa id-jeva (set, iz params_used.input_question_ids).
     Odgovorio = stiglo je telo odgovora, ili je (posle migracije tačke I) vrsta
-    pada 'empty' / 'invalid_json' / 'schema'."""
+    pada 'empty' / 'invalid_json' / 'schema'. explain_mode (objašnjenja): broje
+    se samo run-ovi objašnjenja tog režima, unit je id pitanja."""
     model_failure = ""
-    params = [batch_id, _purpose(mode)]
+    mode_filter = ""
+    if explain_mode is not None:
+        params = [batch_id, _purpose(mode, "explanation"), explain_mode]
+        mode_filter = "AND r.mode = %s"
+    else:
+        params = [batch_id, _purpose(mode)]
     if _failure_columns_exist():
         model_failure = f"OR r.failure_type IN ({', '.join(['%s'] * len(generation_failures.MODEL_FAILURES))})"
         params += list(generation_failures.MODEL_FAILURES)
@@ -140,6 +161,7 @@ def answered_counts(batch_id, mode="single"):
         JOIN ai_models m ON m.id = r.model_id
         WHERE r.evaluation_batch_id = %s
           AND r.purpose = %s
+          {mode_filter}
           AND (r.raw_response IS NOT NULL
                OR JSON_VALUE(r.params_used, '$.finish_reason') IS NOT NULL
                {model_failure})
@@ -189,6 +211,63 @@ def check_protocol(batch_id, providers, mode="single", groups=None, k=None):
         raise ExperimentError("Protokol bi bio narušen:\n  - " + "\n  - ".join(sorted(set(problems))))
 
 
+def explanation_sources(question_ids, explain_mode):
+    """{id pitanja: resolve_explanation_source(...)} - samo čita. U režimu A
+    pitanje bez poznatog rešenja ima ključ 'error'; inače izvor nosi
+    question_type (i has_test_cases u režimu B) za izbor šablona."""
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        sources = {}
+        for question_id in question_ids:
+            cursor.execute("SELECT * FROM exam_questions WHERE id = %s", (question_id,))
+            question = cursor.fetchone()
+            sources[question_id] = (resolve_explanation_source(cursor, question, explain_mode) if question
+                                    else {"error": "pitanje ne postoji"})
+        return sources
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def _explanation_prompt_version(explain_mode, source):
+    """Aktivna verzija šablona za pitanje (isti izbor kao ensure_prompt_synced)."""
+    return explanation_prompts._read_template_file(
+        explain_mode, source.get("question_type"), source.get("has_test_cases"))[0]
+
+
+def check_explanation_protocol(batch_id, providers, explain_mode, sources):
+    """Serija objašnjenja ne sme da meša zadatke (pitanja / objašnjenja), režime
+    objašnjenja, modele ni verzije šablona (aktivna verzija zavisi od tipa pitanja)."""
+    problems = []
+    for row in _query("""SELECT DISTINCT r.purpose, r.mode FROM ai_generation_runs r
+                         WHERE r.evaluation_batch_id = %s""", (batch_id,)):
+        if row["purpose"] != explanation_prompts.PURPOSE_EXPLANATION:
+            problems.append(f"serija već ima run-ove drugog zadatka ({row['purpose']}) - serija ne sme da meša pitanja i objašnjenja")
+        elif row["mode"] != explain_mode:
+            problems.append(f"serija već ima run-ove objašnjenja u režimu {row['mode']} - serija ne sme da meša režime")
+    rows = _query("""
+        SELECT DISTINCT r.source_question_id, m.provider, m.model_name, p.version
+        FROM ai_generation_runs r
+        JOIN ai_models m ON m.id = r.model_id
+        JOIN ai_prompts p ON p.id = r.prompt_id
+        WHERE r.evaluation_batch_id = %s AND r.purpose = %s AND r.mode = %s
+    """, (batch_id, explanation_prompts.PURPOSE_EXPLANATION, explain_mode))
+    for row in rows:
+        expected_model = EXPLANATION_DEFAULT_MODELS.get(row["provider"])
+        if row["provider"] in providers and row["model_name"] != expected_model:
+            problems.append(f"{row['provider']}: serija ima model {row['model_name']}, sada je {expected_model}")
+        source = sources.get(row["source_question_id"])
+        if source is None or "error" in source:
+            problems.append(f"serija ima run za pitanje {row['source_question_id']} koje nije u planu")
+            continue
+        expected_version = _explanation_prompt_version(explain_mode, source)
+        if row["version"] != expected_version:
+            problems.append(f"pitanje {row['source_question_id']}: serija ima prompt {row['version']}, aktivan je {expected_version}")
+    if problems:
+        raise ExperimentError("Protokol bi bio narušen:\n  - " + "\n  - ".join(sorted(set(problems))))
+
+
 def pending_slots(plan, counts):
     """Mesta iz plana koja još nisu urađena, istim redosledom."""
     return [(a, q, p) for a, q, p in plan if counts.get((q, p), 0) < a]
@@ -223,13 +302,24 @@ def _raw_reason(run_id):
 
 
 def run_experiment(batch_id, question_ids, providers, per_question, dry_run=False,
-                   max_calls=None, generate=None, out=print, mode="single", group_size=None, k=None):
+                   max_calls=None, generate=None, out=print, mode="single", group_size=None, k=None,
+                   task="question", explain_mode=None):
     """Izvršava (ili samo prikazuje) plan; vraća izveštaj kao dict."""
     if mode not in MODES:
         raise ExperimentError(f"--mode mora biti jedno od: {', '.join(MODES)}")
-    unknown = [p for p in providers if p not in ai_provider.DEFAULT_MODELS]
+    if task not in TASKS:
+        raise ExperimentError(f"--task mora biti jedno od: {', '.join(TASKS)}")
+    if task == "explanation":
+        if explain_mode not in EXPLAIN_MODES:
+            raise ExperimentError(f"--explain-mode je obavezan uz --task explanation: {', '.join(EXPLAIN_MODES)}")
+        if mode != "single" or group_size is not None or k is not None:
+            raise ExperimentError("--mode set, --group-size i --k ne važe uz --task explanation")
+    elif explain_mode is not None:
+        raise ExperimentError("--explain-mode važi samo uz --task explanation")
+    known_models = EXPLANATION_DEFAULT_MODELS if task == "explanation" else ai_provider.DEFAULT_MODELS
+    unknown = [p for p in providers if p not in known_models]
     if unknown:
-        raise ExperimentError(f"Nepoznati modeli: {unknown} (dozvoljeno: {sorted(ai_provider.DEFAULT_MODELS)})")
+        raise ExperimentError(f"Nepoznati modeli: {unknown} (dozvoljeno: {sorted(known_models)})")
     missing_keys = [p for p in providers if not getattr(ai_provider, API_KEY_NAMES.get(p, ""), "")]
     if missing_keys and not dry_run and generate is None:
         raise ExperimentError(f"Nedostaje API ključ za: {missing_keys} (proveri backend/.env)")
@@ -240,7 +330,18 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
     if not _query("SELECT id FROM evaluation_batches WHERE id = %s", (batch_id,)):
         raise ExperimentError(f"Serija {batch_id} ne postoji")
 
-    if mode == "set":
+    skipped = {}
+    if task == "explanation":
+        # režim A traži poznato rešenje: pitanja bez njega se izbacuju pre plana
+        sources = explanation_sources(question_ids, explain_mode)
+        skipped = {q: s["error"] for q, s in sources.items() if "error" in s}
+        units = [q for q in question_ids if q not in skipped]
+        if not units:
+            raise ExperimentError(f"Nijedno pitanje skupa ne može u režim {explain_mode} (nema poznatog rešenja)")
+        if generate is None:
+            def generate(unit, provider, batch):  # noqa: E306
+                return generate_explanation_for_question(unit, explain_mode, provider, batch)
+    elif mode == "set":
         if not isinstance(group_size, int) or group_size < 1:
             raise ExperimentError("--group-size mora biti bar 1 u režimu set")
         if not isinstance(k, int) or not 1 <= k <= SET_MAX_K:
@@ -255,9 +356,12 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
         if generate is None:
             generate = generate_similar_for_question
 
-    check_protocol(batch_id, providers, mode=mode, groups=units, k=k)
+    if task == "explanation":
+        check_explanation_protocol(batch_id, providers, explain_mode, sources)
+    else:
+        check_protocol(batch_id, providers, mode=mode, groups=units, k=k)
     plan = build_plan(units, providers, per_question)
-    counts = answered_counts(batch_id, mode)
+    counts = answered_counts(batch_id, mode, explain_mode)
     pending = pending_slots(plan, counts)
 
     report = {
@@ -268,12 +372,16 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
         "stopped": {}, "reasons": defaultdict(Counter), "calls": 0,
         "run_ids": [], "artifact_ids": [], "pending": len(pending),
         "mode": mode, "items_accepted": Counter(), "items_rejected": Counter(),
+        "task": task, "explain_mode": explain_mode, "skipped": skipped, "accuracy": defaultdict(Counter),
     }
 
     unit_text = (f"{len(units)} grupa (do {group_size} pitanja, K={k})" if mode == "set"
                  else f"{len(units)} pitanja")
-    out(f"Serija {batch_id} [{mode}]: {unit_text} x {len(providers)} modela x {per_question} "
+    label = f"explanation {explain_mode}" if task == "explanation" else mode
+    out(f"Serija {batch_id} [{label}]: {unit_text} x {len(providers)} modela x {per_question} "
         f"= {len(plan)} mesta; urađeno {len(plan) - len(pending)}, čeka {len(pending)}")
+    for question_id, reason in skipped.items():
+        out(f"  preskočeno  pitanje {question_id}: nema poznatog rešenja ({reason})")
 
     if dry_run:
         done = set(plan) - set(pending)
@@ -310,6 +418,10 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
         kind = _classify(status, body)
         failure_type = body.get("failure_type")
         report[kind][provider] += 1
+        if explain_mode == "mode_b" and status == 201:
+            accuracy = body.get("accuracy_check_passed")
+            report["accuracy"][provider]["prošla" if accuracy == 1 else "nije prošla" if accuracy == 0
+                                         else "nije izvršena"] += 1
         reason = None
         if kind not in ("ok_first", "ok_retry"):
             reason = f"{failure_type or status}: {_raw_reason(body.get('generation_run_id')) or body.get('error')}"
@@ -331,7 +443,7 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
         if kind == "error":
             report["stopped"][provider] = f"greška {status}: {reason}"
 
-    remaining = pending_slots(plan, answered_counts(batch_id, mode))
+    remaining = pending_slots(plan, answered_counts(batch_id, mode, explain_mode))
     report["pending"] = len(remaining)
     return report
 
@@ -347,6 +459,13 @@ def print_report(report, providers, out=print):
     if report.get("mode") == "set":
         for p in providers:
             out(f"  {p}: pitanja prihvaćeno {report['items_accepted'][p]}, odbijeno (stavke) {report['items_rejected'][p]}")
+    if report.get("explain_mode") == "mode_b":
+        for p in providers:
+            acc = report["accuracy"][p]
+            out(f"  {p}: mehanička provera - prošla {acc['prošla']}, nije prošla {acc['nije prošla']}, "
+                f"nije izvršena {acc['nije izvršena']}")
+    if report.get("skipped"):
+        out(f"  preskočeno (nema poznatog rešenja): {sorted(report['skipped'])}")
     for p in providers:
         if report["infra_types"][p]:
             out(f"  {p}: bez odgovora po vrsti: {dict(report['infra_types'][p])}")
@@ -412,6 +531,8 @@ def main(argv=None):
     parser.add_argument("--mode", choices=MODES, default="single", help="single (pitanje po pitanje) ili set (grupe pitanja)")
     parser.add_argument("--group-size", type=int, help="režim set: broj pitanja skupa po grupi")
     parser.add_argument("--k", type=int, help="režim set: broj novih pitanja po pozivu")
+    parser.add_argument("--task", choices=TASKS, default="question", help="question (slična pitanja) ili explanation (objašnjenja)")
+    parser.add_argument("--explain-mode", choices=EXPLAIN_MODES, help="obavezno uz --task explanation: mode_a ili mode_b")
     args = parser.parse_args(argv)
 
     providers = [p.strip() for p in args.models.split(",") if p.strip()]
@@ -421,7 +542,8 @@ def main(argv=None):
         question_ids = resolve_question_ids(args.batch, args.reference_set)
         report = run_experiment(args.batch, question_ids, providers, args.per_question,
                                 dry_run=args.dry_run, max_calls=args.max_calls,
-                                mode=args.mode, group_size=args.group_size, k=args.k)
+                                mode=args.mode, group_size=args.group_size, k=args.k,
+                                task=args.task, explain_mode=args.explain_mode)
     except ExperimentError as e:
         print(f"GREŠKA: {e}")
         return 2
