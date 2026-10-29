@@ -11,7 +11,11 @@ da bi mogla da se testira nezavisno od HTTP sloja (isti razlog kao za
 code_executor.run_against_test_cases).
 """
 
+import json
+
 import mysql.connector
+
+import code_executor
 
 
 class ArtifactNotFoundError(Exception):
@@ -33,6 +37,53 @@ _STATUS_BY_ACTION = {
     "edit": "prihvaceno_izmena",
     "reject": "odbaceno",
 }
+
+
+def _json_dict(text):
+    try:
+        value = json.loads(text) if text else None
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _recheck_edited_solution(cursor, artifact, edited_text):
+    """Rezim B, programski zadatak: izmenjeno resenje se pokrece nad test
+    primerima istim mehanizmom kao pri generisanju (code_executor), jer
+    accuracy_check_passed u run-u vazi za odgovor modela, ne za izmenu.
+    Ne prodje -> ReviewValidationError (izmena se ne upisuje). Bez test
+    primera (otvoreno pitanje) i za MC (nema solution) nema provere; ni kad
+    resenje nije menjano (vazi provera iz generisanja)."""
+    cursor.execute(
+        """
+        SELECT order_no, input_data, expected_output
+        FROM exam_question_test_cases
+        WHERE question_id = %s
+        ORDER BY order_no ASC
+        """,
+        (artifact["source_question_id"],),
+    )
+    test_cases = cursor.fetchall()
+    original = _json_dict(artifact["original_text"])
+    if not test_cases or "selected_option" in original:
+        return
+
+    solution = _json_dict(edited_text).get("solution")
+    if not isinstance(solution, str) or not solution.strip():
+        raise ReviewValidationError(
+            "edited_text mora biti JSON sa poljem 'solution' (programski zadatak, rezim B)"
+        )
+    if solution == original.get("solution"):
+        return
+
+    check = code_executor.run_against_test_cases(solution, test_cases)
+    if not check["all_passed"]:
+        failed = [r["order_no"] for r in check["results"] if not r["passed"]]
+        raise ReviewValidationError(
+            "Izmenjeno resenje ne prolazi mehanicku proveru (test primeri: "
+            f"{', '.join(str(n) for n in failed)}). Tacnost resenja je eliminatoran "
+            "kriterijum - ispravite resenje ili odbijte predlog."
+        )
 
 
 def review_explanation_artifact(
@@ -62,6 +113,10 @@ def review_explanation_artifact(
     samo preporuka u UI-ju, jer zadatak trazi da je tacnost resenja
     "eliminatoran kriterijum", ne subjektivna ocena.
 
+    Isto pravilo vazi i za izmenjeno resenje: kod 'edit' u rezimu B, za
+    programski zadatak (ima test primere), izmenjen kod se ponovo pokrece nad
+    test primerima (_recheck_edited_solution) i izmena se odbija ako ne prodje.
+
     Vraca dict {"artifact_id", "new_status", "evaluation_ids"} pri uspehu.
     Baca ArtifactNotFoundError / ArtifactStateError / ReviewValidationError
     pri gresci - ruta ih mapira na 404 / 409 / 400.
@@ -75,8 +130,8 @@ def review_explanation_artifact(
 
     cursor.execute(
         """
-        SELECT a.id, a.status, a.artifact_type, a.generation_run_id,
-               r.mode, r.accuracy_check_passed
+        SELECT a.id, a.status, a.artifact_type, a.generation_run_id, a.original_text,
+               r.mode, r.accuracy_check_passed, r.source_question_id
         FROM ai_generated_artifacts a
         JOIN ai_generation_runs r ON r.id = a.generation_run_id
         WHERE a.id = %s
@@ -171,6 +226,14 @@ def review_explanation_artifact(
                 "Nedostaju ocene za TEACHER dimenzije: "
                 + ", ".join(sorted(missing))
             )
+
+    # poslednje pre upisa: pokretanje koda je najskuplja provera
+    if action == "edit" and artifact["mode"] == "mode_b":
+        try:
+            _recheck_edited_solution(cursor, artifact, edited_text)
+        except ReviewValidationError:
+            cursor.close()
+            raise
 
     new_status = _STATUS_BY_ACTION[action]
 

@@ -1,12 +1,14 @@
 """Provera nastavnicke odluke o predlogu objasnjenja (Andrejev modul):
 - isti korisnik ne sme da bude i drugi ocenjivac i onaj koji odlucuje (explanation_review);
 - detalj i odluka samo za nastavnika predmeta izvornog pitanja (ADMIN bez ogranicenja);
-- odluka iz otvorene serije sakrivena od nastavnika koji predlog nije ocenio.
+- odluka iz otvorene serije sakrivena od nastavnika koji predlog nije ocenio;
+- izmena resenja u rezimu B (programski zadatak) se ponovo proverava nad test primerima.
 
 Pokretanje (iz foldera backend/):
     python tests/verify_explanation_review.py
 
-Bez AI poziva: izmisljeni korisnici, run i predlozi se upisuju direktno u bazu.
+Bez AI poziva: izmisljeni korisnici, run i predlozi se upisuju direktno u bazu
+(izmenjeno resenje pokrece pravi code_executor nad izmisljenim test primerima).
 Sve se brise po zabelezenim id-jevima i porede se brojevi redova pre i posle.
 """
 import json
@@ -23,7 +25,7 @@ from flask_jwt_extended import create_access_token  # noqa: E402
 import explanation_review  # noqa: E402
 
 COUNT_TABLES = ("ai_generated_artifacts", "ai_generation_runs", "ai_evaluations", "users",
-                "exam_questions", "teacher_subjects", "evaluation_batches")
+                "exam_questions", "exam_question_test_cases", "teacher_subjects", "evaluation_batches")
 TAG = uuid.uuid4().hex[:6]
 
 results = []
@@ -86,6 +88,32 @@ def make_pending_explanation(model_id, prompt_id, question_id, batch_id=None):
                   "VALUES (%s, 'explanation', 'predlog', %s)", (rid, json.dumps({"explanation": f"Izmisljeno {TAG}"})))
     created["artifacts"].append(aid)
     return aid
+
+
+SUM_OK = "a = int(input())\nb = int(input())\nprint(a + b)"
+SUM_ALT_OK = "print(int(input()) + int(input()))"
+SUM_WRONG = "a = int(input())\nb = int(input())\nprint(a * b)"
+
+
+def make_pending_mode_b(model_id, prompt_id, question_id, solution=SUM_OK):
+    """Predlog rezima B ciji je originalni kod prosao proveru (accuracy_check_passed = 1)."""
+    rid = db_exec("""
+        INSERT INTO ai_generation_runs (model_id, prompt_id, purpose, mode, source_question_id, params_used,
+               validation_passed, accuracy_check_passed)
+        VALUES (%s, %s, 'explanation', 'mode_b', %s, %s, 1, 1)
+    """, (model_id, prompt_id, question_id, json.dumps({"attempts": 1})))
+    created["runs"].append(rid)
+    aid = db_exec("INSERT INTO ai_generated_artifacts (generation_run_id, artifact_type, status, original_text) "
+                  "VALUES (%s, 'explanation', 'predlog', %s)",
+                  (rid, json.dumps({"solution": solution, "explanation": f"Izmisljeno {TAG}"})))
+    created["artifacts"].append(aid)
+    return aid
+
+
+def edit(aid, user_id, edited_text, scores):
+    resp = client.post(f"/api/ai-artifacts/explanation/{aid}/review", headers=headers(user_id, "TEACHER"),
+                       json={"action": "edit", "edited_text": edited_text, "scores": scores})
+    return resp.status_code, (resp.get_json() or {})
 
 
 def list_ids(user_id, role, status="predlog"):
@@ -291,6 +319,48 @@ def main():
         record("zatvorena serija -> treci nastavnik vidi odluku", "200 odbaceno",
                f"{resp.status_code} {((resp.get_json() or {}).get('artifact') or {}).get('status')}",
                resp.status_code == 200 and (resp.get_json() or {}).get("artifact", {}).get("status") == "odbaceno")
+
+        # 7) rezim B, programski zadatak: izmenjeno resenje se ponovo pokrece nad test primerima
+        prog = db_exec("INSERT INTO exam_questions (subject_id, question_text, points, order_no) VALUES (%s, %s, 1, 0)",
+                       (subject, f"Izmisljeno: zbir dva broja {TAG}"))
+        created["questions"].append(prog)
+        for order_no, (inp, out) in enumerate([("2\n3", "5"), ("10\n-4", "6")], start=1):
+            db_exec("INSERT INTO exam_question_test_cases (question_id, input_data, expected_output, order_no) "
+                    "VALUES (%s, %s, %s, %s)", (prog, inp, out, order_no))
+        open_q = db_exec("INSERT INTO exam_questions (subject_id, question_text, points, order_no) VALUES (%s, %s, 1, 0)",
+                         (subject, f"Izmisljeno otvoreno pitanje {TAG}"))
+        created["questions"].append(open_q)
+
+        a7 = make_pending_mode_b(model, prompt, prog)
+        status, body = edit(a7, decider, json.dumps({"solution": SUM_ALT_OK, "explanation": "Izmenjeno."}), scores)
+        saved = db_all("SELECT status, edited_text FROM ai_generated_artifacts WHERE id = %s", (a7,))[0]
+        record("B: izmenjen kod tacan -> provera prolazi, upisano", "200 prihvaceno_izmena, novi kod",
+               f"{status} {saved['status']}, {'novi kod' if SUM_ALT_OK in (saved['edited_text'] or '') else saved['edited_text']}",
+               status == 200 and saved["status"] == "prihvaceno_izmena" and SUM_ALT_OK in (saved["edited_text"] or ""))
+
+        a8 = make_pending_mode_b(model, prompt, prog)
+        state_before = artifact_state(a8)
+        status, body = edit(a8, decider, json.dumps({"solution": SUM_WRONG, "explanation": "Izmenjeno."}), scores)
+        state_after = artifact_state(a8)
+        accuracy = db_all("SELECT r.accuracy_check_passed FROM ai_generated_artifacts a JOIN ai_generation_runs r "
+                          "ON r.id = a.generation_run_id WHERE a.id = %s", (a8,))[0]["accuracy_check_passed"]
+        record("B: izmenjen kod netacan -> 400, nista upisano", "400 'ne prolazi ... 1, 2', predlog/0 ocena, run i dalje 1",
+               f"{status} {body.get('error')!r}, {state_after}, run {accuracy}",
+               status == 400 and "ne prolazi" in (body.get("error") or "") and "1, 2" in body.get("error", "")
+               and state_after == state_before == ("predlog", 0) and accuracy == 1)
+
+        a9 = make_pending_mode_b(model, prompt, prog)
+        status, _ = edit(a9, decider, json.dumps({"solution": SUM_OK, "explanation": "Samo objasnjenje izmenjeno."}), scores)
+        record("B: resenje nepromenjeno (samo objasnjenje) -> 200", 200, status, status == 200)
+
+        a10 = make_pending_mode_b(model, prompt, prog)
+        status, body = edit(a10, decider, "obican tekst bez JSON-a", scores)
+        record("B: edited_text bez solution -> 400, nista upisano", "400, predlog",
+               f"{status}, {artifact_state(a10)[0]}", status == 400 and artifact_state(a10)[0] == "predlog")
+
+        a11 = make_pending_mode_b(model, prompt, open_q)
+        status, _ = edit(a11, decider, json.dumps({"solution": SUM_WRONG, "explanation": "Izmenjeno."}), scores)
+        record("B: otvoreno bez test primera -> izmena bez provere (kao ranije)", 200, status, status == 200)
     finally:
         cleanup()
     after = row_counts()
