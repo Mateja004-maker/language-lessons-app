@@ -164,6 +164,32 @@ class AnalyzeExperiment(unittest.TestCase):
         self.assertAlmostEqual(k["kapa"], 1.0)      # par nastavnik / prvi drugi ocenjivač se slaže
         self.assertLess(k["alfa"], 1.0)             # alfa vidi i trećeg ocenjivača
 
+    def test_accuracy_table_mode_b_only(self):
+        a_path = os.path.join(self.dir, "a.csv")
+        columns = ["artifact_id", "mode", "provider", "model_name", "status", "accuracy_check_passed"]
+        write(a_path, columns, [
+            {"artifact_id": i, "mode": mode, "provider": p, "model_name": f"{p}-m", "status": "predlog",
+             "accuracy_check_passed": acc}
+            for i, (mode, p, acc) in enumerate([("mode_b", "groq", 1), ("mode_b", "groq", 1), ("mode_b", "groq", 0),
+                                                ("mode_b", "groq", ""), ("mode_b", "gemini", ""),
+                                                ("mode_a", "groq", "")], start=1)])
+        with redirect_stdout(io.StringIO()):
+            ax.analyze(a_path, out_dir=self.out)
+        table = {r["model"]: r for r in ax.read_csv(os.path.join(self.out, "tabela_tacnost.csv"))}
+        self.assertEqual(set(table), {"groq/groq-m [mode_b]", "gemini/gemini-m [mode_b]"})  # mode_a se ne broji
+        groq = table["groq/groq-m [mode_b]"]
+        self.assertEqual((groq["predloga"], groq["prosla"], groq["nije_prosla"], groq["nije_izvrsena"]), ("4", "2", "1", "1"))
+        self.assertEqual(groq["stopa_tacnosti"], "0.667")   # 2 / (2 + 1), neizvršena nije u imeniocu
+        self.assertIsNone(table["gemini/gemini-m [mode_b]"]["stopa_tacnosti"])  # nijedna izvršena provera
+        with open(os.path.join(self.out, "izvestaj.md"), encoding="utf-8") as f:
+            self.assertIn("Mehanička provera tačnosti", f.read())
+
+    def test_no_accuracy_table_for_question_batch(self):
+        self.run_analyze([art(1), art(2)])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "tabela_tacnost.csv")))
+        with open(os.path.join(self.out, "izvestaj.md"), encoding="utf-8") as f:
+            self.assertNotIn("Mehanička provera", f.read())
+
     def test_outputs_and_cli(self):
         a_path = os.path.join(self.dir, "a.csv")
         write(a_path, ART_COLUMNS, [art(1), art(2, provider="gemini", rd="tesko", sd="srednje")])

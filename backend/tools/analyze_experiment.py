@@ -13,6 +13,8 @@ Po modelu (provajder/model [režim]):
     prosečno i medijansko vreme;
   - predlozi: odluke u %, razdaljina izmene, duplikati, raspodela težine i Bluma
     (model i nastavnik);
+  - mehanička provera tačnosti (samo objašnjenja, režim B; tabela_tacnost.csv):
+    prošla / nije prošla / nije izvršena i stopa = prošla / (prošla + nije prošla);
   - prosečne ocene po kriterijumu (nastavnik koji odlučuje, runda 1) i raspodela
     ocena po kriterijumu (koliko ocena 1, 2, 3, 4, 5);
   - saglasnost: težinska (kvadratna) Koenova kapa nastavnik vs. druga ocena po
@@ -124,6 +126,28 @@ def artifacts_table(artifacts):
             **{f"model_{b}": sum(a.get("model_bloom_level") == b for a in items) for b in BLOOM},
             **{f"nast_{b}": sum(a.get("reviewed_bloom_level") == b for a in items) for b in BLOOM},
         })
+    return columns, rows
+
+
+ACCURACY_MODE = "mode_b"  # mehanička provera (test primeri / izbor MC odgovora) postoji samo u režimu B objašnjenja
+
+
+def accuracy_table(artifacts):
+    """Mehanička provera tačnosti (objašnjenja, režim B) po modelu, iz kolone
+    accuracy_check_passed: 1 = prošla, 0 = nije prošla, prazno = nije izvršena
+    (npr. programski zadatak bez test primera). Stopa ne računa neizvršene."""
+    groups = defaultdict(list)
+    for a in artifacts:
+        if a.get("mode") == ACCURACY_MODE:
+            groups[group_key(a)].append(a)
+    columns = ["model", "predloga", "prosla", "nije_prosla", "nije_izvrsena", "stopa_tacnosti"]
+    rows = []
+    for key, items in sorted(groups.items()):
+        passed = sum(a.get("accuracy_check_passed") == "1" for a in items)
+        failed = sum(a.get("accuracy_check_passed") == "0" for a in items)
+        rows.append({"model": key, "predloga": len(items), "prosla": passed, "nije_prosla": failed,
+                     "nije_izvrsena": len(items) - passed - failed,
+                     "stopa_tacnosti": round(passed / (passed + failed), 3) if passed + failed else None})
     return columns, rows
 
 
@@ -312,6 +336,13 @@ def analyze(artifacts_path, runs_path=None, evaluations_path=None, out_dir="anal
     write_csv(os.path.join(out_dir, "tabela_predlozi.csv"), columns, rows)
     svg_stacked(os.path.join(out_dir, "grafikon_odluke.svg"), "Odluke nastavnika po modelu", rows, list(DECISIONS))
     report += ["## Predlozi i odluke", markdown(columns, rows), ""]
+
+    columns, rows = accuracy_table(artifacts)
+    if rows:  # samo serije objašnjenja u režimu B; za ostale se izlaz ne menja
+        write_csv(os.path.join(out_dir, "tabela_tacnost.csv"), columns, rows)
+        report += ["## Mehanička provera tačnosti (objašnjenja, režim B)",
+                   "Stopa tačnosti = prošla / (prošla + nije prošla); neizvršene provere nisu u imeniocu.",
+                   markdown(columns, rows), ""]
 
     columns, rows = scores_table(artifacts)
     write_csv(os.path.join(out_dir, "tabela_ocene.csv"), columns, rows)

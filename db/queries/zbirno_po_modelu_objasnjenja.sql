@@ -8,6 +8,11 @@
 --                        za njih ne postoji red u ai_generated_artifacts)
 --   pala_mehanicka_provera - rezim B: resenje modela nije proslo test primere
 --                        (accuracy_check_passed = 0); predlog ipak postoji
+--   prosla_mehanicka_provera - rezim B: resenje modela je proslo proveru (accuracy_check_passed = 1)
+--   nije_izvrsena      - rezim B: predlog postoji, ali provera nije izvrsena (accuracy_check_passed
+--                        NULL, npr. programski zadatak bez test primera). Stopa tacnosti =
+--                        prosla / (prosla + pala); isto racuna tools/analyze_experiment.py
+--                        (tabela_tacnost.csv). Ne mesati sa stopa_iz_prve, koja meri FORMAT odgovora.
 --   prosek_vreme_odziva_ms - prosecno response_time_ms
 --   stopa_iz_prve      - SUM(first_attempt_passed = 1) / broj_pokusaja (0..1); run-ovi bez
 --                        first_attempt_passed (NULL, pre upisa failure_type) racunaju se kao 0
@@ -45,6 +50,9 @@ per_model AS (
         COUNT(*)                              AS broj_pokusaja,
         SUM(runs.validation_passed = 0)       AS neuspeli_pokusaji,
         SUM(runs.accuracy_check_passed = 0)   AS pala_mehanicka_provera,
+        SUM(runs.accuracy_check_passed = 1)   AS prosla_mehanicka_provera,
+        SUM(runs.mode = 'mode_b' AND runs.validation_passed = 1 AND runs.accuracy_check_passed IS NULL)
+                                              AS nije_izvrsena,
         ROUND(AVG(runs.response_time_ms))     AS prosek_vreme_odziva_ms,
         ROUND(SUM(COALESCE(runs.first_attempt_passed = 1, 0)) / COUNT(*), 3) AS stopa_iz_prve,
         ROUND(SUM(COALESCE(runs.first_attempt_passed = 1, 0))
@@ -131,6 +139,8 @@ SELECT
     pm.broj_pokusaja,
     pm.neuspeli_pokusaji,
     pm.pala_mehanicka_provera,
+    pm.prosla_mehanicka_provera,
+    pm.nije_izvrsena,
     pm.prosek_vreme_odziva_ms,
     pm.stopa_iz_prve,
     pm.formalna_ispravnost_iz_prve,
