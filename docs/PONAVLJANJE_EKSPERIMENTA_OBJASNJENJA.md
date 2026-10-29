@@ -135,18 +135,24 @@ daje rubriku nastavnika, ali ne donosi odluku.
 Kada je ocenjivanje gotovo, ADMIN zatvara seriju kao za pitanja
 (`POST /api/evaluation-batches/<id>/close`).
 
-### 5. Mehanička validacija serije
+### 5. Mehanička validacija serije: `tools/validate_batch.py`
 
-`tools/validate_batch.py` je samo za pitanja. Predloge objašnjenja preskače (SKIP) i navodi ih u rezimeu.
+```bash
+python tools/validate_batch.py --batch 4
+```
 
-To je namerno:
+Za svaki sačuvan predlog objašnjenja alat ponovo pušta isti validator kao pri generisanju
+(`validate_explanation_payload`): `explanation` nije prazan, u režimu B postoji `solution`
+(programski zadatak ili otvoreno pitanje) ili `selected_option` (MC), a u režimu A nema
+`solution`. Režim je iz run-a, a vrsta pitanja iz verzije šablona (`mode_b_mc-*` je MC).
 
-- Format odgovora se proverava pri generisanju (`validate_explanation_payload`): `explanation`
-  nije prazan, u režimu B postoji `solution` ili `selected_option`, a u režimu A nema `solution`.
-  Predlog nastaje samo ako ta provera prođe, pa bi ponovno puštanje nad sačuvanim predlozima
-  uvek dalo PASS.
-- `accuracy_check_passed` je drugi nivo provere: proverava se sadržaj (da li je rešenje
-  tačno), ne format. Upisuje se po run-u pri generisanju i ulazi u analizu (odeljak 6).
+- Proverava se i doslednost: run sa predlogom mora imati `validation_passed = 1`, a run
+  objašnjenja najviše jedan predlog.
+- Run-ovi bez predloga (padovi) se samo navode u rezimeu i ne validiraju se.
+- Ispisuje PASS/FAIL po predlogu, a u rezimeu poseban red „predlozi objašnjenja“. Izlazni
+  kodovi su isti kao za pitanja (0 = sve PASS, 1 = bar jedan FAIL).
+- `accuracy_check_passed` se ovde **ne** računa ponovo: to je drugi nivo provere (sadržaj,
+  ne format), upisuje se po run-u pri generisanju i ulazi u analizu (odeljak 6).
 
 ### 6. Izvoz CSV i analiza
 
@@ -218,6 +224,6 @@ Upit grupiše po `ai_models.id`, a analiza po imenu modela. Ako postoji više re
 - [ ] Generisanje završeno: izveštaj pokretača nema preostalih mesta.
 - [ ] Sve odluke nastavnika donete; druga ocena na uzorku urađena.
 - [ ] Studentske ocene prikupljene (posle odobravanja objašnjenja).
-- [ ] Serija zatvorena.
+- [ ] Serija zatvorena; `validate_batch.py` za svaku seriju završava sa `UKUPNO: PASS`.
 - [ ] Sva tri CSV izvoza sačuvana uz rad, zajedno sa verzijom koda (git commit hash); `analyze_experiment.py` pokrenut, a `tabela_tacnost.csv` postoji za režim B.
 - [ ] `zbirno_po_modelu_objasnjenja.sql` pokrenut za seriju i rezultat sačuvan (studentski pokazatelji); kontrolne kolone se slažu sa `tabela_tacnost.csv`.

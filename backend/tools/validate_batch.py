@@ -13,12 +13,18 @@ prompta run-a:
   - skup (similar_question_set): question_validation.validate_set_item za svaki
     predlog, a za run i validate_set nad celim odgovorom (broj prihvaćenih
     stavki mora biti jednak broju sačuvanih predloga).
-Proverava se i doslednost: run sa predlogom mora imati validation_passed = 1.
-Predlozi koji nisu pitanja (npr. objašnjenja) se preskaču i navode u rezimeu.
+Za svaki predlog objašnjenja (artifact_type='explanation', Andrejev modul)
+ponovo pušta validate_explanation_payload iz app.py nad original_text, sa
+režimom run-a (mode_a / mode_b) i tipom pitanja kao pri generisanju (MC u
+režimu B iz verzije šablona mode_b_mc-*). Mehanička provera tačnosti
+(accuracy_check_passed) se ovde ne ponavlja - to je provera sadržaja, ne formata.
+Proverava se i doslednost: run sa predlogom mora imati validation_passed = 1,
+a run za jedno pitanje ili objašnjenje najviše jedan predlog.
+Predlozi drugih tipova se preskaču i navode u rezimeu.
 Model se ne ispisuje (alat ne sme da otkrije model tokom slepog ocenjivanja).
 
 Izlazni kod: 0 = sve PASS, 1 = bar jedan FAIL, 2 = serija ne postoji,
-3 = serija nema nijedan predlog pitanja.
+3 = serija nema nijedan predlog pitanja ni objašnjenja.
 """
 import argparse
 import json
@@ -29,12 +35,15 @@ BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BACKEND)
 
 # app pre ostalih modula: app.py ucitava backend/.env
-from app import get_db_connection  # noqa: E402
+from app import get_db_connection, validate_explanation_payload  # noqa: E402
+import explanation_prompts  # noqa: E402
 import prompt_templates  # noqa: E402
 import question_validation  # noqa: E402
 
 PURPOSE_SINGLE = prompt_templates.PURPOSE_SIMILAR_QUESTION
 PURPOSE_SET = prompt_templates.PURPOSE_SIMILAR_QUESTION_SET
+PURPOSE_EXPLANATION = explanation_prompts.PURPOSE_EXPLANATION
+EXPLAIN_MODES = ("mode_a", "mode_b")
 
 
 def _json(text):
@@ -54,8 +63,35 @@ def question_type_for(prompt_version, source_answer_count):
     return "mc" if source_answer_count else "open"
 
 
+def explanation_question_type(prompt_version, source_answer_count):
+    """Tip pitanja za validate_explanation_payload (bitan samo u režimu B): iz verzije
+    šablona, a za nepoznatu verziju iz izvora - kao resolve_explanation_source."""
+    version = prompt_version or ""
+    if version.startswith("mode_b_mc-"):
+        return "mc"
+    if version.startswith(("mode_b-", "mode_b_open-")):
+        return "open"
+    return "mc" if source_answer_count else "open"
+
+
+def validate_explanation_artifact(row):
+    """Predlog objašnjenja -> (ishod, [razlozi]), istim validatorom kao pri generisanju."""
+    if row["purpose"] != PURPOSE_EXPLANATION:
+        return "FAIL", [f"predlog objašnjenja iz run-a namene '{row['purpose']}'"]
+    if row["mode"] not in EXPLAIN_MODES:
+        return "FAIL", [f"nepoznat režim run-a: {row['mode']!r}"]
+    parsed = _json(row["original_text"])
+    if parsed is None:
+        return "FAIL", ["original_text nije validan JSON"]
+    error = validate_explanation_payload(
+        parsed, row["mode"], explanation_question_type(row["prompt_version"], row["source_answer_count"]))
+    return ("PASS", []) if error is None else ("FAIL", [error])
+
+
 def validate_artifact(row):
     """Jedan predlog -> (ishod 'PASS' | 'FAIL' | 'SKIP', [razlozi])."""
+    if row["artifact_type"] == "explanation":
+        return validate_explanation_artifact(row)
     if row["artifact_type"] != "question":
         return "SKIP", [f"tip predloga '{row['artifact_type']}' - nije pitanje"]
     parsed = _json(row["original_text"])
@@ -81,6 +117,8 @@ def validate_run(run, artifact_count):
         errors.append(f"run ima {artifact_count} predlog(a), a validation_passed = {run['validation_passed']}")
     if run["purpose"] == PURPOSE_SINGLE and artifact_count > 1:
         errors.append(f"run za jedno pitanje ima {artifact_count} predloga")
+    if run["purpose"] == PURPOSE_EXPLANATION and artifact_count > 1:
+        errors.append(f"run objašnjenja ima {artifact_count} predloga")
     if run["purpose"] == PURPOSE_SET and artifact_count:
         params = _json(run["params_used"]) or {}
         k = params.get("k")
@@ -108,14 +146,14 @@ def load(batch_id):
         if not cursor.fetchone():
             return False, [], []
         cursor.execute("""
-            SELECT r.id, r.purpose, r.params_used, r.parsed_result, r.validation_passed, r.source_question_id,
+            SELECT r.id, r.purpose, r.mode, r.params_used, r.parsed_result, r.validation_passed, r.source_question_id,
                    p.version AS prompt_version
             FROM ai_generation_runs r LEFT JOIN ai_prompts p ON p.id = r.prompt_id
             WHERE r.evaluation_batch_id = %s ORDER BY r.id
         """, (batch_id,))
         runs = cursor.fetchall()
         cursor.execute("""
-            SELECT a.id, a.artifact_type, a.status, a.original_text, r.id AS run_id, r.purpose,
+            SELECT a.id, a.artifact_type, a.status, a.original_text, r.id AS run_id, r.purpose, r.mode,
                    p.version AS prompt_version, r.source_question_id,
                    (SELECT COUNT(*) FROM exam_answers ea WHERE ea.question_id = r.source_question_id) AS answers,
                    EXISTS (SELECT 1 FROM exam_questions q WHERE q.id = r.source_question_id) AS source_exists
@@ -141,14 +179,20 @@ def validate_batch(batch_id, out=print):
         return 2
 
     counts = {"PASS": 0, "FAIL": 0, "SKIP": 0}
+    explanations = {"PASS": 0, "FAIL": 0}
     per_run = {}
     out(f"Serija {batch_id}: {len(runs)} run-ova, {len(artifacts)} predloga\n")
     for a in artifacts:
         outcome, errors = validate_artifact(a)
-        counts[outcome] += 1
-        if a["artifact_type"] == "question":
+        if a["artifact_type"] == "explanation":
+            explanations[outcome] += 1
+        else:
+            counts[outcome] += 1
+        if a["artifact_type"] in ("question", "explanation"):
             per_run[a["run_id"]] = per_run.get(a["run_id"], 0) + 1
         mode = {PURPOSE_SINGLE: "single", PURPOSE_SET: "set"}.get(a["purpose"], a["purpose"])
+        if a["artifact_type"] == "explanation" and a["mode"]:
+            mode = a["mode"]
         line = f"{outcome:4}  predlog #{a['id']:<6} run #{a['run_id']:<6} {mode:<7} {a['prompt_version'] or '?':<8} {a['status']}"
         out(line + ("" if not errors else "  - " + "; ".join(errors)))
 
@@ -163,15 +207,18 @@ def validate_batch(batch_id, out=print):
     questions = counts["PASS"] + counts["FAIL"]
     out("\nRezime:")
     out(f"  predlozi pitanja: {questions}  PASS: {counts['PASS']}  FAIL: {counts['FAIL']}")
+    explained = explanations["PASS"] + explanations["FAIL"]
+    if explained:
+        out(f"  predlozi objašnjenja: {explained}  PASS: {explanations['PASS']}  FAIL: {explanations['FAIL']}")
     out(f"  run-ovi sa nedoslednošću: {run_failures}")
     if counts["SKIP"]:
-        out(f"  preskočeno (nisu predlozi pitanja): {counts['SKIP']}")
+        out(f"  preskočeno (nisu predlozi pitanja ni objašnjenja): {counts['SKIP']}")
     if without_artifacts:
-        out(f"  run-ova bez predloga pitanja (pad ili objašnjenje): {without_artifacts} - nisu predlozi, ne validiraju se")
-    if not questions:
-        out("  Serija nema nijedan predlog pitanja - nema šta da se validira.")
+        out(f"  run-ova bez predloga pitanja ni objašnjenja (pad): {without_artifacts} - nisu predlozi, ne validiraju se")
+    if not questions and not explained:
+        out("  Serija nema nijedan predlog pitanja ni objašnjenja - nema šta da se validira.")
         return 3
-    ok = counts["FAIL"] == 0 and run_failures == 0
+    ok = counts["FAIL"] == 0 and explanations["FAIL"] == 0 and run_failures == 0
     out("  UKUPNO: " + ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
 
