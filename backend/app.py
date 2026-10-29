@@ -4602,7 +4602,9 @@ def generate_explanation_for_question(question_id, mode, provider, evaluation_ba
             accuracy_check_details,
             result.get("response_time_ms"),
             result.get("tokens_used"),
-            result.get("attempts", 0),
+            # retry_count = broj PONAVLJANJA; attempts broji sve HTTP pokusaje (1 = bez
+            # ponavljanja), a mistral ga ne vraca
+            max((result.get("attempts") or 1) - 1, 0),
             evaluation_batch_id,
         ),
     )

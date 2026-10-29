@@ -86,7 +86,11 @@ Kao u [PONAVLJANJE_EKSPERIMENTA.md](PONAVLJANJE_EKSPERIMENTA.md), odeljci 0, 1 i
   Upit ne sme da vrati nijedan red.
 - Za referentni skup režima A birajte pitanja sa poznatim rešenjem (`reference_solution` ili MC
   sa tačno jednim tačnim odgovorom). Ostala pokretač preskače.
-- Za režim B mehanička provera postoji samo za MC pitanja i programske zadatke sa test primerima.
+- Za režim B formalnog eksperimenta referentni skup sme da sadrži **samo MC pitanja i programske
+  zadatke sa test primerima**, jer samo za njih postoji mehanička provera tačnosti rešenja
+  (eliminacioni kriterijum). Otvorena pitanja bez test primera se ne uključuju: provera bi za
+  njih ostala „nije izvršena“, a ocena `tacnost_objasnjenja` ocenjuje objašnjenje, ne rešenje.
+  Takva pitanja i dalje mogu da se koriste u aplikaciji van eksperimenta.
 - Za svaki režim objašnjenja pravi se posebna serija, odvojena i od serija pitanja.
 
 ### 3. Generisanje: `tools/run_experiment.py --task explanation`

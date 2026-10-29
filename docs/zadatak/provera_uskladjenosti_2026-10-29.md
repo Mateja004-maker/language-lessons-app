@@ -77,6 +77,17 @@ niko nije proverio.
 1. **Visoka. Režim B, otvoreno pitanje bez test primera.** Rešenje se može odobriti i prikazati studentu bez ikakve provere tačnosti, što krši eliminacioni kriterijum. U istoj porodici je izmenjeno rešenje koje se ne proverava ponovo. Moguća rešenja:
    - (a) blokirati odobravanje kad je `accuracy_check_passed IS NULL` u Režimu B, osim uz izričitu nastavničku ocenu „tačnost rešenja“ (originalna Rupa 3, nova migracija);
    - (b) isključiti takva pitanja iz Režima B u eksperimentu i blokirati ih u UI-ju.
+
+   **Zatvoreno odlukom, ne kodom (2026-10-29): opcija (b) za formalni eksperiment.** Zadatak
+   (odeljak 5.2, stavka 1) traži da se tačnost rešenja „proverava mehanički gde god je moguće“,
+   a za otvoreno pitanje bez test primera mehanička provera nije moguća. Kriterijum
+   `tacnost_objasnjenja` nije zamena: ocenjuje objašnjenje, ne rešenje, i ne blokira odobravanje.
+   Zato referentni skup za Režim B formalnog eksperimenta (Faza 3) sme da sadrži **samo MC pitanja
+   i programske zadatke sa test primerima**, odnosno samo zadatke za koje je mehanička provera
+   moguća. Otvorena pitanja bez test primera ostaju dostupna u aplikaciji za običnu upotrebu
+   (Režim B uz nastavničku procenu pri pregledu), ali se ne koriste u formalnom poređenju modela.
+   Pravilo je zapisano u `docs/PONAVLJANJE_EKSPERIMENTA_OBJASNJENJA.md` (odeljak 0–2).
+   Sporedni deo nalaza (izmenjeno rešenje se ne proverava ponovo) ispravljen je kodom u `ddc20b3`.
 2. **Srednja. Referentni skup ne postoji.** Ima 1 programsko pitanje, `reference_sets` je prazna. To je preduslov za Fazu 3; MC pitanja (51) mogu da nose Režim B.
 3. **Srednja. Studentski pokazatelji i rizični slučajevi nisu u CSV procesu.** Dobijaju se samo iz SQL-a nad živom bazom, a nijedan pojedinačni predlog nije označen. Vodič 5.5 i Zadatak 6.2 traže da tabele potiču iz izvornih fajlova. Predlog: tabela studentskih ocena i rizika u `analyze_experiment.py` iz CSV-a `evaluations`.
 4. **Srednja ili niska. Nema PASS/FAIL skripte nad konačnim skupom objašnjenja.** Zadatak 8.1 i Vodič 8.2 je traže; provera postoji samo pri generisanju. Popravka je jeftina: grana za `purpose = 'explanation'` u `validate_batch.py` koja zove `validate_explanation_payload`.

@@ -245,6 +245,27 @@ def run():
         got = f"{status} polja={sorted(body)}" + (f" failure_type={body.get('failure_type')}" if status == 422 else "")
         record(name, f"{exp_status} {sorted(exp_keys)}", got + (f" | PALO: {'; '.join(failed)}" if failed else ""), not failed)
 
+    # retry_count = broj PONAVLJANJA (attempts - 1); provajder odgovara redom iz liste
+    rate_limit = FakeResponse(429, "rate limit")
+    for name, responses, exp_status, exp_attempts in (
+        ("retry_count: uspeh iz prve", [model_text(explanation)], 201, 1),
+        ("retry_count: 2 x 429 pa uspeh", [rate_limit, rate_limit, model_text(explanation)], 201, 3),
+        ("retry_count: 3 x 429 (odustao)", [rate_limit, rate_limit, rate_limit], 422, 3),
+    ):
+        queue = list(responses)
+        requests.post = lambda *args, **kwargs: queue.pop(0)
+        r = client.post(f"/api/questions/{q['mc']}/generate-explanation?mode=mode_a&provider=groq", headers=admin)
+        body = r.get_json() or {}
+        if body.get("generation_run_id"):
+            created["runs"].append(body["generation_run_id"])
+        if body.get("artifact_id"):
+            created["artifacts"].append(body["artifact_id"])
+        row = db_one("SELECT retry_count, JSON_EXTRACT(params_used, '$.attempts') AS attempts FROM ai_generation_runs "
+                     "WHERE id = %s", (body.get("generation_run_id"),)) or {}
+        expected = (exp_status, exp_attempts - 1, exp_attempts)
+        got = (r.status_code, row.get("retry_count"), int(row["attempts"]) if row.get("attempts") is not None else None)
+        record(name, f"status/retry_count/attempts = {expected}", str(got), got == expected and not queue)
+
 
 def print_table():
     head = ("Slucaj", "Ocekivano", "Dobijeno", "")
