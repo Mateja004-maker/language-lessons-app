@@ -1,4 +1,4 @@
-# Sistem za onlajn testiranje sa AI generisanjem pitanja
+# Sistem za onlajn testiranje sa AI generisanjem pitanja, rešenja i objašnjenja
 
 Web aplikacija za onlajn testiranje. Izvorno je napravljena za školu jezika, a sada je
 proširena za akademske predmete:
@@ -13,7 +13,9 @@ proširena za akademske predmete:
   status `predlog` → slepi pregled nastavnika → odluka (prihvaćeno / uz izmenu / odbačeno).
 - **Eksperiment:** poređenje modela (groq, gemini, openrouter) na referentnom skupu pitanja.
   Uključuje drugu ocenu, saglasnost ocenjivača (Koenova kapa, Kripendorfova alfa) i CSV izvoz.
-  Postupak je opisan u [docs/PONAVLJANJE_EKSPERIMENTA.md](docs/PONAVLJANJE_EKSPERIMENTA.md).
+  Postupak je opisan u [docs/PONAVLJANJE_EKSPERIMENTA.md](docs/PONAVLJANJE_EKSPERIMENTA.md), a za
+  objašnjenja (režimi A i B, mehanička provera tačnosti) u
+  [docs/PONAVLJANJE_EKSPERIMENTA_OBJASNJENJA.md](docs/PONAVLJANJE_EKSPERIMENTA_OBJASNJENJA.md).
 
 ## Struktura
 
@@ -96,7 +98,8 @@ MYSQL_USER=root
 MYSQL_PASSWORD=
 MYSQL_DATABASE=language_learning
 
-# AI provajderi (potrebni samo za generisanje; testovi ih ne koriste)
+# AI provajderi (potrebni za generisanje; testovi ne pozivaju prave modele, ali
+# verify_experiment_runner i verify_set_generation traže da su ključevi za groq, gemini i openrouter upisani)
 GROQ_API_KEY=<ključ>
 GEMINI_API_KEY=<ključ>
 OPENROUTER_API_KEY=<ključ>
@@ -163,7 +166,8 @@ broj redova isti kao pre.
 
 Baza mora da ima sve migracije **i** osnovne podatke: bar jednog ADMIN-a, predmet
 „Osnove programiranja“ sa nekoliko MC pitanja i jednim otvorenim pitanjem, pitanje iz
-drugog predmeta, modele i promptove (uključujući arhivirane `mc-v2` / `open-v2`). Na
+drugog predmeta, modele i promptove (uključujući arhivirane `mc-v2` / `open-v2` i bar jedan
+prompt objašnjenja). Na
 praznoj bazi zato koristite `tools/test_clean_db.py`.
 
 ```bash
@@ -180,6 +184,10 @@ python tests/verify_validate_batch.py
 python tests/verify_registration.py
 python tests/verify_lessons_subject.py
 python tests/verify_subjects_crud.py
+python tests/verify_generate_explanation.py
+python tests/verify_explanation_review.py
+python tests/verify_second_rating_explanations.py
+python tests/verify_experiment_runner_explanations.py
 ```
 
 Svaki skript na kraju ispisuje zbir (`Ukupno: N, palo: 0` ili `N/N OK`). Ako nešto

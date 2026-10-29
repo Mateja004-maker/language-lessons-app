@@ -4,7 +4,8 @@
 Web aplikacija za onlajn testiranje, izvorno napravljena za školu jezika,
 proširena za akademske predmete i AI funkcionalnosti: generisanje sličnih
 pitanja (Anđa) i generisanje rešenja/objašnjenja (Andrej). Pregled za ljude je
-u `README.md`, ponavljanje eksperimenta u `docs/PONAVLJANJE_EKSPERIMENTA.md`.
+u `README.md`, ponavljanje eksperimenta u `docs/PONAVLJANJE_EKSPERIMENTA.md` (pitanja)
+i `docs/PONAVLJANJE_EKSPERIMENTA_OBJASNJENJA.md` (objašnjenja).
 
 ## Tehnologije
 - Frontend: Vue 3 + Vite + Bootstrap (folder `frontend/`); `/api` se kroz Vite proxy prosleđuje na 127.0.0.1:5000
@@ -57,7 +58,8 @@ u `README.md`, ponavljanje eksperimenta u `docs/PONAVLJANJE_EKSPERIMENTA.md`.
 - Promptovi su fajlovi u `backend/prompts/`, a verzija je u prvom redu `{# version: … #}`.
   - Aktivni: `mc-v3`, `open-v3` (jedno pitanje) i `set-v1` (skup pitanja).
   - Arhiva: `*_v2.txt`.
-  - Andrej: `explanation_mode_a_v1`, `explanation_mode_b_v1`.
+  - Andrej: `explanation_mode_a_v1`, `explanation_mode_b_v1` (programski zadatak sa test primerima),
+    `explanation_mode_b_mc_v1` (MC u režimu B) i `explanation_mode_b_open_v1` (otvoreno pitanje bez test primera).
 - Nijedan generisan sadržaj ne ide automatski studentima: status `predlog` → slepi
   pregled nastavnika → `prihvaceno` / `prihvaceno_izmena` / `odbaceno`. Odobreno pitanje
   ide u banku, ne direktno u test.
@@ -65,12 +67,16 @@ u `README.md`, ponavljanje eksperimenta u `docs/PONAVLJANJE_EKSPERIMENTA.md`.
   Nastavnik bira težinu i Blumov nivo PRE nego što vidi oznake modela.
 - Eksperiment:
   - referentni skup → evaluaciona serija → `backend/tools/run_experiment.py`
-    (režimi `single` / `set`, `--dry-run`);
+    (režimi `single` / `set`, `--dry-run`; za objašnjenja `--task explanation --explain-mode mode_a|mode_b`);
   - prvi i drugi ocenjivač (`evaluation_round` 1/2, `ai_label_evaluations`);
   - zatvaranje serije;
   - CSV izvoz `GET /api/evaluation-batches/<id>/export.csv` (ADMIN; korisnici samo kao HMAC heš);
-  - analiza `backend/tools/analyze_experiment.py` (kapa, alfa, SVG grafikoni, samo stdlib).
-- Tačku F (`retry_count` / `response_model` / `model_version`) radi Andrejeva grana. Ne dirati je ovde.
+  - analiza `backend/tools/analyze_experiment.py` (kapa, alfa, SVG grafikoni, samo stdlib;
+    `tabela_tacnost.csv` za Režim B objašnjenja).
+- Tačka F (`retry_count` / `response_model` / `model_version`): za objašnjenja je urađena
+  (`model_version` iz `EXPLANATION_MODEL_VERSIONS`, `retry_count` = broj ponavljanja, `attempts` − 1).
+  Za pitanja je `retry_count` i dalje 0, a `model_version` NULL (pokušaji su u `params_used.attempts`).
+  Kolona `response_model` ne postoji.
 - Probni redovi (probe v3, gemini i set) su zabeleženi u `backend/probe_v3_ids.json`
   (gitignore). Ne brisati ih bez dogovora.
 
