@@ -1,0 +1,74 @@
+{
+  "subject": {
+    "name": "Web programiranje",
+    "code": "web"
+  },
+  "areas": [
+    "HTML i CSS",
+    "Serverska obrada (Python)"
+  ],
+  "questions": [
+    {
+      "key": "html-naslov",
+      "area": "HTML i CSS",
+      "question_text": "Koji HTML element označava naslov najvišeg nivoa na stranici?",
+      "difficulty": "lako",
+      "bloom_level": "pamcenje",
+      "answers": [
+        {
+          "answer_text": "<h1>",
+          "is_correct": true
+        },
+        {
+          "answer_text": "<head>",
+          "is_correct": false
+        },
+        {
+          "answer_text": "<title>",
+          "is_correct": false
+        },
+        {
+          "answer_text": "<header>",
+          "is_correct": false
+        }
+      ]
+    },
+    {
+      "key": "css-kaskada",
+      "area": "HTML i CSS",
+      "question_text": "Objasnite kako CSS određuje koje pravilo važi kada se više pravila odnosi na isti element (kaskada i specifičnost).",
+      "difficulty": "srednje",
+      "bloom_level": "razumevanje"
+    },
+    {
+      "key": "query-string",
+      "area": "Serverska obrada (Python)",
+      "question_text": "Napišite Python program koji sa standardnog ulaza učitava query string iz URL-a (na primer a=1&b=2) i ispisuje broj parametara. Prazne delove između znakova & ne treba brojati.",
+      "difficulty": "lako",
+      "bloom_level": "primena",
+      "reference_solution": "s = input().strip()\nprint(len([p for p in s.split('&') if p]))",
+      "test_cases": [
+        {
+          "input_data": "a=1&b=2\n",
+          "expected_output": "2"
+        },
+        {
+          "input_data": "x=5\n",
+          "expected_output": "1"
+        },
+        {
+          "input_data": "a=1&&b=2&\n",
+          "expected_output": "2"
+        }
+      ]
+    }
+  ],
+  "reference_set": {
+    "name": "Web programiranje - primer",
+    "questions": [
+      "html-naslov",
+      "css-kaskada",
+      "query-string"
+    ]
+  }
+}

@@ -79,6 +79,30 @@ Lekcija pripada predmetu (`lessons.subject_id`) i može da ima oblast tog predme
 (`lessons.area_id`, neobavezno). Student i nastavnik vide samo lekcije svojih predmeta, a
 nastavnik dodaje, menja i briše samo lekcije predmeta koje predaje.
 
+### Uvoz skupa pitanja iz JSON fajla
+
+Programska pitanja (`reference_solution` i test primeri) ne mogu da se unesu kroz aplikaciju,
+pa se ceo skup pitanja može uvesti alatom (iz `backend/`):
+
+```bash
+python tools/import_question_set.py tools/question_set_example.json          # probni rad, ništa ne upisuje
+python tools/import_question_set.py tools/question_set_example.json --apply  # upis (prvo backup baze)
+```
+
+Fajl sadrži predmet (`name`, `code`), oblasti, pitanja i, opciono, referentni skup (ime i
+`key` vrednosti pitanja). Pitanje ima oblast, tekst, `difficulty` (`lako`/`srednje`/`tesko`),
+opciono `bloom_level` i `points`. Uz to ima ili `answers` sa `is_correct` (MC), ili
+`reference_solution` sa `test_cases` (programsko), ili samo tekst (otvoreno). Primer je
+`backend/tools/question_set_example.json`.
+
+- Predmet (po kodu) i oblasti (po imenu) se prave ako ne postoje. Pitanja idu u banku
+  (`exam_id` NULL).
+- Pitanje sa istim tekstom u istom predmetu se preskače, pa je ponovno pokretanje bezbedno.
+  Isto važi za referentni skup sa istim imenom.
+- `reference_solution` se pre upisa pokreće nad svim test primerima (`code_executor`, isto kao
+  mehanička provera objašnjenja). Ako neki primer padne, uvoz se prekida.
+- Upis je u jednoj transakciji. Nastavnike predmetu dodeljuje admin u aplikaciji.
+
 ## 2. Backend
 
 ```bash
@@ -192,3 +216,6 @@ python tests/verify_experiment_runner_explanations.py
 
 Svaki skript na kraju ispisuje zbir (`Ukupno: N, palo: 0` ili `N/N OK`). Ako nešto
 padne, izlazni kod je različit od 0.
+
+`verify_import_question_set.py` upisuje kroz `--apply`, pa radi samo nad probnom bazom
+(`python tools/test_clean_db.py --only verify_import_question_set`). Nad bazom iz `.env` se preskače.

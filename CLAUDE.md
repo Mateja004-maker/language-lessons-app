@@ -104,3 +104,8 @@ i `docs/PONAVLJANJE_EKSPERIMENTA_OBJASNJENJA.md` (objašnjenja).
   inače `cd backend && python app.py` sistemskim Python-om
 - Frontend: `cd frontend && npm run dev` (build: `npm run build`)
 - Testovi: vidi `README.md`, odeljak 4
+- Uvoz skupa pitanja (predmet, oblasti, MC/otvorena/programska pitanja, referentni skup) iz JSON-a:
+  `python tools/import_question_set.py <fajl.json>` je probni rad, a upis tek uz `--apply` (prvo backup).
+  Idempotentno (isti tekst u predmetu se preskače), a `reference_solution` mora da prođe sve test primere.
+  Primer: `backend/tools/question_set_example.json`; uputstvo u `README.md` (odeljak 1).
+  `--apply` nad pravom bazom samo uz potvrdu korisnika.
