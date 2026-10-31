@@ -77,6 +77,19 @@ export function parseAccuracyDetails(text) {
   return { message: text }
 }
 
+// Rucna ocena tacnosti resenja (rezim B bez mehanicke provere) - isti kljuc kao
+// explanation_review.MANUAL_ACCURACY_KEY; "netacno" dozvoljava samo odbacivanje.
+export const MANUAL_ACCURACY_KEY = 'tacnost_resenja'
+
+// Natpis opcije u rubrici: binarni kriterijum (skala od dve vrednosti, npr.
+// tacnost_resenja 0-1) kao netacno/tacno, ostali (1-5) kao broj.
+export function scoreOptionLabel(criterion, value) {
+  if (criterion.scale_max - criterion.scale_min === 1) {
+    return value === criterion.scale_min ? 'netačno' : 'tačno'
+  }
+  return String(value)
+}
+
 // Backend salje datum kao "Mon, 28 Sep 2026 17:35:44 GMT", ali je u bazi
 // lokalno vreme bez zone - zato UTC getteri, da se prikaze tacno vreme iz baze.
 export function formatDbDate(value) {

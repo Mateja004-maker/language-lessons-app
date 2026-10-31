@@ -59,7 +59,7 @@ i `docs/PONAVLJANJE_EKSPERIMENTA_OBJASNJENJA.md` (objašnjenja).
 - Promptovi su fajlovi u `backend/prompts/`, a verzija je u prvom redu `{# version: … #}`.
   - Aktivni: `mc-v3`, `open-v3` (jedno pitanje) i `set-v1` (skup pitanja).
   - Arhiva: `*_v2.txt`.
-  - Andrej: `explanation_mode_a_v1`, `explanation_mode_b_v1` (programski zadatak sa test primerima),
+  - Andrej: `explanation_mode_a_v2` (arhiva `_v1`), `explanation_mode_b_v1` (programski zadatak sa test primerima),
     `explanation_mode_b_mc_v1` (MC u režimu B) i `explanation_mode_b_open_v1` (otvoreno pitanje bez test primera).
 - Nijedan generisan sadržaj ne ide automatski studentima: status `predlog` → slepi
   pregled nastavnika → `prihvaceno` / `prihvaceno_izmena` / `odbaceno`. Odobreno pitanje

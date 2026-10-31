@@ -284,7 +284,7 @@ def run(fake):
            " | ".join(g.replace("Protokol bi bio narušen:\n  - ", "")[:45] for g in got),
            "u režimu mode_a - serija ne sme da meša režime" in got[0]
            and "drugog zadatka (similar_question)" in got[1]
-           and "aktivan je mode_a-v1" in got[2])
+           and "aktivan je mode_a-v2" in got[2])
 
 
 def print_table():

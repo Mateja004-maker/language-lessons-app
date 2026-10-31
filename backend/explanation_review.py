@@ -32,6 +32,24 @@ class ReviewValidationError(Exception):
 
 VALID_ACTIONS = ("approve", "edit", "reject")
 
+# Rucna ocena tacnosti resenja (tacno/netacno, skala 0-1) - samo za rezim B kad
+# mehanicka provera nije bila moguca (accuracy_check_passed IS NULL, tj. otvoreno
+# pitanje bez test primera). Poseban applies_to, isti obrazac kao 'question_mc'
+# u get_applicable_rubric_definitions za pitanja.
+RUBRIC_APPLIES_TO_EXPLANATION = "explanation"
+RUBRIC_APPLIES_TO_MANUAL_ACCURACY = "explanation_open_b"
+MANUAL_ACCURACY_KEY = "tacnost_resenja"
+
+
+def teacher_rubric_applies_to(mode, accuracy_check_passed):
+    """applies_to vrednosti TEACHER kriterijuma za predlog objasnjenja (odluka,
+    detalj i druga ocena): uvek opsti kriterijumi objasnjenja, a tacnost_resenja
+    samo za rezim B bez mehanicke provere."""
+    values = [RUBRIC_APPLIES_TO_EXPLANATION]
+    if mode == "mode_b" and accuracy_check_passed is None:
+        values.append(RUBRIC_APPLIES_TO_MANUAL_ACCURACY)
+    return values
+
 _STATUS_BY_ACTION = {
     "approve": "prihvaceno",
     "edit": "prihvaceno_izmena",
@@ -101,7 +119,7 @@ def review_explanation_artifact(
 
     scores: lista {"dimension_key": str, "score": int, "comment": str|None}.
     Obavezna za action in ("approve", "edit") - mora pokrivati TACNO sve
-    TEACHER dimenzije (applies_to='explanation'), bez viska/manjka i bez
+    TEACHER dimenzije (teacher_rubric_applies_to), bez viska/manjka i bez
     duplikata. Opciona za action='reject' (validira se ako je prosledjena,
     ali se ne zahteva potpunost - nema smisla ocenjivati kvalitet sadrzaja
     koji se u celini odbacuje).
@@ -116,6 +134,10 @@ def review_explanation_artifact(
     Isto pravilo vazi i za izmenjeno resenje: kod 'edit' u rezimu B, za
     programski zadatak (ima test primere), izmenjen kod se ponovo pokrece nad
     test primerima (_recheck_edited_solution) i izmena se odbija ako ne prodje.
+
+    Kad mehanicka provera nije bila moguca (rezim B, accuracy_check_passed IS
+    NULL), nastavnik rucno ocenjuje tacnost_resenja; ocena "netacno" (scale_min)
+    ima isti efekat kao accuracy_check_passed == 0 - samo 'reject'.
 
     Vraca dict {"artifact_id", "new_status", "evaluation_ids"} pri uspehu.
     Baca ArtifactNotFoundError / ArtifactStateError / ReviewValidationError
@@ -187,12 +209,14 @@ def review_explanation_artifact(
             "rejection_reason je obavezan za action='reject'"
         )
 
+    applies_to = teacher_rubric_applies_to(artifact["mode"], artifact["accuracy_check_passed"])
     cursor.execute(
-        """
+        f"""
         SELECT id, dimension_key, scale_min, scale_max
         FROM ai_rubric_definitions
-        WHERE applies_to = 'explanation' AND evaluator_role = 'TEACHER'
-        """
+        WHERE applies_to IN ({", ".join(["%s"] * len(applies_to))}) AND evaluator_role = 'TEACHER'
+        """,
+        tuple(applies_to),
     )
     valid_dims = {row["dimension_key"]: row for row in cursor.fetchall()}
 
@@ -226,6 +250,19 @@ def review_explanation_artifact(
                 "Nedostaju ocene za TEACHER dimenzije: "
                 + ", ".join(sorted(missing))
             )
+
+    # rucna tacnost resenja: isto eliminatorno pravilo kao accuracy_check_passed == 0
+    # iznad, ali tek ovde jer je ocena deo scores (validirana u petlji iznad)
+    manual = valid_dims.get(MANUAL_ACCURACY_KEY)
+    if action in ("approve", "edit") and manual is not None and any(
+            item["dimension_key"] == MANUAL_ACCURACY_KEY and item["score"] == manual["scale_min"]
+            for item in scores):
+        cursor.close()
+        raise ReviewValidationError(
+            "Ne moze se odobriti niti izmeniti - tacnost resenja je ocenjena kao "
+            "netacna. Tacnost resenja je eliminatoran kriterijum; jedina dozvoljena "
+            "akcija je 'reject'."
+        )
 
     # poslednje pre upisa: pokretanje koda je najskuplja provera
     if action == "edit" and artifact["mode"] == "mode_b":

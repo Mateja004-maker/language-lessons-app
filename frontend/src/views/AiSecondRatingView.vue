@@ -3,7 +3,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSecondRatingArtifact, submitSecondRating } from '@/services/api'
-import { parseAccuracyDetails, parseProposal } from '@/services/explanationHelpers'
+import { parseAccuracyDetails, parseProposal, scoreOptionLabel } from '@/services/explanationHelpers'
 
 // Režim "samo ocena": ista rubrika kao pri pregledu, bez dugmadi za odluku.
 // Ruta ne vraća model, status/odluku, izmenu ni tuđe ocene.
@@ -238,7 +238,7 @@ onMounted(load)
                        :checked="scores[criterion.id] === criterion.scale_min + n - 1"
                        @change="scores[criterion.id] = criterion.scale_min + n - 1" />
                 <label class="btn btn-outline-primary" :for="`sr-${criterion.id}-${criterion.scale_min + n - 1}`">
-                  {{ criterion.scale_min + n - 1 }}
+                  {{ scoreOptionLabel(criterion, criterion.scale_min + n - 1) }}
                 </label>
               </template>
             </div>

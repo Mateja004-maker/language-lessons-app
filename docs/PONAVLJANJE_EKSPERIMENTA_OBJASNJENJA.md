@@ -38,7 +38,7 @@ vraća naziv ni verziju modela iz sirovog odgovora.
 
 | Režim | Vrsta pitanja | Prompt | Fajl |
 |-------|---------------|--------|------|
-| A (poznato rešenje → objašnjenje) | sve | `mode_a-v1` | `explanation_mode_a_v1.txt` |
+| A (poznato rešenje → objašnjenje) | sve | `mode_a-v2` | `explanation_mode_a_v2.txt` |
 | B (model sam rešava) | programski zadatak sa test primerima | `mode_b-v1` | `explanation_mode_b_v1.txt` |
 | B | višestruki izbor (MC) | `mode_b_mc-v1` | `explanation_mode_b_mc_v1.txt` |
 | B | otvoreno pitanje bez test primera | `mode_b_open-v1` | `explanation_mode_b_open_v1.txt` |
@@ -91,6 +91,9 @@ Kao u [PONAVLJANJE_EKSPERIMENTA.md](PONAVLJANJE_EKSPERIMENTA.md), odeljci 0, 1 i
   (eliminacioni kriterijum). Otvorena pitanja bez test primera se ne uključuju: provera bi za
   njih ostala „nije izvršena“, a ocena `tacnost_objasnjenja` ocenjuje objašnjenje, ne rešenje.
   Takva pitanja i dalje mogu da se koriste u aplikaciji van eksperimenta.
+  Za njih sada postoji ručna ocena `tacnost_resenja` (tačno/netačno, vidi ispod), ali je
+  `analyze_experiment.py` još ne izdvaja; pre nego što uđu u formalni eksperiment, analizu
+  treba dopuniti (dogovor sa Anđom).
 - Za svaki režim objašnjenja pravi se posebna serija, odvojena i od serija pitanja.
 
 ### 3. Generisanje: `tools/run_experiment.py --task explanation`
@@ -122,6 +125,9 @@ Svaki predlog dobija status `predlog`. Studenti ga ne vide dok ga nastavnik ne o
 - model je sakriven dok je predlog u statusu `predlog` (isto pravilo slepog pregleda kao kod pitanja);
 - ocenjuje rubriku 1–5: tačnost objašnjenja, vernost (faithfulness), potpunost, pedagoška
   vrednost, jezička ispravnost;
+- u režimu B bez mehaničke provere (`accuracy_check_passed` prazno, npr. otvoreno pitanje bez
+  test primera) ocenjuje i `tacnost_resenja`: 0 = netačno, 1 = tačno. Ocena „netačno“ dozvoljava
+  samo odbacivanje, kao neuspela mehanička provera. Drugi ocenjivač daje istu ocenu, bez odluke;
 - donosi odluku: prihvaćeno / prihvaćeno uz izmenu / odbačeno;
 - objašnjenja nemaju oznake težine i Blumovog nivoa ni proveru duplikata.
 
@@ -169,7 +175,8 @@ Izvoz (tri CSV fajla) i pokretanje `tools/analyze_experiment.py` isti su kao u
 - `accuracy_check_passed`: 1 / 0 / prazno (nije izvršena), samo u režimu B;
 - `solution_source`: odakle je poznato rešenje u režimu A (`reference_solution` ili `mc_correct_answer`);
 - `r1_*` i `r2_*` su kriterijumi nastavnika za objašnjenja (`tacnost_objasnjenja`, `vernost`,
-  `potpunost`, `pedagoska_vrednost`, `jezicka_ispravnost`);
+  `potpunost`, `pedagoska_vrednost`, `jezicka_ispravnost`), a za režim B bez mehaničke provere
+  i `tacnost_resenja` (0/1; za ostale predloge prazno);
 - kolone težine i Blumovog nivoa (`model_*`, `reviewed_*`, `second_*`), `edit_distance*` i
   kolone duplikata su prazne.
 

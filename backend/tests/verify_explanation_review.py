@@ -2,7 +2,8 @@
 - isti korisnik ne sme da bude i drugi ocenjivac i onaj koji odlucuje (explanation_review);
 - detalj i odluka samo za nastavnika predmeta izvornog pitanja (ADMIN bez ogranicenja);
 - odluka iz otvorene serije sakrivena od nastavnika koji predlog nije ocenio;
-- izmena resenja u rezimu B (programski zadatak) se ponovo proverava nad test primerima.
+- izmena resenja u rezimu B (programski zadatak) se ponovo proverava nad test primerima;
+- rucna tacnost_resenja (0/1) samo za rezim B bez mehanicke provere; "netacno" -> samo reject.
 
 Pokretanje (iz foldera backend/):
     python tests/verify_explanation_review.py
@@ -25,11 +26,12 @@ from flask_jwt_extended import create_access_token  # noqa: E402
 import explanation_review  # noqa: E402
 
 COUNT_TABLES = ("ai_generated_artifacts", "ai_generation_runs", "ai_evaluations", "users",
-                "exam_questions", "exam_question_test_cases", "teacher_subjects", "evaluation_batches")
+                "exam_questions", "exam_question_test_cases", "teacher_subjects", "evaluation_batches",
+                "ai_rubric_definitions")
 TAG = uuid.uuid4().hex[:6]
 
 results = []
-created = {"users": [], "runs": [], "artifacts": [], "questions": [], "batches": []}
+created = {"users": [], "runs": [], "artifacts": [], "questions": [], "batches": [], "rubric": []}
 client = app.test_client()
 
 
@@ -110,6 +112,44 @@ def make_pending_mode_b(model_id, prompt_id, question_id, solution=SUM_OK):
     return aid
 
 
+def make_pending_open_b(model_id, prompt_id, question_id):
+    """Predlog rezima B bez mehanicke provere (otvoreno pitanje bez test primera: accuracy_check_passed NULL)."""
+    rid = db_exec("""
+        INSERT INTO ai_generation_runs (model_id, prompt_id, purpose, mode, source_question_id, params_used,
+               validation_passed, accuracy_check_passed, accuracy_check_details)
+        VALUES (%s, %s, 'explanation', 'mode_b', %s, %s, 1, NULL, 'Nema definisanih test primera')
+    """, (model_id, prompt_id, question_id, json.dumps({"attempts": 1})))
+    created["runs"].append(rid)
+    aid = db_exec("INSERT INTO ai_generated_artifacts (generation_run_id, artifact_type, status, original_text) "
+                  "VALUES (%s, 'explanation', 'predlog', %s)",
+                  (rid, json.dumps({"solution": "Promenljiva je imenovana vrednost.", "explanation": f"Izmisljeno {TAG}"})))
+    created["artifacts"].append(aid)
+    return aid
+
+
+def ensure_manual_accuracy_dim():
+    """Kriterijum tacnost_resenja (reference_data.sql / migration_manual_solution_accuracy.sql);
+    na bazi bez te migracije se upisuje privremeno i brise u cleanup()."""
+    rows = db_all("SELECT id FROM ai_rubric_definitions "
+                  "WHERE applies_to = 'explanation_open_b' AND dimension_key = 'tacnost_resenja'")
+    if rows:
+        return rows[0]["id"]
+    rid = db_exec("INSERT INTO ai_rubric_definitions (applies_to, dimension_key, dimension_label, scale_min, scale_max, "
+                  "evaluator_role) VALUES ('explanation_open_b', 'tacnost_resenja', 'Tačnost rešenja (tačno/netačno)', 0, 1, 'TEACHER')")
+    created["rubric"].append(rid)
+    return rid
+
+
+def review(aid, user_id, payload):
+    resp = client.post(f"/api/ai-artifacts/explanation/{aid}/review", headers=headers(user_id, "TEACHER"), json=payload)
+    return resp.status_code, (resp.get_json() or {})
+
+
+def detail_rubric(aid, user_id):
+    resp = client.get(f"/api/ai-artifacts/explanation/{aid}", headers=headers(user_id, "TEACHER"))
+    return (resp.get_json() or {}).get("rubric_definitions") or []
+
+
 def edit(aid, user_id, edited_text, scores):
     resp = client.post(f"/api/ai-artifacts/explanation/{aid}/review", headers=headers(user_id, "TEACHER"),
                        json={"action": "edit", "edited_text": edited_text, "scores": scores})
@@ -140,6 +180,8 @@ def cleanup():
         db_exec(f"DELETE FROM evaluation_batches WHERE id IN ({ph(created['batches'])})", created["batches"])
     if created["questions"]:
         db_exec(f"DELETE FROM exam_questions WHERE id IN ({ph(created['questions'])})", created["questions"])
+    if created["rubric"]:
+        db_exec(f"DELETE FROM ai_rubric_definitions WHERE id IN ({ph(created['rubric'])})", created["rubric"])
     if created["users"]:
         # teacher_subjects se brise kaskadno (fk_ts_teacher ON DELETE CASCADE)
         db_exec(f"DELETE FROM users WHERE id IN ({ph(created['users'])})", created["users"])
@@ -361,6 +403,68 @@ def main():
         a11 = make_pending_mode_b(model, prompt, open_q)
         status, _ = edit(a11, decider, json.dumps({"solution": SUM_WRONG, "explanation": "Izmenjeno."}), scores)
         record("B: otvoreno bez test primera -> izmena bez provere (kao ranije)", 200, status, status == 200)
+
+        # 8) rucna tacnost_resenja: samo rezim B bez mehanicke provere (accuracy_check_passed NULL)
+        ensure_manual_accuracy_dim()
+        mc_q = db_exec("INSERT INTO exam_questions (subject_id, question_text, points, order_no) VALUES (%s, %s, 1, 0)",
+                       (subject, f"Izmisljeno MC {TAG}"))
+        created["questions"].append(mc_q)
+        mc_run = db_exec("""INSERT INTO ai_generation_runs (model_id, prompt_id, purpose, mode, source_question_id,
+                                   params_used, validation_passed, accuracy_check_passed)
+                            VALUES (%s, %s, 'explanation', 'mode_b', %s, %s, 1, 1)""",
+                         (model, prompt, mc_q, json.dumps({"attempts": 1})))
+        created["runs"].append(mc_run)
+        a_mc = db_exec("INSERT INTO ai_generated_artifacts (generation_run_id, artifact_type, status, original_text) "
+                       "VALUES (%s, 'explanation', 'predlog', %s)",
+                       (mc_run, json.dumps({"selected_option": 1, "explanation": f"Izmisljeno {TAG}"})))
+        created["artifacts"].append(a_mc)
+        base_keys = sorted(d["dimension_key"] for d in dims)
+        manual_keys = sorted(base_keys + ["tacnost_resenja"])
+        a_open = make_pending_open_b(model, prompt, open_q)
+        got = {name: sorted(c["dimension_key"] for c in detail_rubric(aid, decider)) for name, aid in (
+            ("B otvoreno (NULL)", a_open), ("B programsko (1)", make_pending_mode_b(model, prompt, prog)),
+            ("B MC (1)", a_mc), ("A", make_pending_explanation(model, prompt, question)))}
+        expected = {"B otvoreno (NULL)": manual_keys, "B programsko (1)": base_keys, "B MC (1)": base_keys, "A": base_keys}
+        record("detalj: tacnost_resenja samo za B bez mehanicke provere",
+               "B otvoreno: 6 kriterijuma, ostali 5", {k: len(v) for k, v in got.items()}, got == expected)
+        crit = next((c for c in detail_rubric(a_open, decider) if c["dimension_key"] == "tacnost_resenja"), {})
+        record("detalj: tacnost_resenja je binarna (0-1)", "0-1", f"{crit.get('scale_min')}-{crit.get('scale_max')}",
+               (crit.get("scale_min"), crit.get("scale_max")) == (0, 1))
+
+        wrong = scores + [{"dimension_key": "tacnost_resenja", "score": 0}]
+        right = scores + [{"dimension_key": "tacnost_resenja", "score": 1}]
+        status, body = review(a_open, decider, {"action": "approve", "scores": wrong})
+        record("B bez provere, 'netacno' -> approve 400, nista upisano", "400 'netacna', predlog/0",
+               f"{status} {body.get('error', '')[:60]!r}, {artifact_state(a_open)}",
+               status == 400 and "netacna" in body.get("error", "") and artifact_state(a_open) == ("predlog", 0))
+        status, body = edit(a_open, decider, json.dumps({"solution": "Ispravljeno.", "explanation": "Izmenjeno."}), wrong)
+        record("B bez provere, 'netacno' -> edit 400, nista upisano", "400 'netacna', predlog/0",
+               f"{status}, {artifact_state(a_open)}",
+               status == 400 and "netacna" in body.get("error", "") and artifact_state(a_open) == ("predlog", 0))
+        status, body = review(a_open, decider, {"action": "approve", "scores": scores})
+        record("B bez provere, bez tacnost_resenja -> 400 (nedostaje)", "400 'tacnost_resenja'",
+               f"{status} {body.get('error')!r}", status == 400 and "tacnost_resenja" in body.get("error", ""))
+        status, body = review(a_open, decider, {"action": "approve",
+                                                "scores": scores + [{"dimension_key": "tacnost_resenja", "score": 2}]})
+        record("B bez provere, tacnost_resenja = 2 -> 400 (van skale)", 400, status, status == 400)
+        status, _ = review(a_open, decider, {"action": "reject", "rejection_reason": "netacno resenje", "scores": wrong})
+        record("B bez provere, 'netacno' -> reject 200, 6 ocena", "200, odbaceno/6",
+               f"{status}, {artifact_state(a_open)}", status == 200 and artifact_state(a_open) == ("odbaceno", 6))
+
+        a_ok = make_pending_open_b(model, prompt, open_q)
+        status, _ = review(a_ok, decider, {"action": "approve", "scores": right})
+        record("B bez provere, 'tacno' -> approve 200, 6 ocena", "200, prihvaceno/6",
+               f"{status}, {artifact_state(a_ok)}", status == 200 and artifact_state(a_ok) == ("prihvaceno", 6))
+        a_ok_edit = make_pending_open_b(model, prompt, open_q)
+        status, _ = edit(a_ok_edit, decider, json.dumps({"solution": "Ispravljeno.", "explanation": "Izmenjeno."}), right)
+        record("B bez provere, 'tacno' -> edit 200", "200, prihvaceno_izmena",
+               f"{status}, {artifact_state(a_ok_edit)[0]}", status == 200 and artifact_state(a_ok_edit)[0] == "prihvaceno_izmena")
+
+        status, body = review(make_pending_explanation(model, prompt, question), decider, {"action": "approve", "scores": right})
+        record("A: tacnost_resenja se ne prima -> 400 (nepoznat kriterijum)", "400 'Nepoznat'",
+               f"{status} {body.get('error')!r}", status == 400 and "Nepoznat" in body.get("error", ""))
+        status, _ = review(make_pending_mode_b(model, prompt, prog), decider, {"action": "approve", "scores": scores})
+        record("B programsko (provera 1): 5 kriterijuma kao ranije -> 200", 200, status, status == 200)
     finally:
         cleanup()
     after = row_counts()

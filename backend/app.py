@@ -4762,12 +4762,15 @@ def get_explanation_artifact(artifact_id):
                      "odluka se vidi posle vaše ocene ili zatvaranja serije",
         }), 403
 
+    # tacnost_resenja samo za rezim B bez mehanicke provere (explanation_review)
+    applies_to = explanation_review.teacher_rubric_applies_to(artifact["mode"], artifact["accuracy_check_passed"])
     cursor.execute(
-        """
+        f"""
         SELECT dimension_key, dimension_label, scale_min, scale_max
         FROM ai_rubric_definitions
-        WHERE applies_to = 'explanation' AND evaluator_role = 'TEACHER'
-        """
+        WHERE applies_to IN ({", ".join(["%s"] * len(applies_to))}) AND evaluator_role = 'TEACHER'
+        """,
+        tuple(applies_to),
     )
     rubric_definitions = cursor.fetchall()
     cursor.close()
@@ -5308,14 +5311,16 @@ def _rating_view(artifact):
 
 def rating_rubric_definitions(cursor, view):
     """Kriterijumi za drugu ocenu: za objašnjenja TEACHER kriterijumi objašnjenja
-    (isti kao pri odluci), za pitanja kao pri pregledu pitanja."""
+    (isti kao pri odluci, uključujući tacnost_resenja u režimu B bez mehaničke
+    provere), za pitanja kao pri pregledu pitanja."""
     if view.get("artifact_type") == ARTIFACT_TYPE_EXPLANATION:
-        cursor.execute("""
+        applies_to = explanation_review.teacher_rubric_applies_to(view.get("mode"), view.get("accuracy_check_passed"))
+        cursor.execute(f"""
             SELECT id, applies_to, dimension_key, dimension_label, scale_min, scale_max
             FROM ai_rubric_definitions
-            WHERE applies_to = %s AND evaluator_role = 'TEACHER'
+            WHERE applies_to IN ({", ".join(["%s"] * len(applies_to))}) AND evaluator_role = 'TEACHER'
             ORDER BY id ASC
-        """, (ARTIFACT_TYPE_EXPLANATION,))
+        """, tuple(applies_to))
         return cursor.fetchall()
     return get_applicable_rubric_definitions(cursor, view["question_type"])
 

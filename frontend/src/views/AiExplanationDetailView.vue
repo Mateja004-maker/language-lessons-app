@@ -3,7 +3,14 @@ import PageHeader from '@/components/PageHeader.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getExplanationArtifact, getQuestionAnswers, reviewExplanationArtifact } from '@/services/api'
-import { buildEditedText, formatDbDate, parseAccuracyDetails, parseProposal } from '@/services/explanationHelpers'
+import {
+  MANUAL_ACCURACY_KEY,
+  buildEditedText,
+  formatDbDate,
+  parseAccuracyDetails,
+  parseProposal,
+  scoreOptionLabel
+} from '@/services/explanationHelpers'
 
 const route = useRoute()
 const router = useRouter()
@@ -47,8 +54,14 @@ const isMcModeB = computed(() => isModeB.value && !!proposal.value && 'selected_
 const isPending = computed(() => artifact.value?.status === 'predlog')
 
 // Tacnost resenja u rezimu B je eliminacioni kriterijum: ako mehanicka provera
-// nije prosla, backend dozvoljava samo odbacivanje.
-const onlyRejectAllowed = computed(() => isModeB.value && artifact.value?.accuracy_check_passed === 0)
+// nije prosla, backend dozvoljava samo odbacivanje. Isto vazi kad mehanicka
+// provera nije bila moguca, a nastavnik je tacnost_resenja ocenio kao netacno.
+const mechanicalCheckFailed = computed(() => isModeB.value && artifact.value?.accuracy_check_passed === 0)
+const manualAccuracyFailed = computed(() => {
+  const criterion = rubric.value.find((c) => c.dimension_key === MANUAL_ACCURACY_KEY)
+  return !!criterion && scores[MANUAL_ACCURACY_KEY] === criterion.scale_min
+})
+const onlyRejectAllowed = computed(() => mechanicalCheckFailed.value || manualAccuracyFailed.value)
 
 const allScored = computed(() => {
   if (!rubric.value.length) return false
@@ -298,7 +311,9 @@ onMounted(loadArtifact)
       <template v-else>
         <div v-if="onlyRejectAllowed" class="alert alert-info">
           <i class="fa-solid fa-circle-info me-2"></i>
-          Mehanička provera rešenja nije prošla. Tačnost rešenja je eliminacioni kriterijum,
+          <template v-if="mechanicalCheckFailed">Mehanička provera rešenja nije prošla.</template>
+          <template v-else>Tačnost rešenja je ocenjena kao netačna.</template>
+          Tačnost rešenja je eliminacioni kriterijum,
           pa je za ovaj predlog jedina moguća odluka <strong>„Odbaci“</strong>.
           Ocene po rubrici su kod odbijanja opcione.
         </div>
@@ -330,7 +345,7 @@ onMounted(loadArtifact)
                     class="btn btn-outline-primary"
                     :for="`criterion-${criterion.dimension_key}-${criterion.scale_min + n - 1}`"
                   >
-                    {{ criterion.scale_min + n - 1 }}
+                    {{ scoreOptionLabel(criterion, criterion.scale_min + n - 1) }}
                   </label>
                 </template>
               </div>

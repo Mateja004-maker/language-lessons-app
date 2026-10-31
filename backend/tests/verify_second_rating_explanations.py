@@ -7,7 +7,8 @@ Pokretanje (iz foldera backend/):
 
 Bez AI poziva: izmisljeni korisnici, pitanja, serija, run-ovi i predlozi se upisuju
 direktno u bazu. Sve se brise po zabelezenim id-jevima i porede se brojevi redova
-pre i posle. Uzorak po ocenjivacu (SECOND_RATING_SAMPLE) se racuna istom funkcijom
+pre i posle. Kriterijum tacnost_resenja (0/1) vazi samo za rezim B bez mehanicke
+provere; na bazi bez migracije se upisuje privremeno. Uzorak po ocenjivacu (SECOND_RATING_SAMPLE) se racuna istom funkcijom
 kao u ruti (in_second_rating_sample).
 """
 import json
@@ -22,13 +23,13 @@ from app import app, get_db_connection, in_second_rating_sample  # noqa: E402
 from flask_jwt_extended import create_access_token  # noqa: E402
 
 COUNT_TABLES = ("ai_generated_artifacts", "ai_generation_runs", "ai_evaluations", "ai_label_evaluations", "users",
-                "exam_questions", "exam_answers", "teacher_subjects", "evaluation_batches")
+                "exam_questions", "exam_answers", "teacher_subjects", "evaluation_batches", "ai_rubric_definitions")
 TAG = uuid.uuid4().hex[:6]
 HIDDEN_KEYS = ("status", "reviewed_by", "reviewed_at", "edited_text", "rejection_reason", "provider", "model_name",
                "model_id", "created_at", "generation_run_id")
 
 results = []
-created = {"users": [], "runs": [], "artifacts": [], "questions": [], "batches": []}
+created = {"users": [], "runs": [], "artifacts": [], "questions": [], "batches": [], "rubric": []}
 client = app.test_client()
 
 
@@ -110,6 +111,19 @@ def make_explanation_in_sample(user_id, *args, **kwargs):
     raise SystemExit("Nije pronadjen predlog u uzorku (40 pokusaja)")
 
 
+def ensure_manual_accuracy_dim():
+    """Kriterijum tacnost_resenja (reference_data.sql / migration_manual_solution_accuracy.sql);
+    na bazi bez te migracije se upisuje privremeno i brise u cleanup()."""
+    rows = db_all("SELECT id FROM ai_rubric_definitions "
+                  "WHERE applies_to = 'explanation_open_b' AND dimension_key = 'tacnost_resenja'")
+    if rows:
+        return rows[0]["id"]
+    rid = db_exec("INSERT INTO ai_rubric_definitions (applies_to, dimension_key, dimension_label, scale_min, scale_max, "
+                  "evaluator_role) VALUES ('explanation_open_b', 'tacnost_resenja', 'Tačnost rešenja (tačno/netačno)', 0, 1, 'TEACHER')")
+    created["rubric"].append(rid)
+    return rid
+
+
 def cleanup():
     def ph(ids):
         return ",".join(["%s"] * len(ids))
@@ -125,6 +139,8 @@ def cleanup():
     if created["questions"]:
         db_exec(f"DELETE FROM exam_answers WHERE question_id IN ({ph(created['questions'])})", created["questions"])
         db_exec(f"DELETE FROM exam_questions WHERE id IN ({ph(created['questions'])})", created["questions"])
+    if created["rubric"]:
+        db_exec(f"DELETE FROM ai_rubric_definitions WHERE id IN ({ph(created['rubric'])})", created["rubric"])
     if created["users"]:
         # teacher_subjects se brise kaskadno (fk_ts_teacher ON DELETE CASCADE)
         db_exec(f"DELETE FROM users WHERE id IN ({ph(created['users'])})", created["users"])
@@ -264,6 +280,38 @@ def main():
         record("posle ocene: A vidi odluku u obicnom detalju", "200 odbaceno",
                f"{resp.status_code} {((resp.get_json() or {}).get('artifact') or {}).get('status')}",
                resp.status_code == 200 and (resp.get_json() or {}).get("artifact", {}).get("status") == "odbaceno")
+
+        # ---------- tacnost_resenja: samo rezim B bez mehanicke provere ----------
+        manual_id = ensure_manual_accuracy_dim()
+        open_q = make_question(subject, f"Izmisljeno otvoreno pitanje {TAG}")
+        a_open, _ = make_explanation_in_sample(rater, model["id"], prompt, open_q, batch, mode="mode_b",
+                                               body={"solution": "Imenovana vrednost.", "explanation": f"Opis {TAG}"},
+                                               accuracy=None, details="Nema definisanih test primera")
+        a_mode_a, _ = make_explanation_in_sample(rater, model["id"], prompt, question, batch)
+        views = {name: client.get(f"/api/ai/artifacts/{aid}/second-rating", headers=headers(rater, "TEACHER")).get_json() or {}
+                 for name, aid in (("B otvoreno (NULL)", a_open), ("A", a_mode_a))}
+        crit = {name: {c["dimension_key"]: (c["scale_min"], c["scale_max"]) for c in v.get("rubric_criteria") or []}
+                for name, v in views.items()}
+        record("druga ocena: tacnost_resenja (0-1) samo za B bez provere, A bez nje",
+               "B otvoreno: 6 (tacnost_resenja 0-1), A: 5",
+               {k: len(v) for k, v in crit.items()},
+               len(crit["B otvoreno (NULL)"]) == len(expl_dims) + 1 and crit["B otvoreno (NULL)"].get("tacnost_resenja") == (0, 1)
+               and sorted(crit["A"]) == sorted(expl_dims.values()))
+        resp = client.post(f"/api/ai/artifacts/{a_open}/evaluations", headers=headers(rater, "TEACHER"), json={"scores": scores})
+        record("druga ocena B bez provere, bez tacnost_resenja -> 400", 400, resp.status_code, resp.status_code == 400)
+        resp = client.post(f"/api/ai/artifacts/{a_open}/evaluations", headers=headers(rater, "TEACHER"),
+                           json={"scores": scores + [{"rubric_definition_id": manual_id, "score": 2}]})
+        record("druga ocena B bez provere, tacnost_resenja = 2 -> 400", 400, resp.status_code, resp.status_code == 400)
+        resp = client.post(f"/api/ai/artifacts/{a_mode_a}/evaluations", headers=headers(rater, "TEACHER"),
+                           json={"scores": scores + [{"rubric_definition_id": manual_id, "score": 1}]})
+        record("druga ocena A sa tacnost_resenja -> 400", 400, resp.status_code, resp.status_code == 400)
+        resp = client.post(f"/api/ai/artifacts/{a_open}/evaluations", headers=headers(rater, "TEACHER"),
+                           json={"scores": scores + [{"rubric_definition_id": manual_id, "score": 0}]})
+        stored = db_all("SELECT score FROM ai_evaluations WHERE artifact_id = %s AND evaluator_id = %s "
+                        "AND rubric_definition_id = %s AND evaluation_round = 2", (a_open, rater, manual_id))
+        record("druga ocena B bez provere, 'netacno' -> 201 (drugi ocenjivac ne odlucuje), upisano 0",
+               "201, [0]", f"{resp.status_code}, {[r['score'] for r in stored]}",
+               resp.status_code == 201 and [r["score"] for r in stored] == [0])
     finally:
         cleanup()
     after = row_counts()

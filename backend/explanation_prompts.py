@@ -6,7 +6,7 @@ objašnjenja (Andrejev modul). Isti obrazac kao Anđino prompt_templates.py
 
 purpose je uvek 'explanation' (isto za oba režima) - mode ('mode_a' | 'mode_b')
 je taj koji razlikuje, i upisuje se odvojeno u ai_generation_runs.mode.
-version u ai_prompts razlikuje šablone (mode_a-v1, mode_b-v1), pod istim
+version u ai_prompts razlikuje šablone (mode_a-v2, mode_b-v1), pod istim
 purpose - identičan obrazac kao njeno purpose='similar_question' sa
 version='mc-v1'/'open-v1'.
 """
@@ -20,8 +20,11 @@ PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
 PURPOSE_EXPLANATION = "explanation"
 
+# mode_a-v2: uloga "iskusan nastavnik" bez pretpostavke da je predmet
+# programiranje (rezim A pokriva sve predmete). explanation_mode_a_v1.txt se
+# cuva samo radi istorije (ne ucitava se; tekst je i u ai_prompts, uz stare run-ove).
 MODE_FILES = {
-    "mode_a": PROMPTS_DIR / "explanation_mode_a_v1.txt",
+    "mode_a": PROMPTS_DIR / "explanation_mode_a_v2.txt",
     "mode_b": PROMPTS_DIR / "explanation_mode_b_v1.txt",
 }
 

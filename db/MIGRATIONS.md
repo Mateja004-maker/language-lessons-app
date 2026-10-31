@@ -76,6 +76,7 @@ Pravila:
 | 19 | `migration_lessons_subject.sql` | `lessons.subject_id` + FK na `subjects`, jednokratno popunjava iz `language_id` (samo gde predmet postoji); `language_id` ostaje; može da se pokrene ponovo | — |
 | 20 | `migration_lessons_language_nullable.sql` | `lessons.language_id` postaje NULL-dozvoljen (FK ostaje); može da se pokrene ponovo; rollback samo ako nema lekcija bez jezika (vidi komentar) | 19 |
 | 21 | `migration_lessons_area.sql` | `lessons.area_id` + FK na `areas` (ON DELETE SET NULL, kao `exam_questions.area_id`); postojeće lekcije ostaju bez oblasti; može da se pokrene ponovo | 1, 19 |
+| 22 | `migration_manual_solution_accuracy.sql` | menja samo podatke: kriterijum `tacnost_resenja` (0/1, `applies_to='explanation_open_b'`) za režim B bez mehaničke provere; isti red je u `reference_data.sql`, pa se `schema.sql` ne osvežava; može da se pokrene ponovo | 7 |
 
 Redosled prati datume kada su fajlovi dodati u git, uz jedan izuzetak: broj 5
 (`ai_generation_base_VERIFIED`) je u git dodat tek 2026-09-02. Tada je zapisana
