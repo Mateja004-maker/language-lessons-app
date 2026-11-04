@@ -190,6 +190,16 @@ Izvoz (tri CSV fajla) i pokretanje `tools/analyze_experiment.py` isti su kao u
   `prosla`, `nije_prosla`, `nije_izvrsena` i
   `stopa_tacnosti = prosla / (prosla + nije_prosla)`. Neizvršene provere nisu u imeniocu.
   Ako nijedna provera nije izvršena, stopa je prazna. Ista tabela je i u `izvestaj.md`.
+- `tabela_tacnost_rucna.csv` (samo ako serija ima predloge režima B bez mehaničke provere,
+  tj. sa praznim `accuracy_check_passed`): ručna ocena `tacnost_resenja` nastavnika koji
+  odlučuje, po modelu `predloga`, `ocenjeno`, `tacno`, `netacno` i
+  `stopa_tacnosti = tacno / ocenjeno`. Neocenjeni predlozi nisu u imeniocu. Ovi predlozi
+  nisu ni u imeniocu `tabela_tacnost.csv`, pa se dve stope ne sabiraju.
+- `tacnost_resenja` (0/1) nije u `tabela_ocene.csv`, `tabela_raspodela_ocena.csv` ni u
+  `tabela_saglasnost.csv` (te tabele su za skalu 1–5). Njena saglasnost je u
+  `tabela_saglasnost_rucna.csv` (kad postoji druga ocena): procenat slaganja i nominalna
+  kapa za par nastavnik / prvi drugi ocenjivač, i nominalna alfa (uz `--evaluations` sa
+  svim ocenjivačima).
 - Ne mešati `stopa_tacnosti` sa „iz prve“ u `tabela_pozivi.csv`: „iz prve“ meri **format**
   odgovora, a `stopa_tacnosti` **sadržajnu** tačnost.
 

@@ -15,7 +15,7 @@ sys.path.insert(0, BACKEND)
 sys.path.insert(0, os.path.join(BACKEND, "tools"))
 
 import analyze_experiment as ax  # noqa: E402
-from agreement import cohen_kappa  # noqa: E402
+from agreement import cohen_kappa, krippendorff_alpha  # noqa: E402
 
 ART_COLUMNS = ["batch_id", "artifact_id", "mode", "provider", "model_name", "status", "decider",
                "model_difficulty", "model_bloom_level", "reviewed_difficulty", "reviewed_bloom_level",
@@ -50,9 +50,9 @@ class AnalyzeExperiment(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.dir, ignore_errors=True)
 
-    def run_analyze(self, artifacts, runs=None, evaluations=None):
+    def run_analyze(self, artifacts, runs=None, evaluations=None, columns=ART_COLUMNS):
         a_path = os.path.join(self.dir, "a.csv")
-        write(a_path, ART_COLUMNS, artifacts)
+        write(a_path, columns, artifacts)
         r_path = e_path = None
         if runs is not None:
             r_path = os.path.join(self.dir, "r.csv")
@@ -189,6 +189,86 @@ class AnalyzeExperiment(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.out, "tabela_tacnost.csv")))
         with open(os.path.join(self.out, "izvestaj.md"), encoding="utf-8") as f:
             self.assertNotIn("Mehanička provera", f.read())
+
+    def test_manual_accuracy_table_mode_b_without_check(self):
+        columns = ["artifact_id", "mode", "provider", "model_name", "status", "accuracy_check_passed", "r1_tacnost_resenja"]
+        rows = [{"artifact_id": i, "mode": mode, "provider": p, "model_name": f"{p}-m", "status": "prihvaceno",
+                 "accuracy_check_passed": acc, "r1_tacnost_resenja": manual}
+                for i, (mode, p, acc, manual) in enumerate([
+                    ("mode_b", "groq", "", 1), ("mode_b", "groq", "", 1), ("mode_b", "groq", "", 0),
+                    ("mode_b", "groq", "", ""),      # još neocenjen
+                    ("mode_b", "groq", 1, ""),       # mehanička provera -> nije u ručnoj tabeli
+                    ("mode_b", "gemini", "", ""),    # nijedna ručna ocena
+                    ("mode_a", "groq", "", "")], start=1)]
+        self.run_analyze(rows, columns=columns)
+        table = {r["model"]: r for r in ax.read_csv(os.path.join(self.out, "tabela_tacnost_rucna.csv"))}
+        self.assertEqual(set(table), {"groq/groq-m [mode_b]", "gemini/gemini-m [mode_b]"})  # mode_a se ne broji
+        groq = table["groq/groq-m [mode_b]"]
+        self.assertEqual((groq["predloga"], groq["ocenjeno"], groq["tacno"], groq["netacno"]), ("4", "3", "2", "1"))
+        self.assertEqual(groq["stopa_tacnosti"], "0.667")   # 2 / 3, neocenjen nije u imeniocu
+        self.assertIsNone(table["gemini/gemini-m [mode_b]"]["stopa_tacnosti"])
+        mechanical = {r["model"]: r for r in ax.read_csv(os.path.join(self.out, "tabela_tacnost.csv"))}
+        self.assertEqual(float(mechanical["groq/groq-m [mode_b]"]["stopa_tacnosti"]), 1.0)   # ručno ocenjeni nisu u imeniocu
+        with open(os.path.join(self.out, "izvestaj.md"), encoding="utf-8") as f:
+            report = f.read()
+        self.assertLess(report.index("Mehanička provera tačnosti"), report.index("Ručna ocena tačnosti"))
+        self.assertLess(report.index("Ručna ocena tačnosti"), report.index("Prosečne ocene po kriterijumu"))
+
+    def test_no_manual_accuracy_table_for_question_batch(self):
+        self.run_analyze([art(1), art(2)])
+        for name in ("tabela_tacnost_rucna.csv", "tabela_saglasnost_rucna.csv"):
+            self.assertFalse(os.path.exists(os.path.join(self.out, name)), name)
+
+    def test_manual_accuracy_not_in_scale_tables(self):
+        # ocena 0 za tacnost_resenja ranije je rušila kvadratnu kapu (kategorije 1-5)
+        columns = ART_COLUMNS + ["accuracy_check_passed", "r1_tacnost_resenja", "r2_tacnost_resenja"]
+        rows = [{**art(i, r1=r1, r2=r1), "mode": "mode_b", "accuracy_check_passed": "",
+                 "r1_tacnost_resenja": m1, "r2_tacnost_resenja": m2}
+                for i, (r1, m1, m2) in enumerate([((5, 4), 0, 0), ((3, 2), 1, 0), ((4, 4), 0, 1)], start=1)]
+        result, _ = self.run_analyze(rows, columns=columns)
+        ocene = ax.read_csv(os.path.join(self.out, "tabela_ocene.csv"))
+        self.assertNotIn("tacnost_resenja", ocene[0])
+        self.assertEqual(float(ocene[0]["strucna_tacnost"]), 4.0)
+        raspodela = ax.read_csv(os.path.join(self.out, "tabela_raspodela_ocena.csv"))
+        self.assertEqual({r["kriterijum"] for r in raspodela}, {"strucna_tacnost", "relevantnost"})
+        self.assertFalse(any(r["stavka"] == "tacnost_resenja" for r in result["agreement"]))
+        self.assertEqual(self.agreement(result, "nastavnik vs. druga ocena", "strucna_tacnost")["vrsta_kape"],
+                         "težinska (kvadratna)")
+
+    def test_manual_accuracy_agreement_percent_and_nominal_kappa(self):
+        columns = ART_COLUMNS + ["accuracy_check_passed", "r1_tacnost_resenja", "r2_tacnost_resenja"]
+        first, second = [1, 1, 0, 0, 1], [1, 0, 0, 0, 1]
+        rows = [{**art(i), "mode": "mode_b", "accuracy_check_passed": "", "r1_tacnost_resenja": m1, "r2_tacnost_resenja": m2}
+                for i, (m1, m2) in enumerate(zip(first, second), start=1)]
+        rows.append({**art(6), "mode": "mode_b", "accuracy_check_passed": "", "r1_tacnost_resenja": 1,
+                     "r2_tacnost_resenja": ""})   # bez druge ocene -> nije par
+        result, _ = self.run_analyze(rows, columns=columns)
+        k = result["manual_agreement"][0]
+        self.assertEqual((k["stavka"], k["parova"], k["slaganje_pct"]), ("tacnost_resenja", 5, 80.0))
+        # po = 0.8, pe = 0.6*0.4 + 0.4*0.6 = 0.48 -> (0.8 - 0.48) / 0.52
+        self.assertAlmostEqual(k["kapa"], 0.32 / 0.52)
+        self.assertAlmostEqual(k["kapa"], cohen_kappa(first, second, categories=(0, 1)))
+        self.assertEqual((k["vrsta_kape"], k["vrsta_alfe"]), ("nominalna", "nominalna"))
+        self.assertIsNotNone(k["alfa"])
+        saved = ax.read_csv(os.path.join(self.out, "tabela_saglasnost_rucna.csv"))[0]
+        self.assertEqual(saved["slaganje_pct"], "80.0")
+        with open(os.path.join(self.out, "izvestaj.md"), encoding="utf-8") as f:
+            self.assertIn("Saglasnost: ručna ocena tačnosti", f.read())
+
+    def test_manual_accuracy_alpha_uses_all_raters_from_evaluations_file(self):
+        columns = ART_COLUMNS + ["accuracy_check_passed", "r1_tacnost_resenja", "r2_tacnost_resenja"]
+        rows = [{**art(i), "mode": "mode_b", "accuracy_check_passed": "", "r1_tacnost_resenja": v, "r2_tacnost_resenja": v}
+                for i, v in [(1, 1), (2, 0)]]
+        evaluations = [  # treći ocenjivač se ne slaže na predlogu 2
+            {"artifact_id": a, "evaluator": who, "evaluation_round": rnd, "dimension_key": "tacnost_resenja",
+             "level": "ordinal", "value": v}
+            for a, who, rnd, v in [(1, "u_a", 1, 1), (1, "u_b", 2, 1), (1, "u_c", 2, 1),
+                                   (2, "u_a", 1, 0), (2, "u_b", 2, 0), (2, "u_c", 2, 1)]]
+        result, _ = self.run_analyze(rows, evaluations=evaluations, columns=columns)
+        k = result["manual_agreement"][0]
+        self.assertEqual(k["slaganje_pct"], 100.0)   # par nastavnik / prvi drugi ocenjivač se slaže
+        self.assertAlmostEqual(k["alfa"], krippendorff_alpha([[1.0, 1.0, 1.0], [0.0, 0.0, 1.0]], "nominal"))
+        self.assertLess(k["alfa"], 1.0)              # alfa vidi i trećeg ocenjivača
 
     def test_outputs_and_cli(self):
         a_path = os.path.join(self.dir, "a.csv")

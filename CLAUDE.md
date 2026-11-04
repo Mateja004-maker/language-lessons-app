@@ -78,7 +78,8 @@ i `docs/PONAVLJANJE_EKSPERIMENTA_OBJASNJENJA.md` (objašnjenja).
   - zatvaranje serije;
   - CSV izvoz `GET /api/evaluation-batches/<id>/export.csv` (ADMIN; korisnici samo kao HMAC heš);
   - analiza `backend/tools/analyze_experiment.py` (kapa, alfa, SVG grafikoni, samo stdlib;
-    `tabela_tacnost.csv` za Režim B objašnjenja).
+    `tabela_tacnost.csv` za Režim B objašnjenja; `tabela_tacnost_rucna.csv` i
+    `tabela_saglasnost_rucna.csv` za ručnu `tacnost_resenja`, van tabela skale 1–5).
 - Tačka F (`retry_count` / `response_model` / `model_version`): za objašnjenja je urađena
   (`model_version` iz `EXPLANATION_MODEL_VERSIONS`, `retry_count` = broj ponavljanja, `attempts` − 1).
   Za pitanja je `retry_count` i dalje 0, a `model_version` NULL (pokušaji su u `params_used.attempts`).

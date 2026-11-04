@@ -15,12 +15,15 @@ Po modelu (provajder/model [režim]):
     (model i nastavnik);
   - mehanička provera tačnosti (samo objašnjenja, režim B; tabela_tacnost.csv):
     prošla / nije prošla / nije izvršena i stopa = prošla / (prošla + nije prošla);
+  - ručna ocena tačnosti tacnost_resenja (0/1; režim B bez mehaničke provere;
+    tabela_tacnost_rucna.csv): ocenjeno / tačno / netačno i stopa = tačno / ocenjeno;
   - prosečne ocene po kriterijumu (nastavnik koji odlučuje, runda 1) i raspodela
-    ocena po kriterijumu (koliko ocena 1, 2, 3, 4, 5);
+    ocena po kriterijumu (koliko ocena 1, 2, 3, 4, 5); tacnost_resenja nije u njima;
   - saglasnost: težinska (kvadratna) Koenova kapa nastavnik vs. druga ocena po
     kriterijumu, nominalna kapa za težinu i Blumov nivo, Kripendorfova alfa
     (ordinalna za ocene, nominalna za kategorije; iz --evaluations ako je dat, uz sve
-    ocenjivače), i saglasnost modela sa nastavnikom za kategorije.
+    ocenjivače), i saglasnost modela sa nastavnikom za kategorije; za tacnost_resenja
+    posebno (tabela_saglasnost_rucna.csv): procenat slaganja, nominalna kapa i alfa.
 Ako druge ocene nema, to se jasno ispiše, a ostatak analize se uradi.
 """
 import argparse
@@ -32,7 +35,7 @@ from collections import Counter, defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agreement import cohen_kappa, krippendorff_alpha  # noqa: E402
+from agreement import cohen_kappa, krippendorff_alpha, percent_agreement  # noqa: E402
 
 DECISIONS = ("prihvaceno", "prihvaceno_izmena", "odbaceno", "predlog")
 DIFFICULTY = ("lako", "srednje", "tesko")
@@ -151,8 +154,34 @@ def accuracy_table(artifacts):
     return columns, rows
 
 
+MANUAL_ACCURACY_KEY = "tacnost_resenja"  # ručna ocena 0/1 (explanation_review.MANUAL_ACCURACY_KEY)
+MANUAL_ACCURACY_SCALE = (0, 1)
+
+
+def manual_accuracy_table(artifacts):
+    """Ručna ocena tačnosti (objašnjenja, režim B bez mehaničke provere, tj. prazan
+    accuracy_check_passed) po modelu, iz r1_tacnost_resenja (nastavnik koji odlučuje):
+    1 = tačno, 0 = netačno. Stopa ne računa neocenjene."""
+    groups = defaultdict(list)
+    for a in artifacts:
+        if a.get("mode") == ACCURACY_MODE and a.get("accuracy_check_passed") is None:
+            groups[group_key(a)].append(a)
+    columns = ["model", "predloga", "ocenjeno", "tacno", "netacno", "stopa_tacnosti"]
+    rows = []
+    for key, items in sorted(groups.items()):
+        values = [num(a.get(f"r1_{MANUAL_ACCURACY_KEY}")) for a in items]
+        correct = sum(v == 1 for v in values)
+        wrong = sum(v == 0 for v in values)
+        rows.append({"model": key, "predloga": len(items), "ocenjeno": correct + wrong, "tacno": correct, "netacno": wrong,
+                     "stopa_tacnosti": round(correct / (correct + wrong), 3) if correct + wrong else None})
+    return columns, rows
+
+
 def dimensions(artifacts):
-    return [c[3:] for c in (artifacts[0].keys() if artifacts else []) if c.startswith("r1_")]
+    """Kriterijumi skale 1-5 (kolone r1_*); binarna tacnost_resenja ide posebno
+    (manual_accuracy_table, manual_agreement_table)."""
+    return [c[3:] for c in (artifacts[0].keys() if artifacts else [])
+            if c.startswith("r1_") and c[3:] != MANUAL_ACCURACY_KEY]
 
 
 def scores_table(artifacts):
@@ -233,6 +262,27 @@ def agreement_table(artifacts, evaluations):
                      "vrsta_kape": "nominalna", "alfa": krippendorff_alpha([list(p) for p in pairs], "nominal") if pairs else None,
                      "vrsta_alfe": "nominalna"})
     return columns, rows, (None if has_second else NO_SECOND_RATING)
+
+
+def manual_agreement_table(artifacts, evaluations):
+    """Saglasnost za tacnost_resenja (0/1), odvojeno od kriterijuma 1-5: procenat
+    slaganja i nominalna kapa za par nastavnik / prvi drugi ocenjivač, nominalna alfa
+    (iz --evaluations ako je dat, uz sve ocenjivače). Bez parova nema redova."""
+    columns = ["poredjenje", "stavka", "parova", "slaganje_pct", "kapa", "vrsta_kape", "alfa", "vrsta_alfe"]
+    pairs = [(num(a.get(f"r1_{MANUAL_ACCURACY_KEY}")), num(a.get(f"r2_{MANUAL_ACCURACY_KEY}"))) for a in artifacts]
+    pairs = [p for p in pairs if None not in p]
+    if not pairs:
+        return columns, []
+    units = defaultdict(list)  # predlog -> vrednosti svih ocenjivača
+    for e in evaluations or []:
+        if e.get("dimension_key") == MANUAL_ACCURACY_KEY and e.get("value") is not None:
+            units[e["artifact_id"]].append(num(e["value"]))
+    first, second = zip(*pairs)
+    return columns, [{"poredjenje": "nastavnik vs. druga ocena", "stavka": MANUAL_ACCURACY_KEY, "parova": len(pairs),
+                      "slaganje_pct": percent_agreement(first, second),
+                      "kapa": cohen_kappa(first, second, categories=MANUAL_ACCURACY_SCALE), "vrsta_kape": "nominalna",
+                      "alfa": krippendorff_alpha(list(units.values()) if units else [list(p) for p in pairs], "nominal"),
+                      "vrsta_alfe": "nominalna"}]
 
 
 # ---------- izlaz ----------
@@ -344,6 +394,14 @@ def analyze(artifacts_path, runs_path=None, evaluations_path=None, out_dir="anal
                    "Stopa tačnosti = prošla / (prošla + nije prošla); neizvršene provere nisu u imeniocu.",
                    markdown(columns, rows), ""]
 
+    columns, rows = manual_accuracy_table(artifacts)
+    if rows:  # samo predlozi režima B bez mehaničke provere
+        write_csv(os.path.join(out_dir, "tabela_tacnost_rucna.csv"), columns, rows)
+        report += ["## Ručna ocena tačnosti (objašnjenja, režim B bez mehaničke provere)",
+                   "Nastavnik ocenjuje tacnost_resenja (1 = tačno, 0 = netačno). Stopa tačnosti = tačno / ocenjeno; "
+                   "neocenjeni predlozi nisu u imeniocu, a ovi predlozi nisu ni u imeniocu mehaničke provere.",
+                   markdown(columns, rows), ""]
+
     columns, rows = scores_table(artifacts)
     write_csv(os.path.join(out_dir, "tabela_ocene.csv"), columns, rows)
     svg_grouped(os.path.join(out_dir, "grafikon_ocene.svg"), "Prosečne ocene po kriterijumu (nastavnik)", columns, rows)
@@ -361,10 +419,17 @@ def analyze(artifacts_path, runs_path=None, evaluations_path=None, out_dir="anal
     if message:
         out(message)
 
+    manual_columns, manual_rows = manual_agreement_table(artifacts, evaluations)
+    if manual_rows:
+        write_csv(os.path.join(out_dir, "tabela_saglasnost_rucna.csv"), manual_columns, manual_rows)
+        report += ["## Saglasnost: ručna ocena tačnosti (0/1)",
+                   "Procenat slaganja i nominalna kapa (nastavnik vs. prvi drugi ocenjivač), nominalna alfa.",
+                   markdown(manual_columns, manual_rows), ""]
+
     with open(os.path.join(out_dir, "izvestaj.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(report))
     out(f"Izveštaj: {os.path.join(out_dir, 'izvestaj.md')} (+ tabela_*.csv, grafikon_*.svg)")
-    return {"agreement": rows, "message": message}
+    return {"agreement": rows, "message": message, "manual_agreement": manual_rows}
 
 
 def main(argv=None):

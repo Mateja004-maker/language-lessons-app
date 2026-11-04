@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agreement import cohen_kappa, krippendorff_alpha  # noqa: E402
+from agreement import cohen_kappa, krippendorff_alpha, percent_agreement  # noqa: E402
 
 _ = None
 KRIPPENDORFF_2011 = [  # redovi = posmatrači, kolone = jedinice
@@ -66,6 +66,13 @@ class Alpha(unittest.TestCase):
         self.assertIsNone(krippendorff_alpha([[1], [2]]))              # nijedna jedinica sa 2 ocene
         self.assertIsNone(krippendorff_alpha([[3, 3], [3, 3]]))        # bez varijacije
         self.assertIsNone(krippendorff_alpha([]))
+
+
+class PercentAgreement(unittest.TestCase):
+    def test_binary_and_missing(self):
+        self.assertEqual(percent_agreement([1, 1, 0, 0, 1], [1, 0, 0, 0, 1]), 80.0)
+        self.assertEqual(percent_agreement([1, None, 0], [1, 1, None]), 100.0)   # samo potpuni parovi
+        self.assertIsNone(percent_agreement([None], [1]))
 
 
 if __name__ == "__main__":

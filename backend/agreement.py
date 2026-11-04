@@ -8,7 +8,9 @@ Samo standardna biblioteka (bez numpy/sklearn), da analiza radi na čistoj insta
 - krippendorff_alpha(units, level="nominal" | "ordinal" | "interval"):
   units = lista jedinica, svaka lista vrednosti svih ocenjivača (None = nema
   ocene); radi sa više ocenjivača i nedostajućim ocenama.
-Obe vraćaju None kada se saglasnost ne može izračunati (premalo podataka ili
+- percent_agreement(a, b): procenat parova sa istom vrednošću (dva ocenjivača;
+  uz nominalnu kapu za binarnu ocenu 0/1).
+Sve tri vraćaju None kada se saglasnost ne može izračunati (premalo podataka ili
 nema varijacije), umesto da puknu.
 """
 
@@ -40,6 +42,13 @@ def cohen_kappa(a, b, weights=None, categories=None):
     if expected == 0:
         return None
     return 1 - observed / expected
+
+
+def percent_agreement(a, b):
+    pairs = [(x, y) for x, y in zip(a, b) if x is not None and y is not None]
+    if not pairs:
+        return None
+    return round(100 * sum(x == y for x, y in pairs) / len(pairs), 1)
 
 
 def _delta2(level, c, k, totals, order):
