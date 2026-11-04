@@ -5801,6 +5801,9 @@ def _export_artifacts(cursor, batch_id):
         """, tuple(ids))
         for row in cursor.fetchall():
             labels2.setdefault((row["artifact_id"], row["evaluator_id"]), row)
+    # uloga naloga (ne ai_evaluations.evaluator_role): ima je i odluka bez ocena
+    cursor.execute("SELECT u.id, ro.name FROM users u JOIN roles ro ON ro.id = u.role_id")
+    account_role = {row["id"]: row["name"] for row in cursor.fetchall()}
 
     columns = ["batch_id", "artifact_id", "artifact_type", "run_id", "mode", "provider", "model_name", "prompt_version",
                "source_question_id", "input_question_ids", "question_type", "status", "decider",
@@ -5809,7 +5812,7 @@ def _export_artifacts(cursor, batch_id):
                "edit_distance", "edit_distance_norm", "max_similarity", "similar_source", "possible_duplicate",
                "reviewed_duplicate", "first_attempt_passed", "format_retries", "response_time_ms", "tokens_used",
                "accuracy_check_passed", "solution_source"]
-    columns += [f"r1_{d}" for d in dims] + [f"r2_{d}" for d in dims] + ["model_version"]
+    columns += [f"r1_{d}" for d in dims] + [f"r2_{d}" for d in dims] + ["model_version", "decider_role", "second_rater_role"]
     rows = []
     for a in artifacts:
         own = scores.get(a["artifact_id"], [])
@@ -5846,6 +5849,7 @@ def _export_artifacts(cursor, batch_id):
             "accuracy_check_passed": a["accuracy_check_passed"],
             "solution_source": params.get("solution_source") if isinstance(params, dict) else None,
             "model_version": a["model_version"],
+            "decider_role": account_role.get(a["reviewed_by"]), "second_rater_role": account_role.get(first_second),
         }
         row.update({f"r1_{d}": round1.get(d) for d in dims})
         row.update({f"r2_{d}": round2.get(d) for d in dims})

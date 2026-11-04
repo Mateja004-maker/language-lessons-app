@@ -176,7 +176,7 @@ curl -o serija_1_evaluations.csv -H "Authorization: Bearer <ADMIN token>" "http:
   - oznake modela, nastavnika i drugog ocenjivača;
   - rubrika runde 1 (`r1_*`) i runde 2 (`r2_*`);
   - odluka, razdaljina izmene i oznaka duplikata;
-  - `model_version` (poslednja kolona).
+  - na kraju `model_version`, `decider_role` i `second_rater_role` (uloga naloga: `TEACHER` ili `ADMIN`).
 - **`runs`**: jedan red po pozivu modela: uspeh, vrsta pada, prolaz iz prve, ponovni zahtev, vreme, tokeni,
   a na kraju `model_version` i `temperature`.
 - **`evaluations`**: jedan red po pojedinačnoj oceni, za Kripendorfovu alfu sa svim ocenjivačima.
@@ -200,7 +200,9 @@ U folderu `analiza_serija_1/` nastaju:
 - `tabela_pozivi.csv`: uspeh, vrste pada, prosečno i medijansko vreme po modelu i režimu;
 - `tabela_predlozi.csv`: odluke u %, razdaljina izmene, duplikati, raspodela težine i
   Blumovih nivoa (model i nastavnik);
-- `tabela_ocene.csv`: prosečna ocena po kriterijumu i modelu;
+- `tabela_ocene.csv`: prosečna ocena po kriterijumu i modelu (sve ocene runde 1, bez obzira na ulogu);
+- `tabela_ocene_po_ulozi.csv`: isto, odvojeno po ulozi naloga koji odlučuje (`TEACHER` / `ADMIN`).
+  Ako ima ADMIN ocena, skripta to ispiše kao upozorenje, jer rad treba da koristi ocene predmetnog nastavnika;
 - `tabela_raspodela_ocena.csv`: raspodela ocena po kriterijumu i modelu (broj ocena 1, 2, 3, 4, 5);
 - `tabela_saglasnost.csv`, sa tri vrste mera:
   - kvadratno težinska Koenova kapa (nastavnik vs. drugi ocenjivač, po kriterijumu);

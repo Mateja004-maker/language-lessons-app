@@ -228,6 +228,32 @@ class AnalyzeExperiment(unittest.TestCase):
         self.assertIsNone(row["bez_predloga"])  # bez --runs se ne zna
         self.assertIsNone(row["stopa_od_svih"])
 
+    def test_scores_by_role_separates_admin_and_teacher(self):
+        columns = ART_COLUMNS + ["decider_role"]
+        rows = [{**art(1, r1=(5, 5)), "decider_role": "TEACHER"}, {**art(2, r1=(3, 3)), "decider_role": "TEACHER"},
+                {**art(3, r1=(1, 1)), "decider_role": "ADMIN"}, {**art(4, status="predlog", r1=("", "")), "decider_role": ""}]
+        _, output = self.run_analyze(rows, columns=columns)
+        table = {r["uloga"]: r for r in ax.read_csv(os.path.join(self.out, "tabela_ocene_po_ulozi.csv"))}
+        self.assertEqual(set(table), {"TEACHER", "ADMIN"})  # predlog bez odluke nije ni u jednoj
+        self.assertEqual((table["TEACHER"]["predloga"], table["TEACHER"]["strucna_tacnost"]), ("2", "4.0"))
+        self.assertEqual((table["ADMIN"]["predloga"], table["ADMIN"]["strucna_tacnost"]), ("1", "1.0"))
+        self.assertIn("UPOZORENJE: 1 predloga je ocenio ADMIN", output)
+        with open(os.path.join(self.out, "izvestaj.md"), encoding="utf-8") as f:
+            self.assertIn("UPOZORENJE: 1 predloga je ocenio ADMIN", f.read())
+        mixed = ax.read_csv(os.path.join(self.out, "tabela_ocene.csv"))[0]  # postojeća tabela: ista imena, zbir svih
+        self.assertEqual(list(mixed)[:3], ["model", "strucna_tacnost", "relevantnost"])
+        self.assertEqual(mixed["strucna_tacnost"], "3.0")
+
+    def test_scores_by_role_only_teacher_no_warning(self):
+        rows = [{**art(1), "decider_role": "TEACHER"}]
+        _, output = self.run_analyze(rows, columns=ART_COLUMNS + ["decider_role"])
+        self.assertTrue(os.path.exists(os.path.join(self.out, "tabela_ocene_po_ulozi.csv")))
+        self.assertNotIn("UPOZORENJE", output)
+
+    def test_old_csv_without_role_column_has_no_role_table(self):
+        self.run_analyze([art(1)])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "tabela_ocene_po_ulozi.csv")))
+
     def test_no_accuracy_table_for_question_batch(self):
         self.run_analyze([art(1), art(2)])
         self.assertFalse(os.path.exists(os.path.join(self.out, "tabela_tacnost.csv")))

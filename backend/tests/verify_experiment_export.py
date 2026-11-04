@@ -406,6 +406,7 @@ def main():
         v_run = make_run(m_ver, p_mc, "similar_question", batch_v, 1, first=1, ms=10,
                          params={"attempts": 1, "temperature": 0.7})
         make_artifact(v_run, "predlog", None, "lako", "pamcenje")
+        make_artifact(v_run, "odbaceno", admin, "lako", "pamcenje")
         _, _, v_runs = get_csv(batch_v, "runs", user_id=admin)
         _, _, v_arts = get_csv(batch_v, "artifacts", user_id=admin)
         got = (v_runs[0]["model_version"], v_runs[0]["temperature"], v_arts[0]["model_version"])
@@ -413,8 +414,14 @@ def main():
                got == (version, "0.7", version))
         run_columns, art_columns = list(v_runs[0].keys()), list(v_arts[0].keys())
         record("nove kolone su na kraju", ["model_version", "temperature"], run_columns[-2:],
-               run_columns[-2:] == ["model_version", "temperature"] and art_columns[-1] == "model_version")
+               run_columns[-2:] == ["model_version", "temperature"]
+               and art_columns[-3:] == ["model_version", "decider_role", "second_rater_role"])
         record("postojece kolone runs na istom mestu", RUNS_COLUMNS, run_columns[:-2], run_columns[:-2] == RUNS_COLUMNS)
+
+        # --- uloga naloga koji ocenjuje ---
+        got = (r1["decider_role"], r1["second_rater_role"], by_id[a4]["decider_role"], v_arts[1]["decider_role"])
+        record("uloga: nastavnik, drugi ocenjivac, bez odluke, ADMIN", ("TEACHER", "TEACHER", "", "ADMIN"), got,
+               got == ("TEACHER", "TEACHER", "", "ADMIN"))
     finally:
         cleanup()
         shutil.rmtree(tmp_dir, ignore_errors=True)

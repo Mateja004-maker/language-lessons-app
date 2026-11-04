@@ -18,6 +18,8 @@ Po modelu (provajder/model [režim]):
     uz --runs i bez_predloga (loš format) i stopa_od_svih = prošla / svi pokušaji;
   - ručna ocena tačnosti tacnost_resenja (0/1; režim B bez mehaničke provere;
     tabela_tacnost_rucna.csv): ocenjeno / tačno / netačno i stopa = tačno / ocenjeno;
+  - prosečne ocene po ulozi naloga koji odlučuje (tabela_ocene_po_ulozi.csv) i
+    upozorenje ako ima ADMIN ocena;
   - prosečne ocene po kriterijumu (nastavnik koji odlučuje, runda 1) i raspodela
     ocena po kriterijumu (koliko ocena 1, 2, 3, 4, 5); tacnost_resenja nije u njima;
   - saglasnost: težinska (kvadratna) Koenova kapa nastavnik vs. druga ocena po
@@ -207,6 +209,26 @@ def scores_table(artifacts):
     rows = []
     for key, items in sorted(groups.items()):
         row = {"model": key}
+        for d in dims:
+            values = [num(a.get(f"r1_{d}")) for a in items if num(a.get(f"r1_{d}")) is not None]
+            row[d] = round(statistics.mean(values), 2) if values else None
+        rows.append(row)
+    return columns, rows
+
+
+def scores_by_role_table(artifacts):
+    """Prosečne ocene runde 1 odvojeno po ulozi naloga koji odlučuje (decider_role iz
+    izvoza), jer zadatak traži ocenu predmetnog nastavnika, a odlučivati može i ADMIN.
+    tabela_ocene.csv ostaje zbir svih. Stari CSV bez te kolone: prazna tabela."""
+    dims = dimensions(artifacts)
+    groups = defaultdict(list)
+    for a in artifacts:
+        if a.get("decider_role") and any(num(a.get(f"r1_{d}")) is not None for d in dims):
+            groups[(group_key(a), a["decider_role"])].append(a)
+    columns = ["model", "uloga", "predloga", *dims]
+    rows = []
+    for (key, role), items in sorted(groups.items()):
+        row = {"model": key, "uloga": role, "predloga": len(items)}
         for d in dims:
             values = [num(a.get(f"r1_{d}")) for a in items if num(a.get(f"r1_{d}")) is not None]
             row[d] = round(statistics.mean(values), 2) if values else None
@@ -422,6 +444,17 @@ def analyze(artifacts_path, runs_path=None, evaluations_path=None, out_dir="anal
     write_csv(os.path.join(out_dir, "tabela_ocene.csv"), columns, rows)
     svg_grouped(os.path.join(out_dir, "grafikon_ocene.svg"), "Prosečne ocene po kriterijumu (nastavnik)", columns, rows)
     report += ["## Prosečne ocene po kriterijumu (nastavnik koji odlučuje)", markdown(columns, rows), ""]
+
+    columns, rows = scores_by_role_table(artifacts)
+    if rows:
+        write_csv(os.path.join(out_dir, "tabela_ocene_po_ulozi.csv"), columns, rows)
+        report += ["## Prosečne ocene po ulozi naloga koji odlučuje", markdown(columns, rows), ""]
+        admin_rated = sum(r["predloga"] for r in rows if r["uloga"] == "ADMIN")
+        if admin_rated:
+            warning = (f"UPOZORENJE: {admin_rated} predloga je ocenio ADMIN, a ne predmetni nastavnik; "
+                       "te ocene su i u tabela_ocene.csv (vidi tabela_ocene_po_ulozi.csv).")
+            out(warning)
+            report += [f"**{warning}**", ""]
 
     columns, rows = score_distribution_table(artifacts)
     write_csv(os.path.join(out_dir, "tabela_raspodela_ocena.csv"), columns, rows)
