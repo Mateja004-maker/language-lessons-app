@@ -112,6 +112,7 @@ def review_explanation_artifact(
     edited_text: str | None = None,
     rejection_reason: str | None = None,
     scores: list[dict] | None = None,
+    evaluator_role: str = "TEACHER",
 ) -> dict:
     """
     Primenjuje nastavnicku odluku (odobri/izmeni/odbij) na predlog objasnjenja
@@ -299,9 +300,9 @@ def review_explanation_artifact(
                 INSERT INTO ai_evaluations
                 (artifact_id, rubric_definition_id, evaluator_id, evaluator_role,
                  score, comment)
-                VALUES (%s, %s, %s, 'TEACHER', %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (artifact_id, dim["id"], reviewer_id, item["score"], item.get("comment")),
+                (artifact_id, dim["id"], reviewer_id, evaluator_role, item["score"], item.get("comment")),
             )
             evaluation_ids.append(cursor.lastrowid)
     except mysql.connector.IntegrityError as e:

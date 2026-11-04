@@ -465,6 +465,20 @@ def main():
                f"{status} {body.get('error')!r}", status == 400 and "Nepoznat" in body.get("error", ""))
         status, _ = review(make_pending_mode_b(model, prompt, prog), decider, {"action": "approve", "scores": scores})
         record("B programsko (provera 1): 5 kriterijuma kao ranije -> 200", 200, status, status == 200)
+
+        # uloga ocenjivaca se upisuje kakva jeste (i ADMIN moze da odlucuje)
+        def written_roles(aid):
+            return {r["evaluator_role"] for r in db_all("SELECT evaluator_role FROM ai_evaluations WHERE artifact_id = %s", (aid,))}
+
+        a_admin = make_pending_explanation(model, prompt, question)
+        resp = client.post(f"/api/ai-artifacts/explanation/{a_admin}/review", headers=headers(admin, "ADMIN"),
+                           json={"action": "approve", "scores": scores})
+        record("ADMIN ocena se upisuje kao ADMIN", "200, ['ADMIN']", f"{resp.status_code}, {sorted(written_roles(a_admin))}",
+               resp.status_code == 200 and written_roles(a_admin) == {"ADMIN"})
+        a_teacher = make_pending_explanation(model, prompt, question)
+        status, _ = review(a_teacher, decider, {"action": "approve", "scores": scores})
+        record("TEACHER ocena se upisuje kao TEACHER", "200, ['TEACHER']", f"{status}, {sorted(written_roles(a_teacher))}",
+               status == 200 and written_roles(a_teacher) == {"TEACHER"})
     finally:
         cleanup()
     after = row_counts()

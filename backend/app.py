@@ -4828,6 +4828,7 @@ def review_explanation_artifact_route(artifact_id):
                 edited_text=edited_text,
                 rejection_reason=rejection_reason,
                 scores=scores,
+                evaluator_role=get_jwt().get("role"),
             )
         finally:
             conn.close()
