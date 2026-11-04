@@ -67,6 +67,8 @@ upisuje u `ai_generation_runs.accuracy_check_passed` i `accuracy_check_details`:
 `check_explanation_protocol`, i odbija pokretanje ako bi bila narušena):
 
 - jedna serija = jedan režim objašnjenja (`mode_a` ili `mode_b`), bez run-ova pitanja;
+- finalne serije režima A i B moraju da imaju isti referentni skup, inače pokretač prekida rad;
+  isti skup ne znači i ista pitanja, jer režim A preskače pitanja bez poznatog rešenja;
 - serija ne sme da meša modele (proverava se ime modela po provajderu) ni verzije prompta
   (očekivana verzija zavisi od vrste pitanja);
 - redosled poziva, nastavak prekinutog pokretanja i zaustavljanje modela posle

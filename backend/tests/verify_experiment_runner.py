@@ -341,6 +341,68 @@ def run(fake):
            f"{ids}, reference_set_id={linked}", ids == list(reversed(questions)) and linked == set_id)
     db_exec("UPDATE evaluation_batches SET reference_set_id = NULL WHERE id = %s", (batch4,))
 
+    # --- manje od 30 po modelu: samo upozorenje ---
+    def warnings(batch_id, per_question, **kwargs):
+        lines = []
+        rx.run_experiment(batch_id, questions, PROVIDERS, per_question, dry_run=True, out=lines.append, **kwargs)
+        return [line for line in lines if line.startswith("UPOZORENJE")]
+
+    enough = rx.MIN_PER_MODEL // len(questions) + 1
+    below, at_least = warnings(new_batch("malo"), 1), warnings(new_batch("dosta"), enough)
+    record("manje od 30 po modelu -> upozorenje, inace ne", "1 pa 0 upozorenja", f"{len(below)} pa {len(at_least)}",
+           len(below) == 1 and str(len(questions)) in below[0] and not at_least)
+    set_per = rx.MIN_PER_MODEL // (len(questions) * 3) + 1
+    set_warnings = warnings(new_batch("set-dosta"), set_per, mode="set", group_size=1, k=3)
+    record("rezim set broji pozive x K", "0 upozorenja", str(len(set_warnings)), not set_warnings)
+
+    # --- serije koje se porede: isti referentni skup ---
+    if db_all("SELECT 1 FROM evaluation_batches WHERE is_final = 1 LIMIT 1"):
+        skip("isti referentni skup", "baza vec ima finalne serije, pa bi se test mesao sa njima")
+        return
+    r = client.post("/api/reference-sets", headers=admin,
+                    json={"name": f"tmp-{TAG}-drugi", "subject_id": subject, "question_ids": questions})
+    other_set = (r.get_json() or {}).get("id")
+    created["sets"].append(other_set)
+
+    def final_batch(label):
+        batch_id = new_batch(label)
+        db_exec("UPDATE evaluation_batches SET is_final = 1 WHERE id = %s", (batch_id,))
+        return batch_id
+
+    def linked_set(batch_id):
+        return db_all("SELECT reference_set_id FROM evaluation_batches WHERE id = %s", (batch_id,))[0]["reference_set_id"]
+
+    def outcome(batch_id, ref_set, task):
+        try:
+            rx.resolve_question_ids(batch_id, ref_set, task=task)
+            return "ok"
+        except rx.ExperimentError as e:
+            return str(e)
+
+    expl_a = final_batch("rezim-a")
+    db_exec("UPDATE evaluation_batches SET reference_set_id = %s WHERE id = %s", (set_id, expl_a))
+    db_exec("""INSERT INTO ai_generation_runs (model_id, prompt_id, purpose, mode, source_question_id, params_used,
+               validation_passed, retry_count, evaluation_batch_id) VALUES (%s, %s, 'explanation', 'mode_a', %s, '{}', 0, 0, %s)""",
+            (model_id, old_prompt, questions[0], expl_a))
+
+    expl_b = final_batch("rezim-b")
+    got = outcome(expl_b, other_set, "explanation")
+    record("finalni rezim B sa drugim skupom -> prekid, skup se ne vezuje", "poruka sa oba skupa, reference_set_id prazan",
+           f"{got[:60]}, reference_set_id={linked_set(expl_b)}",
+           "isti referentni skup" in got and str(other_set) in got and str(set_id) in got and linked_set(expl_b) is None)
+    got = outcome(expl_b, set_id, "explanation")
+    record("finalni rezim B sa istim skupom", "ok", got[:80], got == "ok" and linked_set(expl_b) == set_id)
+
+    bound = final_batch("vec-vezana")
+    db_exec("UPDATE evaluation_batches SET reference_set_id = %s WHERE id = %s", (other_set, bound))
+    got = outcome(bound, None, "explanation")
+    record("vec vezana finalna serija sa drugim skupom -> prekid", "poruka", got[:60], "isti referentni skup" in got)
+
+    got = outcome(final_batch("pitanja"), other_set, "question")
+    record("pitanja se ne porede sa objasnjenjima", "ok", got[:80], got == "ok")
+    got = outcome(new_batch("probna"), other_set, "explanation")
+    record("probna serija se ne proverava", "ok", got[:80], got == "ok")
+
 
 def print_table():
     head = ("Slucaj", "Ocekivano", "Dobijeno", "")

@@ -54,6 +54,11 @@ pokretanje ako bi bila narušena):
   pravi se nova serija;
 - redosled poziva je uvek isti i naizmeničan po modelima
   (pokušaj 1: pitanje 1 → A, B, C; pitanje 2 → A, B, C; …);
+- finalna serija (`is_final = 1`) mora da ima isti referentni skup kao ostale finalne serije istog
+  zadatka koje već imaju run-ove (pitanja: single i set; objašnjenja: režimi A i B), inače pokretač
+  prekida rad i ne vezuje skup. Probne serije se ne proveravaju;
+- ako je po modelu planirano manje od 30 predloga (u režimu set: pozivi x K), pokretač ispisuje
+  upozorenje i nastavlja;
 - prekinuto pokretanje se nastavlja istom komandom, bez dupliranja.
   - Mesto je urađeno kada je model odgovorio, čak i u lošem formatu (to je rezultat).
   - Infrastrukturni padovi (mreža, 4xx, 429, 5xx) se beleže i ponavljaju pri sledećem pokretanju.

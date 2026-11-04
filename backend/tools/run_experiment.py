@@ -39,6 +39,12 @@ odbija da nastavi (mešanje bi pokvarilo poređenje).
 --max-calls K zaustavlja posle K poziva modela (kontrolisana potrošnja limita).
 --reference-set ID vezuje skup za seriju koja još nema skup ni run-ove.
 
+Serije koje se porede: finalna serija (is_final = 1) mora da ima isti referentni
+skup kao ostale finalne serije istog zadatka koje već imaju run-ove (objašnjenja:
+režimi A i B; pitanja: single i set); inače pokretač prekida rad, pre vezivanja
+skupa. Probne serije se ne proveravaju. Ako je po modelu planirano manje od
+MIN_PER_MODEL predloga (u režimu set: pozivi x K), ispisuje se upozorenje.
+
 --task explanation --explain-mode mode_a|mode_b: isti pokretač za objašnjenja
 (Andrejev modul, generate_explanation_for_question). Jedna serija = jedan režim
 objašnjenja; serija ne sme da ima run-ove pitanja ni drugog režima. U režimu A
@@ -89,6 +95,7 @@ class ExperimentError(Exception):
 
 MODES = ("single", "set")
 TASKS = ("question", "explanation")
+MIN_PER_MODEL = 30  # preporuka iz zadatka: najmanje 30 po modelu
 EXPLAIN_MODES = ("mode_a", "mode_b")
 
 
@@ -382,6 +389,9 @@ def run_experiment(batch_id, question_ids, providers, per_question, dry_run=Fals
         f"= {len(plan)} mesta; urađeno {len(plan) - len(pending)}, čeka {len(pending)}")
     for question_id, reason in skipped.items():
         out(f"  preskočeno  pitanje {question_id}: nema poznatog rešenja ({reason})")
+    planned_per_model = len(units) * per_question * (k if mode == "set" else 1)
+    if planned_per_model < MIN_PER_MODEL:
+        out(f"UPOZORENJE: po modelu je planirano {planned_per_model} predloga, a preporuka je najmanje {MIN_PER_MODEL}.")
 
     if dry_run:
         done = set(plan) - set(pending)
@@ -479,13 +489,35 @@ def print_report(report, providers, out=print):
 
 # ---------- referentni skup ----------
 
-def resolve_question_ids(batch_id, reference_set_id=None):
+def check_same_reference_set(cursor, batch, reference_set_id, task):
+    """Finalna serija mora da ima isti skup kao finalne serije istog zadatka koje
+    već imaju run-ove. Probne serije (is_final = 0) se ne proveravaju."""
+    if not batch["is_final"]:
+        return
+    purposes = ((explanation_prompts.PURPOSE_EXPLANATION,) if task == "explanation"
+                else (_purpose("single"), _purpose("set")))
+    cursor.execute(f"""
+        SELECT DISTINCT b.id, b.reference_set_id
+        FROM evaluation_batches b
+        JOIN ai_generation_runs r ON r.evaluation_batch_id = b.id
+        WHERE b.is_final = 1 AND b.id <> %s AND b.reference_set_id IS NOT NULL AND b.reference_set_id <> %s
+          AND r.purpose IN ({", ".join(["%s"] * len(purposes))})
+        ORDER BY b.id
+    """, (batch["id"], reference_set_id, *purposes))
+    others = cursor.fetchall()
+    if others:
+        listed = ", ".join(f"serija {o['id']} ima skup {o['reference_set_id']}" for o in others)
+        raise ExperimentError(f"Serije koje se porede moraju da imaju isti referentni skup: "
+                              f"serija {batch['id']} ima skup {reference_set_id}, a {listed}")
+
+
+def resolve_question_ids(batch_id, reference_set_id=None, task="question"):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
         if not reference_sets_enabled(cursor):
             raise ExperimentError("Tabele za referentni skup ne postoje - pokrenite db/migration_reference_sets.sql")
-        cursor.execute("SELECT id, reference_set_id FROM evaluation_batches WHERE id = %s", (batch_id,))
+        cursor.execute("SELECT id, reference_set_id, is_final FROM evaluation_batches WHERE id = %s", (batch_id,))
         batch = cursor.fetchone()
         if not batch:
             raise ExperimentError(f"Serija {batch_id} ne postoji")
@@ -499,6 +531,7 @@ def resolve_question_ids(batch_id, reference_set_id=None):
             cursor.execute("SELECT id FROM reference_sets WHERE id = %s", (reference_set_id,))
             if not cursor.fetchone():
                 raise ExperimentError(f"Referentni skup {reference_set_id} ne postoji")
+            check_same_reference_set(cursor, batch, reference_set_id, task)
             cursor.execute("UPDATE evaluation_batches SET reference_set_id = %s WHERE id = %s",
                            (reference_set_id, batch_id))
             conn.commit()
@@ -507,6 +540,7 @@ def resolve_question_ids(batch_id, reference_set_id=None):
 
         if batch["reference_set_id"] is None:
             raise ExperimentError(f"Serija {batch_id} nema referentni skup (dodaj --reference-set ID)")
+        check_same_reference_set(cursor, batch, batch["reference_set_id"], task)
 
         cursor.execute("""
             SELECT question_id FROM reference_set_questions
@@ -539,7 +573,7 @@ def main(argv=None):
     try:
         if args.dry_run and args.reference_set is not None:
             raise ExperimentError("--dry-run ne vezuje skup; prvo pokreni bez --dry-run ili veži skup ranije")
-        question_ids = resolve_question_ids(args.batch, args.reference_set)
+        question_ids = resolve_question_ids(args.batch, args.reference_set, task=args.task)
         report = run_experiment(args.batch, question_ids, providers, args.per_question,
                                 dry_run=args.dry_run, max_calls=args.max_calls,
                                 mode=args.mode, group_size=args.group_size, k=args.k,
