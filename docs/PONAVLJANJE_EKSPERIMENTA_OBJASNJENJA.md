@@ -192,6 +192,10 @@ Izvoz (tri CSV fajla) i pokretanje `tools/analyze_experiment.py` isti su kao u
   `prosla`, `nije_prosla`, `nije_izvrsena` i
   `stopa_tacnosti = prosla / (prosla + nije_prosla)`. Neizvršene provere nisu u imeniocu.
   Ako nijedna provera nije izvršena, stopa je prazna. Ista tabela je i u `izvestaj.md`.
+  Uz `--runs` ima još tri kolone: `bez_predloga` (model je odgovorio u lošem formatu, pa predlog
+  nije nastao: `empty`, `invalid_json`, `schema`), `svih_pokusaja` (`predloga + bez_predloga`) i
+  `stopa_od_svih = prosla / svih_pokusaja`. Padovi servisa (mreža, 4xx, 429, 5xx) nisu pokušaji,
+  jer nisu greška modela i ponavljaju se. Bez `--runs` su ove kolone prazne.
 - `tabela_tacnost_rucna.csv` (samo ako serija ima predloge režima B bez mehaničke provere,
   tj. sa praznim `accuracy_check_passed`): ručna ocena `tacnost_resenja` nastavnika koji
   odlučuje, po modelu `predloga`, `ocenjeno`, `tacno`, `netacno` i

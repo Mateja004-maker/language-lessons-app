@@ -184,6 +184,50 @@ class AnalyzeExperiment(unittest.TestCase):
         with open(os.path.join(self.out, "izvestaj.md"), encoding="utf-8") as f:
             self.assertIn("Mehanička provera tačnosti", f.read())
 
+    def write_mode_b(self, a_rows, r_rows):
+        a_path, r_path = os.path.join(self.dir, "a.csv"), os.path.join(self.dir, "r.csv")
+        write(a_path, ["artifact_id", "mode", "provider", "model_name", "status", "accuracy_check_passed"], [
+            {"artifact_id": i, "mode": mode, "provider": p, "model_name": f"{p}-m", "status": "predlog",
+             "accuracy_check_passed": acc} for i, (mode, p, acc) in enumerate(a_rows, start=1)])
+        write(r_path, ["run_id", "mode", "provider", "model_name", "failure_type", "artifacts"], [
+            {"run_id": i, "mode": mode, "provider": p, "model_name": f"{p}-m", "failure_type": failure, "artifacts": n}
+            for i, (mode, p, failure, n) in enumerate(r_rows, start=1)])
+        with redirect_stdout(io.StringIO()):
+            ax.analyze(a_path, r_path, out_dir=self.out)
+        return {r["model"]: r for r in ax.read_csv(os.path.join(self.out, "tabela_tacnost.csv"))}
+
+    def test_accuracy_counts_runs_without_proposal(self):
+        table = self.write_mode_b(
+            [("mode_b", "groq", 1), ("mode_b", "groq", 0), ("mode_b", "groq", ""), ("mode_a", "groq", "")],
+            [("mode_b", "groq", "", 1), ("mode_b", "groq", "", 1), ("mode_b", "groq", "", 1),
+             ("mode_b", "groq", "invalid_json", 0), ("mode_b", "groq", "schema", 0), ("mode_b", "groq", "empty", 0),
+             ("mode_b", "groq", "rate_limit", 0), ("mode_b", "groq", "network", 0),  # padovi servisa se ne broje
+             ("mode_a", "groq", "schema", 0)])                                       # drugi režim se ne broji
+        groq = table["groq/groq-m [mode_b]"]
+        self.assertEqual((groq["bez_predloga"], groq["svih_pokusaja"], groq["stopa_od_svih"]), ("3", "6", "0.167"))
+        self.assertEqual(groq["stopa_tacnosti"], "0.5")  # postojeća stopa se ne menja
+
+    def test_accuracy_model_with_only_bad_format_is_listed(self):
+        table = self.write_mode_b([("mode_b", "groq", 1)],
+                                  [("mode_b", "groq", "", 1), ("mode_b", "gemini", "invalid_json", 0)])
+        gemini = table["gemini/gemini-m [mode_b]"]
+        self.assertEqual((gemini["predloga"], gemini["bez_predloga"], gemini["svih_pokusaja"]), ("0", "1", "1"))
+        self.assertEqual(gemini["stopa_od_svih"], "0.0")
+        self.assertIsNone(gemini["stopa_tacnosti"])
+
+    def test_accuracy_columns_keep_names_and_order_without_runs(self):
+        a_path = os.path.join(self.dir, "a.csv")
+        write(a_path, ["artifact_id", "mode", "provider", "model_name", "status", "accuracy_check_passed"],
+              [{"artifact_id": 1, "mode": "mode_b", "provider": "groq", "model_name": "groq-m", "status": "predlog",
+                "accuracy_check_passed": 1}])
+        with redirect_stdout(io.StringIO()):
+            ax.analyze(a_path, out_dir=self.out)
+        row = ax.read_csv(os.path.join(self.out, "tabela_tacnost.csv"))[0]
+        self.assertEqual(list(row)[:6], ["model", "predloga", "prosla", "nije_prosla", "nije_izvrsena", "stopa_tacnosti"])
+        self.assertEqual(list(row)[6:], ["bez_predloga", "svih_pokusaja", "stopa_od_svih"])
+        self.assertIsNone(row["bez_predloga"])  # bez --runs se ne zna
+        self.assertIsNone(row["stopa_od_svih"])
+
     def test_no_accuracy_table_for_question_batch(self):
         self.run_analyze([art(1), art(2)])
         self.assertFalse(os.path.exists(os.path.join(self.out, "tabela_tacnost.csv")))

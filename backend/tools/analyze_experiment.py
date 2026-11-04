@@ -15,6 +15,7 @@ Po modelu (provajder/model [režim]):
     (model i nastavnik);
   - mehanička provera tačnosti (samo objašnjenja, režim B; tabela_tacnost.csv):
     prošla / nije prošla / nije izvršena i stopa = prošla / (prošla + nije prošla);
+    uz --runs i bez_predloga (loš format) i stopa_od_svih = prošla / svi pokušaji;
   - ručna ocena tačnosti tacnost_resenja (0/1; režim B bez mehaničke provere;
     tabela_tacnost_rucna.csv): ocenjeno / tačno / netačno i stopa = tačno / ocenjeno;
   - prosečne ocene po kriterijumu (nastavnik koji odlučuje, runda 1) i raspodela
@@ -41,6 +42,7 @@ DECISIONS = ("prihvaceno", "prihvaceno_izmena", "odbaceno", "predlog")
 DIFFICULTY = ("lako", "srednje", "tesko")
 BLOOM = ("pamcenje", "razumevanje", "primena", "analiza", "vrednovanje", "stvaranje")
 FAILURES = ("network", "http_4xx", "rate_limit", "http_5xx", "empty", "invalid_json", "schema")
+MODEL_FAILURES = ("empty", "invalid_json", "schema")  # model je odgovorio, ali predlog nije nastao
 COLORS = ("#0072B2", "#E69F00", "#009E73", "#CC79A7", "#56B4E9", "#D55E00", "#F0E442", "#999999")
 NO_SECOND_RATING = "Nema druge ocene u ovim podacima - saglasnost ocenjivača (kapa, alfa) se ne računa."
 
@@ -135,22 +137,34 @@ def artifacts_table(artifacts):
 ACCURACY_MODE = "mode_b"  # mehanička provera (test primeri / izbor MC odgovora) postoji samo u režimu B objašnjenja
 
 
-def accuracy_table(artifacts):
+def accuracy_table(artifacts, runs=None):
     """Mehanička provera tačnosti (objašnjenja, režim B) po modelu, iz kolone
     accuracy_check_passed: 1 = prošla, 0 = nije prošla, prazno = nije izvršena
-    (npr. programski zadatak bez test primera). Stopa ne računa neizvršene."""
+    (npr. programski zadatak bez test primera). Stopa ne računa neizvršene.
+    Uz --runs i: bez_predloga (model je odgovorio, ali je format loš, pa predlog nije
+    nastao) i stopa_od_svih = prošla / svi pokušaji. Padovi servisa nisu pokušaji:
+    nisu greška modela i ponavljaju se."""
     groups = defaultdict(list)
     for a in artifacts:
         if a.get("mode") == ACCURACY_MODE:
             groups[group_key(a)].append(a)
-    columns = ["model", "predloga", "prosla", "nije_prosla", "nije_izvrsena", "stopa_tacnosti"]
+    no_proposal = Counter(group_key(r) for r in runs or []
+                          if r.get("mode") == ACCURACY_MODE and num(r.get("artifacts")) == 0
+                          and r.get("failure_type") in MODEL_FAILURES)
+    columns = ["model", "predloga", "prosla", "nije_prosla", "nije_izvrsena", "stopa_tacnosti",
+               "bez_predloga", "svih_pokusaja", "stopa_od_svih"]
     rows = []
-    for key, items in sorted(groups.items()):
+    for key in sorted(set(groups) | set(no_proposal)):
+        items = groups[key]
         passed = sum(a.get("accuracy_check_passed") == "1" for a in items)
         failed = sum(a.get("accuracy_check_passed") == "0" for a in items)
+        attempts = len(items) + no_proposal[key]
         rows.append({"model": key, "predloga": len(items), "prosla": passed, "nije_prosla": failed,
                      "nije_izvrsena": len(items) - passed - failed,
-                     "stopa_tacnosti": round(passed / (passed + failed), 3) if passed + failed else None})
+                     "stopa_tacnosti": round(passed / (passed + failed), 3) if passed + failed else None,
+                     "bez_predloga": no_proposal[key] if runs is not None else None,
+                     "svih_pokusaja": attempts if runs is not None else None,
+                     "stopa_od_svih": round(passed / attempts, 3) if runs is not None and attempts else None})
     return columns, rows
 
 
@@ -387,11 +401,13 @@ def analyze(artifacts_path, runs_path=None, evaluations_path=None, out_dir="anal
     svg_stacked(os.path.join(out_dir, "grafikon_odluke.svg"), "Odluke nastavnika po modelu", rows, list(DECISIONS))
     report += ["## Predlozi i odluke", markdown(columns, rows), ""]
 
-    columns, rows = accuracy_table(artifacts)
+    columns, rows = accuracy_table(artifacts, runs)
     if rows:  # samo serije objašnjenja u režimu B; za ostale se izlaz ne menja
         write_csv(os.path.join(out_dir, "tabela_tacnost.csv"), columns, rows)
         report += ["## Mehanička provera tačnosti (objašnjenja, režim B)",
-                   "Stopa tačnosti = prošla / (prošla + nije prošla); neizvršene provere nisu u imeniocu.",
+                   "Stopa tačnosti = prošla / (prošla + nije prošla); neizvršene provere nisu u imeniocu. "
+                   "Uz --runs: bez_predloga = odgovor u lošem formatu, stopa_od_svih = prošla / svi pokušaji "
+                   "(predlozi + bez_predloga; padovi servisa nisu pokušaji).",
                    markdown(columns, rows), ""]
 
     columns, rows = manual_accuracy_table(artifacts)
