@@ -25,7 +25,7 @@ import requests  # noqa: E402
 from flask_jwt_extended import create_access_token  # noqa: E402
 
 # app pre ai_provider-a: app.py ucitava backend/.env, a ai_provider cita kljuceve pri ucitavanju
-from app import app, get_db_connection, reference_sets_enabled  # noqa: E402
+from app import EXPLANATION_MODEL_VERSIONS, app, get_db_connection, reference_sets_enabled  # noqa: E402
 import ai_provider  # noqa: E402
 import run_experiment as rx  # noqa: E402
 
@@ -107,6 +107,10 @@ def cleanup():
         if row["id"] not in created["prompts_before"] and not db_all(
                 "SELECT 1 FROM ai_generation_runs WHERE prompt_id = %s LIMIT 1", (row["id"],)):
             db_exec("DELETE FROM ai_prompts WHERE id = %s", (row["id"],))
+    for row in db_all("SELECT id FROM ai_models"):
+        if row["id"] not in created["models_before"] and not db_all(
+                "SELECT 1 FROM ai_generation_runs WHERE model_id = %s LIMIT 1", (row["id"],)):
+            db_exec("DELETE FROM ai_models WHERE id = %s", (row["id"],))
 
 
 # ---------- lazni provajder ----------
@@ -230,6 +234,14 @@ def run(fake):
            all(len(v) == 1 for v in prompts_per_q.values()) and all(v == set(PROVIDERS) for v in providers_per_q.values()))
     record("svi run-ovi imaju evaluation_batch_id", f"{total} x {batch}",
            f"{Counter(r['evaluation_batch_id'] for r in runs)}", all(r["evaluation_batch_id"] == batch for r in runs))
+    versions = db_all("""SELECT m.provider, m.model_version, COUNT(DISTINCT r.model_id) AS redova
+                         FROM ai_generation_runs r JOIN ai_models m ON m.id = r.model_id
+                         WHERE r.evaluation_batch_id = %s GROUP BY m.provider, m.model_version""", (batch,))
+    got_versions = sorted((v["provider"], v["model_version"], v["redova"]) for v in versions)
+    record("model_version kao kod objasnjenja, jedan red po modelu", "verzija iz recnika, 1 red", got_versions,
+           got_versions == sorted((p, EXPLANATION_MODEL_VERSIONS[p], 1) for p in PROVIDERS))
+    longest = max(len(v) for v in EXPLANATION_MODEL_VERSIONS.values())
+    record("model_version staje u kolonu (varchar 50)", "najvise 50", str(longest), longest <= 50)
 
     # --- 429 (dnevni limit) i los format ---
     batch2 = new_batch("limit")
@@ -354,6 +366,7 @@ if __name__ == "__main__":
     requests.post = fake
     ai_provider.time.sleep = lambda s: None
     created["prompts_before"] = {r["id"] for r in db_all("SELECT id FROM ai_prompts")}
+    created["models_before"] = {r["id"] for r in db_all("SELECT id FROM ai_models")}
     before = row_counts()
     try:
         run(fake)

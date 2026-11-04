@@ -20,7 +20,7 @@ sys.path.insert(0, BACKEND)
 sys.path.insert(0, os.path.join(BACKEND, "tools"))
 
 # app pre ai_provider-a: app.py ucitava backend/.env, a ai_provider cita kljuceve pri ucitavanju
-from app import app, get_db_connection  # noqa: E402
+from app import EXPLANATION_MODEL_VERSIONS, app, get_db_connection  # noqa: E402
 import requests  # noqa: E402
 from flask_jwt_extended import create_access_token  # noqa: E402
 
@@ -176,6 +176,10 @@ def cleanup():
         if row["id"] not in created["prompts_before"] and not db_all(
                 "SELECT 1 FROM ai_generation_runs WHERE prompt_id = %s LIMIT 1", (row["id"],)):
             db_exec("DELETE FROM ai_prompts WHERE id = %s", (row["id"],))
+    for row in db_all("SELECT id FROM ai_models"):
+        if row["id"] not in created["models_before"] and not db_all(
+                "SELECT 1 FROM ai_generation_runs WHERE model_id = %s LIMIT 1", (row["id"],)):
+            db_exec("DELETE FROM ai_models WHERE id = %s", (row["id"],))
 
 
 # ---------- provere ----------
@@ -308,6 +312,12 @@ def run(fake):
            f"poziva={rep['calls']}, run-ova={len(runs)}, po mestu={sorted(set(per_slot.values()))}, prihvaćeno={sum(rep['items_accepted'].values())}",
            rep["calls"] == 4 and len(runs) == 6 and set(per_slot.values()) == {1} and len(per_slot) == 6
            and sum(rep["items_accepted"].values()) == 8)
+    versions = db_all("""SELECT m.provider, m.model_version, COUNT(DISTINCT r.model_id) AS redova
+                         FROM ai_generation_runs r JOIN ai_models m ON m.id = r.model_id
+                         WHERE r.evaluation_batch_id = %s GROUP BY m.provider, m.model_version""", (batch,))
+    got_versions = sorted((v["provider"], v["model_version"], v["redova"]) for v in versions)
+    record("model_version kao kod objasnjenja, jedan red po modelu", "verzija iz recnika, 1 red", got_versions,
+           got_versions == sorted((p, EXPLANATION_MODEL_VERSIONS[p], 1) for p in PROVIDERS))
     rep = rx.run_experiment(batch, input_ids, PROVIDERS, 1, mode="set", group_size=2, k=2, out=lambda *a: None)
     record("režim set: završena serija", "0 poziva", f"poziva={rep['calls']}, preostalo={rep['pending']}", rep["calls"] == 0 and rep["pending"] == 0)
 
@@ -343,6 +353,7 @@ if __name__ == "__main__":
     requests.post = fake
     ai_provider.time.sleep = lambda s: None
     created["prompts_before"] = {r["id"] for r in db_all("SELECT id FROM ai_prompts")}
+    created["models_before"] = {r["id"] for r in db_all("SELECT id FROM ai_models")}
     before = row_counts()
     try:
         run(fake)

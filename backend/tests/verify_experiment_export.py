@@ -33,9 +33,13 @@ SQL_FILE = os.path.join(ROOT, "db", "queries", "eksperiment_po_modelu.sql")
 COUNT_TABLES = ("ai_generated_artifacts", "ai_generation_runs", "ai_evaluations", "ai_label_evaluations",
                 "evaluation_batches", "users")
 TAG = uuid.uuid4().hex[:6]
+RUNS_COLUMNS = ["batch_id", "run_id", "purpose", "mode", "provider", "model_name", "prompt_version", "source_question_id",
+                "input_question_ids", "validation_passed", "failure_type", "first_attempt_passed", "format_retries",
+                "attempts", "finish_reason", "response_time_ms", "tokens_used", "artifacts", "set_accepted",
+                "set_rejected", "created_at"]
 
 results = []
-created = {"users": [], "batches": [], "runs": [], "artifacts": []}
+created = {"users": [], "batches": [], "runs": [], "artifacts": [], "models": []}
 client = app.test_client()
 
 
@@ -150,6 +154,8 @@ def cleanup():
         db_exec(f"DELETE FROM ai_generated_artifacts WHERE id IN ({ph(arts)})", arts)
     if runs:
         db_exec(f"DELETE FROM ai_generation_runs WHERE id IN ({ph(runs)})", runs)
+    if created["models"]:
+        db_exec(f"DELETE FROM ai_models WHERE id IN ({ph(created['models'])})", created["models"])
     if created["batches"]:
         db_exec(f"DELETE FROM evaluation_batches WHERE id IN ({ph(created['batches'])})", created["batches"])
     if created["users"]:
@@ -389,6 +395,26 @@ def main():
         record("analiza: objasnjenja grupisana po rezimu", "[mode_a] i [mode_b]", sorted(groups),
                any(g.endswith("[mode_a]") for g in groups) and any(g.endswith("[mode_b]") for g in groups)
                and not any(g.endswith("[explanation]") for g in groups))
+
+        # --- model_version i temperatura: nove kolone na kraju, postojece ostaju na mestu ---
+        version = f"tmp-verzija-{TAG}"
+        m_ver = db_exec("INSERT INTO ai_models (provider, model_name, model_version) VALUES ('groq', %s, %s)",
+                        (f"tmp-model-{TAG}", version))
+        created["models"].append(m_ver)
+        batch_v = db_exec("INSERT INTO evaluation_batches (name) VALUES (%s)", (f"tmp-export-ver-{TAG}",))
+        created["batches"].append(batch_v)
+        v_run = make_run(m_ver, p_mc, "similar_question", batch_v, 1, first=1, ms=10,
+                         params={"attempts": 1, "temperature": 0.7})
+        make_artifact(v_run, "predlog", None, "lako", "pamcenje")
+        _, _, v_runs = get_csv(batch_v, "runs", user_id=admin)
+        _, _, v_arts = get_csv(batch_v, "artifacts", user_id=admin)
+        got = (v_runs[0]["model_version"], v_runs[0]["temperature"], v_arts[0]["model_version"])
+        record("model_version (runs, artifacts) i temperatura (runs)", (version, "0.7", version), got,
+               got == (version, "0.7", version))
+        run_columns, art_columns = list(v_runs[0].keys()), list(v_arts[0].keys())
+        record("nove kolone su na kraju", ["model_version", "temperature"], run_columns[-2:],
+               run_columns[-2:] == ["model_version", "temperature"] and art_columns[-1] == "model_version")
+        record("postojece kolone runs na istom mestu", RUNS_COLUMNS, run_columns[:-2], run_columns[:-2] == RUNS_COLUMNS)
     finally:
         cleanup()
         shutil.rmtree(tmp_dir, ignore_errors=True)

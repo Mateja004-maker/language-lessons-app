@@ -83,6 +83,10 @@ def cleanup():
         if row["id"] not in created["prompts_before"] and not db_all(
                 "SELECT 1 FROM ai_generation_runs WHERE prompt_id = %s LIMIT 1", (row["id"],)):
             db_exec("DELETE FROM ai_prompts WHERE id = %s", (row["id"],))
+    for row in db_all("SELECT id FROM ai_models"):
+        if row["id"] not in created["models_before"] and not db_all(
+                "SELECT 1 FROM ai_generation_runs WHERE model_id = %s LIMIT 1", (row["id"],)):
+            db_exec("DELETE FROM ai_models WHERE id = %s", (row["id"],))
 
 
 def record(case, expected, got, ok):
@@ -246,6 +250,7 @@ if __name__ == "__main__":
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     real_post, real_sleep = requests.post, ai_provider.time.sleep
     created["prompts_before"] = {r["id"] for r in db_all("SELECT id FROM ai_prompts")}
+    created["models_before"] = {r["id"] for r in db_all("SELECT id FROM ai_models")}
     before = row_counts()
     try:
         run()

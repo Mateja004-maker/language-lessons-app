@@ -3055,7 +3055,8 @@ def generate_similar_for_question(question_id, provider, evaluation_batch_id=Non
     )
 
     model_name = ai_provider.DEFAULT_MODELS[provider]
-    model_id = ensure_ai_model(conn, provider=provider, model_name=model_name)
+    model_id = ensure_ai_model(conn, provider=provider, model_name=model_name,
+                               model_version=EXPLANATION_MODEL_VERSIONS.get(provider))
 
     options = {"temperature": 0.7}
     prompt_version = prompt_templates.template_version(template_text)
@@ -4307,11 +4308,14 @@ EXPLANATION_DEFAULT_MODELS = {
 # (ai_provider.py ne vraca "model"/"modelVersion" iz sirovog odgovora, vec
 # samo tekst/tokene/finish_reason). Ovo je dokumentovan identifikator modela
 # + datum rucne provere da je taj naziv jos aktuelan, upisan u ai_models.model_version.
+# Koriste ga i pitanja i objasnjenja, da isti model bude pod istim redom u ai_models.
+# Kolona je varchar(50): duzi tekst bi se skratio, ensure_ai_model ga ne bi nasao i
+# pravio bi nov red pri svakom pozivu - zato openrouter nema pun naziv modela.
 EXPLANATION_MODEL_VERSIONS = {
     "groq": "openai/gpt-oss-20b - provereno 2026-10-21",
     "gemini": "gemini-3.6-flash - provereno 2026-10-21",
     "mistral": "mistral-small-latest - provereno 2026-10-21",
-    "openrouter": "nvidia/nemotron-3-super-120b-a12b:free - provereno 2026-10-21",
+    "openrouter": "nemotron-3-super-120b-a12b:free - 2026-10-21",
 }
 
 
@@ -5578,7 +5582,8 @@ def generate_similar_set(question_ids, provider, k, evaluation_batch_id=None, in
             template_text, [payloads[q] for q in question_ids], k, subject_name)
 
         model_name = ai_provider.DEFAULT_MODELS[provider]
-        model_id = ensure_ai_model(conn, provider=provider, model_name=model_name)
+        model_id = ensure_ai_model(conn, provider=provider, model_name=model_name,
+                                   model_version=EXPLANATION_MODEL_VERSIONS.get(provider))
         options = {"temperature": 0.7}
 
         def ask_model():
@@ -5762,7 +5767,7 @@ def anonymize_user(user_id):
 
 def _export_artifacts(cursor, batch_id):
     cursor.execute("""
-        SELECT a.id AS artifact_id, a.artifact_type, r.id AS run_id, r.purpose, m.provider, m.model_name,
+        SELECT a.id AS artifact_id, a.artifact_type, r.id AS run_id, r.purpose, m.provider, m.model_name, m.model_version,
                p.version AS prompt_version, r.source_question_id, r.params_used, a.original_text, a.status,
                a.reviewed_by, a.model_difficulty, a.model_bloom_level, a.reviewed_difficulty, a.reviewed_bloom_level,
                a.edit_distance, a.edit_distance_norm, a.max_similarity, a.similar_source, a.reviewed_duplicate,
@@ -5804,7 +5809,7 @@ def _export_artifacts(cursor, batch_id):
                "edit_distance", "edit_distance_norm", "max_similarity", "similar_source", "possible_duplicate",
                "reviewed_duplicate", "first_attempt_passed", "format_retries", "response_time_ms", "tokens_used",
                "accuracy_check_passed", "solution_source"]
-    columns += [f"r1_{d}" for d in dims] + [f"r2_{d}" for d in dims]
+    columns += [f"r1_{d}" for d in dims] + [f"r2_{d}" for d in dims] + ["model_version"]
     rows = []
     for a in artifacts:
         own = scores.get(a["artifact_id"], [])
@@ -5840,6 +5845,7 @@ def _export_artifacts(cursor, batch_id):
             "format_retries": a["format_retries"], "response_time_ms": a["response_time_ms"], "tokens_used": a["tokens_used"],
             "accuracy_check_passed": a["accuracy_check_passed"],
             "solution_source": params.get("solution_source") if isinstance(params, dict) else None,
+            "model_version": a["model_version"],
         }
         row.update({f"r1_{d}": round1.get(d) for d in dims})
         row.update({f"r2_{d}": round2.get(d) for d in dims})
@@ -5849,7 +5855,7 @@ def _export_artifacts(cursor, batch_id):
 
 def _export_runs(cursor, batch_id):
     cursor.execute("""
-        SELECT r.id AS run_id, r.purpose, r.mode, m.provider, m.model_name, p.version AS prompt_version, r.source_question_id,
+        SELECT r.id AS run_id, r.purpose, r.mode, m.provider, m.model_name, m.model_version, p.version AS prompt_version, r.source_question_id,
                r.params_used, r.validation_passed, r.failure_type, r.first_attempt_passed, r.format_retries,
                r.response_time_ms, r.tokens_used, r.created_at,
                (SELECT COUNT(*) FROM ai_generated_artifacts a WHERE a.generation_run_id = r.id) AS artifacts
@@ -5862,7 +5868,7 @@ def _export_runs(cursor, batch_id):
     columns = ["batch_id", "run_id", "purpose", "mode", "provider", "model_name", "prompt_version", "source_question_id",
                "input_question_ids", "validation_passed", "failure_type", "first_attempt_passed", "format_retries",
                "attempts", "finish_reason", "response_time_ms", "tokens_used", "artifacts", "set_accepted",
-               "set_rejected", "created_at"]
+               "set_rejected", "created_at", "model_version", "temperature"]
     rows = []
     for r in cursor.fetchall():
         params = json.loads(r["params_used"]) if r["params_used"] else {}
@@ -5876,7 +5882,7 @@ def _export_runs(cursor, batch_id):
             "attempts": params.get("attempts"), "finish_reason": params.get("finish_reason"),
             "response_time_ms": r["response_time_ms"], "tokens_used": r["tokens_used"], "artifacts": r["artifacts"],
             "set_accepted": set_items.get("accepted", ""), "set_rejected": len(set_items.get("rejected") or []) if set_items else "",
-            "created_at": r["created_at"],
+            "created_at": r["created_at"], "model_version": r["model_version"], "temperature": params.get("temperature"),
         })
     return columns, rows
 

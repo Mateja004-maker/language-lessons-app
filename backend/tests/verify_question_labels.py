@@ -98,6 +98,10 @@ def cleanup():
         # samo ako ga ne koristi nijedan run van ove provere
         if db_one("SELECT COUNT(*) AS n FROM ai_generation_runs WHERE prompt_id = %s", (prompt_id,))["n"] == 0:
             db_exec("DELETE FROM ai_prompts WHERE id = %s", (prompt_id,))
+    for row in db_all("SELECT id FROM ai_models"):
+        if row["id"] not in created["models_before"] and not db_all(
+                "SELECT 1 FROM ai_generation_runs WHERE model_id = %s LIMIT 1", (row["id"],)):
+            db_exec("DELETE FROM ai_models WHERE id = %s", (row["id"],))
 
 
 # ---------- lazni provajder ----------
@@ -340,6 +344,7 @@ def print_table():
 if __name__ == "__main__":
     real_post, real_sleep = requests.post, ai_provider.time.sleep
     ai_provider.time.sleep = lambda s: None
+    created["models_before"] = {r["id"] for r in db_all("SELECT id FROM ai_models")}
     before = row_counts()
     try:
         run()

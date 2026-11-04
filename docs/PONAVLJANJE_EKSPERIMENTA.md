@@ -16,6 +16,11 @@ Na Windows konzoli prvo pokrenite `set PYTHONIOENCODING=utf-8`.
 
 Mistral (`mistral-small-latest`) postoji u kodu, ali nije u eksperimentu.
 
+**Verzija modela** (`EXPLANATION_MODEL_VERSIONS` u `backend/app.py`, isto za pitanja i objašnjenja)
+upisuje se u `ai_models.model_version`. To je ručno proveren identifikator sa datumom provere, a ne
+verzija iz API odgovora. Datum se menja jednom, neposredno pre formalnog pokretanja, jer svaka
+promena teksta pravi nov red u `ai_models`.
+
 **Parametri:**
 
 - temperatura 0.7;
@@ -165,8 +170,10 @@ curl -o serija_1_evaluations.csv -H "Authorization: Bearer <ADMIN token>" "http:
   - model, verzija prompta, režim i ulazna pitanja;
   - oznake modela, nastavnika i drugog ocenjivača;
   - rubrika runde 1 (`r1_*`) i runde 2 (`r2_*`);
-  - odluka, razdaljina izmene i oznaka duplikata.
-- **`runs`**: jedan red po pozivu modela: uspeh, vrsta pada, prolaz iz prve, ponovni zahtev, vreme, tokeni.
+  - odluka, razdaljina izmene i oznaka duplikata;
+  - `model_version` (poslednja kolona).
+- **`runs`**: jedan red po pozivu modela: uspeh, vrsta pada, prolaz iz prve, ponovni zahtev, vreme, tokeni,
+  a na kraju `model_version` i `temperature`.
 - **`evaluations`**: jedan red po pojedinačnoj oceni, za Kripendorfovu alfu sa svim ocenjivačima.
 
 Korisnici su u izvozu samo pseudonimi (`u_` + HMAC heš), bez imena i emailova. Probni

@@ -82,7 +82,8 @@ i `docs/PONAVLJANJE_EKSPERIMENTA_OBJASNJENJA.md` (objašnjenja).
     `tabela_saglasnost_rucna.csv` za ručnu `tacnost_resenja`, van tabela skale 1–5).
 - Tačka F (`retry_count` / `response_model` / `model_version`): za objašnjenja je urađena
   (`model_version` iz `EXPLANATION_MODEL_VERSIONS`, `retry_count` = broj ponavljanja, `attempts` − 1).
-  Za pitanja je `retry_count` i dalje 0, a `model_version` NULL (pokušaji su u `params_used.attempts`).
+  Za pitanja je `model_version` iz istog rečnika (novi run-ovi; stari ostaju na redu sa NULL), a `retry_count`
+  je i dalje 0 (pokušaji su u `params_used.attempts`). Tekst verzije mora da stane u `varchar(50)`.
   Kolona `response_model` ne postoji.
 - Probni redovi (probe v3, gemini i set) su zabeleženi u `backend/probe_v3_ids.json`
   (gitignore). Ne brisati ih bez dogovora.
