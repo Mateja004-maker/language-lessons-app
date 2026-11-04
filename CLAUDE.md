@@ -30,6 +30,9 @@ i `docs/PONAVLJANJE_EKSPERIMENTA_OBJASNJENJA.md` (objašnjenja).
 - Migracije se samo pišu, sa rollback-om u komentaru. Pokreću se tek uz potvrdu korisnika,
   tačno jednom: pre pokretanja proveriti da kolone ili tabele već ne postoje.
   Posle svake nove migracije osvežiti `schema.sql` (vidi `MIGRATIONS.md`).
+- id-jevi u pravoj bazi ne moraju da odgovaraju `reference_data.sql` (kriterijumi pitanja su u pravoj
+  bazi na id 17–24): migracije podataka ne navode id, a postojanje proveravaju po prirodnom ključu
+  (npr. `applies_to` + `dimension_key`).
 - Upiti samo za čitanje su u `db/queries/`.
 
 ## Jezik → predmet (stanje)
@@ -61,6 +64,8 @@ i `docs/PONAVLJANJE_EKSPERIMENTA_OBJASNJENJA.md` (objašnjenja).
   - Arhiva: `*_v2.txt`.
   - Andrej: `explanation_mode_a_v2` (arhiva `_v1`), `explanation_mode_b_v1` (programski zadatak sa test primerima),
     `explanation_mode_b_mc_v1` (MC u režimu B) i `explanation_mode_b_open_v1` (otvoreno pitanje bez test primera).
+- Režim B bez mehaničke provere (`accuracy_check_passed` NULL): nastavnik ručno ocenjuje `tacnost_resenja`
+  (0/1, `applies_to = 'explanation_open_b'`); ocena "netačno" dozvoljava samo odbacivanje.
 - Nijedan generisan sadržaj ne ide automatski studentima: status `predlog` → slepi
   pregled nastavnika → `prihvaceno` / `prihvaceno_izmena` / `odbaceno`. Odobreno pitanje
   ide u banku, ne direktno u test.
