@@ -5,18 +5,20 @@
 -- Pre pokretanja napraviti backup van repozitorijuma.
 --
 -- - Menja samo podatke (jedan red u ai_rubric_definitions); šema ostaje ista,
---   pa se schema.sql ne osvežava. Isti red je u db/reference_data.sql (id 17).
+--   pa se schema.sql ne osvežava. Isti red je u db/reference_data.sql (tamo id 17).
 -- - Binarna skala: 0 = netačno, 1 = tačno (score je tinyint, bez CHECK-a).
 -- - applies_to = 'explanation_open_b': opšti upiti za objašnjenja
 --   (applies_to = 'explanation') ga ne biraju; dodaje ga samo
 --   explanation_review.teacher_rubric_applies_to za mode_b bez mehaničke provere.
 -- - Bezbedno za ponovno pokretanje (ne upisuje drugi put isti kriterijum).
 
--- id 17 izričito, isti kao u reference_data.sql (auto_increment je mogao da
--- odmakne, npr. od privremenih upisa testova); zauzet id 17 -> greška, ništa se ne upisuje.
+-- id se ne navodi: dobija sledeći slobodan AUTO_INCREMENT. id 17 iz reference_data.sql
+-- važi samo za svežu bazu; u pravoj bazi su kriterijumi pitanja na id 17-24, pa bi
+-- fiksni id 17 pao na duplikatu. Kod i testovi kriterijum traže po
+-- applies_to + dimension_key, nikad po id-ju.
 INSERT INTO ai_rubric_definitions
-  (id, applies_to, dimension_key, dimension_label, scale_min, scale_max, evaluator_role)
-SELECT 17, 'explanation_open_b', 'tacnost_resenja', 'Tačnost rešenja (tačno/netačno)', 0, 1, 'TEACHER'
+  (applies_to, dimension_key, dimension_label, scale_min, scale_max, evaluator_role)
+SELECT 'explanation_open_b', 'tacnost_resenja', 'Tačnost rešenja (tačno/netačno)', 0, 1, 'TEACHER'
 FROM DUAL
 WHERE NOT EXISTS (
   SELECT 1 FROM ai_rubric_definitions
