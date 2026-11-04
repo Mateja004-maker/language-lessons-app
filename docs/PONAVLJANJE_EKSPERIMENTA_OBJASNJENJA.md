@@ -22,7 +22,8 @@ razlike. Sve komande se pokreću iz `backend/`. Na Windows konzoli prvo pokrenit
 Mistral (`mistral-small-latest`) postoji u kodu, ali nije u eksperimentu (vidi Poznata ograničenja).
 
 **Verzija modela** (`EXPLANATION_MODEL_VERSIONS`) se upisuje u `ai_models.model_version`,
-na primer `openai/gpt-oss-20b - provereno 2026-10-21`. To je ručno proveren
+na primer `openai/gpt-oss-20b - provereno 2026-10-21` (openrouter ima kraći tekst, jer kolona
+prima najviše 50 znakova). To je ručno proveren
 identifikator modela sa datumom provere, a ne verzija iz API odgovora: `ai_provider.py` ne
 vraća naziv ni verziju modela iz sirovog odgovora.
 
@@ -80,12 +81,16 @@ upisuje u `ai_generation_runs.accuracy_check_passed` i `accuracy_check_details`:
 
 Kao u [PONAVLJANJE_EKSPERIMENTA.md](PONAVLJANJE_EKSPERIMENTA.md), odeljci 0, 1 i 2. Razlike:
 
-- Pre prvog pokretanja proverite da `ai_models` ima tačno jedan red po modelu iz eksperimenta
-  (vidi Poznata ograničenja):
+- `ai_models` sme da ima više redova za isti model: stari run-ovi ostaju na starim redovima (npr.
+  `model_version` NULL), a novi koriste red sa verzijom iz `EXPLANATION_MODEL_VERSIONS`. Bitno je da
+  run-ovi jedne serije budu pod jednim redom po modelu (vidi Poznata ograničenja). Proverava se
+  posle generisanja, a upit ne sme da vrati nijedan red:
   ```sql
-  SELECT provider, model_name, COUNT(*) FROM ai_models GROUP BY provider, model_name HAVING COUNT(*) > 1;
+  SELECT m.provider, m.model_name, COUNT(DISTINCT r.model_id)
+  FROM ai_generation_runs r JOIN ai_models m ON m.id = r.model_id
+  WHERE r.evaluation_batch_id = <id>
+  GROUP BY m.provider, m.model_name HAVING COUNT(DISTINCT r.model_id) > 1;
   ```
-  Upit ne sme da vrati nijedan red.
 - Za referentni skup režima A birajte pitanja sa poznatim rešenjem (`reference_solution` ili MC
   sa tačno jednim tačnim odgovorom). Ostala pokretač preskače.
 - Za režim B formalnog eksperimenta referentni skup sme da sadrži **samo MC pitanja i programske
@@ -93,9 +98,9 @@ Kao u [PONAVLJANJE_EKSPERIMENTA.md](PONAVLJANJE_EKSPERIMENTA.md), odeljci 0, 1 i
   (eliminacioni kriterijum). Otvorena pitanja bez test primera se ne uključuju: provera bi za
   njih ostala „nije izvršena“, a ocena `tacnost_objasnjenja` ocenjuje objašnjenje, ne rešenje.
   Takva pitanja i dalje mogu da se koriste u aplikaciji van eksperimenta.
-  Za njih sada postoji ručna ocena `tacnost_resenja` (tačno/netačno, vidi ispod), ali je
-  `analyze_experiment.py` još ne izdvaja; pre nego što uđu u formalni eksperiment, analizu
-  treba dopuniti (dogovor sa Anđom).
+  Za njih postoji ručna ocena `tacnost_resenja` (tačno/netačno, vidi ispod), a `analyze_experiment.py`
+  je izdvaja u `tabela_tacnost_rucna.csv` i `tabela_saglasnost_rucna.csv` (vidi „Izlaz analize“).
+  Ručna ocena nije mehanička provera, pa se dve stope ne sabiraju.
 - Za svaki režim objašnjenja pravi se posebna serija, odvojena i od serija pitanja.
 
 ### 3. Generisanje: `tools/run_experiment.py --task explanation`
@@ -239,13 +244,13 @@ Upit grupiše po `ai_models.id`, a analiza po imenu modela. Ako postoji više re
   redova za isti model sa različitom verzijom (na primer stari red sa `model_version = NULL`
   i nov sa `… - provereno 2026-10-21`), `run_experiment.py` to neće uhvatiti kao mešanje
   protokola. Takav je slučaj u probnoj seriji 1 (groq). Za pravi eksperiment (Faza 3)
-  krenite od nove, čiste serije i pre pokretanja proverite da `ai_models` ima samo jedan red
-  po modelu (upit u odeljku 0–2).
+  krenite od nove, čiste serije, ne menjajte tekst verzije tokom serije i proverite je upitom
+  iz odeljka 0–2.
 
 ## Kontrolna lista
 
 - [ ] Backup baze napravljen van repozitorijuma; testovi prolaze.
-- [ ] `ai_models` ima tačno jedan red po modelu iz eksperimenta.
+- [ ] Run-ovi serije su pod jednim redom `ai_models` po modelu (upit u odeljku 0–2).
 - [ ] Referentni skup napravljen, a njegov id zapisan; za režim A pitanja imaju poznato rešenje.
 - [ ] Za svaki režim (`mode_a`, `mode_b`) posebna serija; suvi prolaz pregledan (i spisak preskočenih pitanja).
 - [ ] Generisanje završeno: izveštaj pokretača nema preostalih mesta.
